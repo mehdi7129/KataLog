@@ -1,0 +1,185 @@
+import Foundation
+
+public enum GCSIdentity {
+    public static func isValid(_ uuid: String) -> Bool {
+        uuid.count == 24 && uuid.utf8.allSatisfy { (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0) }
+            && uuid.contains(where: { $0 != "0" }) && uuid.uppercased().contains(where: { $0 != "F" })
+    }
+}
+
+public struct GCSDrone: Decodable, Identifiable, Sendable {
+    public var id: String { uuid }
+    public let uuid: String
+    public let battery: Double?
+    public let rssi: Int?
+    public let firmware: String
+    public let armed: Bool?
+    public let timeUsec: Double?
+    public var lastSeen: Date
+    public var isOnline: Bool { Date().timeIntervalSince(lastSeen) < 10 }
+
+    enum CodingKeys: String, CodingKey {
+        case uuid, battery = "battery_status", rssi = "rssi_wifi", arming = "arming_state"
+        case major = "fw_major", minor = "fw_minor", patch = "fw_patch"
+        case timeUsec = "time_usec"
+    }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        uuid = try c.decode(String.self, forKey: .uuid).uppercased()
+        guard GCSIdentity.isValid(uuid) else { throw DecodingError.dataCorruptedError(forKey: .uuid, in: c, debugDescription: "UUID GCS invalide") }
+        let rawBattery = try c.decodeIfPresent(Double.self, forKey: .battery)
+        battery = rawBattery.flatMap { $0.isFinite && (0...1).contains($0) ? $0 : nil }
+        let signal = try c.decodeIfPresent(Double.self, forKey: .rssi)
+        rssi = signal.flatMap { $0.isFinite && (-150...0).contains($0) ? Int($0) : nil }
+        if let state = try c.decodeIfPresent(Int.self, forKey: .arming) {
+            armed = state == 2 ? true : (state == 1 ? false : nil)
+        } else { armed = nil }
+        timeUsec = try c.decodeIfPresent(Double.self, forKey: .timeUsec)
+        let parts = [try c.decodeIfPresent(Int.self, forKey: .major), try c.decodeIfPresent(Int.self, forKey: .minor), try c.decodeIfPresent(Int.self, forKey: .patch)]
+        firmware = parts.allSatisfy { $0 != nil } ? parts.compactMap { $0 }.map(String.init).joined(separator: ".") : "Non communiqué"
+        lastSeen = Date()
+    }
+}
+
+public struct GCSLogFile: Decodable, Identifiable, Sendable {
+    public var id: String { path }
+    public let path: String
+    public let size: Int64
+    public var isDownloaded: Bool = false
+    public var filename: String { (path as NSString).lastPathComponent }
+    public var dateFolder: String { ((path as NSString).deletingLastPathComponent as NSString).lastPathComponent }
+    public var localPath: String?
+    public var sha256: String?
+    enum CodingKeys: String, CodingKey { case path, size, isDownloaded, localPath, sha256 }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        path = try c.decode(String.self, forKey: .path)
+        size = try c.decode(Int64.self, forKey: .size)
+        isDownloaded = try c.decodeIfPresent(Bool.self, forKey: .isDownloaded) ?? false
+        localPath = try c.decodeIfPresent(String.self, forKey: .localPath)
+        sha256 = try c.decodeIfPresent(String.self, forKey: .sha256)
+    }
+    public init(path: String, size: Int64, isDownloaded: Bool = false) {
+        self.path = path; self.size = size; self.isDownloaded = isDownloaded
+    }
+}
+
+public struct GCSTransfer: Codable, Identifiable, Sendable {
+    public var id: String = UUID().uuidString
+    public let droneUUID: String
+    public let remotePath: String
+    public let size: Int64
+    public var host: String
+    /// First endpoint used before an explicit connection change; history stays intact.
+    public var originalHost: String?
+    public let destination: String
+    public var completedBytes: Int64 = 0
+    public var state: String = "queued"
+    public var error: String?
+    public var localPath: String?
+    public var sha256: String?
+    // Optional backing fields preserve decoding of v0.2 queues.
+    public var batchID: String?
+    public var attempts: Int?
+    public var nextRetryAt: Date?
+    public var remoteBusyUntil: Date?
+    public var attemptCount: Int { get { attempts ?? 0 } set { attempts = newValue } }
+    public var isPending: Bool { ["queued", "retrying"].contains(state) }
+    public var isActive: Bool { ["downloading", "importing"].contains(state) }
+    public var isSuccessful: Bool { ["downloaded", "complete"].contains(state) }
+    public var progress: Double { size > 0 ? min(1, max(0, Double(completedBytes) / Double(size))) : 0 }
+    public var filename: String { (remotePath as NSString).lastPathComponent }
+    public init(droneUUID: String, remotePath: String, size: Int64, host: String, destination: String) {
+        self.droneUUID = droneUUID; self.remotePath = remotePath; self.size = size
+        self.host = host; self.destination = destination
+    }
+    public mutating func recoverAfterRelaunch() {
+        if ["downloading", "importing", "queued", "retrying"].contains(state) {
+            state = "interrupted"
+            error = "Collecte interrompue. Réessayez pour vérifier le fichier local et reprendre la file."
+        }
+    }
+    public mutating func retargetPending(to host: String) {
+        guard isPending, self.host != host else { return }
+        if originalHost == nil { originalHost = self.host }
+        self.host = host
+    }
+}
+
+public struct GCSCollectorEvent: Decodable, Sendable {
+    public let event: String
+    public let connected: Bool?
+    public let drones: [GCSDrone]?
+    public let uuid: String?
+    public let files: [GCSLogFile]?
+    public let path: String?
+    public let bytes: Int64?
+    public let total: Int64?
+    public let localPath: String?
+    public let sha256: String?
+    public let message: String?
+    public let cached: Bool?
+    public let retryable: Bool?
+    public let timeoutSeconds: Double?
+}
+
+public struct GCSCollectionState: Codable, Sendable {
+    public var schemaVersion = 1
+    public var host = ""
+    public var allowedUUIDs: Set<String> = []
+    public var downloadDirectory: String
+    public var autoImport = true
+    public var reconnect = false
+    public var queue: [GCSTransfer] = []
+    public var currentBatchID: String?
+    public var cachedFileCount: Int?
+    public var queuePaused: Bool?
+    public var inventoryBusyUntil: [String: Date]?
+    public init(downloadDirectory: String) { self.downloadDirectory = downloadDirectory }
+}
+
+/// Progress covers one collection, including failed/stopped work in the denominator.
+/// Transport reaching 100% is distinct from verification/import completion.
+public struct GCSBatchProgress: Sendable {
+    public let fraction: Double
+    public let completedCount: Int
+    public let totalCount: Int
+    public let completedBytes: Int64
+    public let totalBytes: Int64
+    public let failedCount: Int
+    public let activeCount: Int
+    public let pendingCount: Int
+    public let stoppedCount: Int
+    public init(transfers: [GCSTransfer]) {
+        totalCount = transfers.count
+        completedCount = transfers.filter(\.isSuccessful).count
+        failedCount = transfers.filter { ["failed", "interrupted"].contains($0.state) }.count
+        activeCount = transfers.filter(\.isActive).count
+        pendingCount = transfers.filter(\.isPending).count
+        stoppedCount = transfers.filter { $0.state == "stopped" }.count
+        totalBytes = transfers.reduce(0) { $0 + max(0, $1.size) }
+        completedBytes = transfers.reduce(0) { $0 + min(max(0, $1.size), max(0, $1.completedBytes)) }
+        fraction = totalBytes > 0 ? Double(completedBytes) / Double(totalBytes) : 0
+    }
+}
+
+/// Pure scheduling rules shared by UI orchestration and regression tests.
+public enum GCSQueuePolicy {
+    public static let maxAttempts = 3
+    public static let maxConcurrentDownloads = 2
+    public static func retryDate(attempt: Int, now: Date = Date()) -> Date? {
+        guard attempt < maxAttempts else { return nil }
+        return now.addingTimeInterval(attempt <= 1 ? 5 : 15)
+    }
+    public static func nextJobs(queue: [GCSTransfer], activeIDs: Set<String>, availableUUIDs: Set<String>,
+                                host: String, now: Date = Date()) -> [String] {
+        var occupied = Set(queue.filter { activeIDs.contains($0.id) || ($0.remoteBusyUntil ?? .distantPast) > now }.map(\.droneUUID))
+        var slots = max(0, maxConcurrentDownloads - activeIDs.count)
+        var result: [String] = []
+        for job in queue where job.isPending && job.host == host && availableUUIDs.contains(job.droneUUID) {
+            guard slots > 0, !occupied.contains(job.droneUUID), (job.nextRetryAt ?? .distantPast) <= now else { continue }
+            occupied.insert(job.droneUUID); slots -= 1; result.append(job.id)
+        }
+        return result
+    }
+}

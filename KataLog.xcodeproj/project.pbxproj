@@ -1,0 +1,545 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		06363387B2ACC69BB5BBDBB0 /* DroneAnnotationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B700FADA1EBD3DB70D878460 /* DroneAnnotationViews.swift */; };
+		0BDEB2BD8A2DDE5F525C0A51 /* DroneRegistryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D80CA19A2463BE25542CC90E /* DroneRegistryView.swift */; };
+		0F0CC77AF5A17C689B4646C3 /* flight_data.py in Resources */ = {isa = PBXBuildFile; fileRef = 4788E90D9FA8547F19241078 /* flight_data.py */; };
+		1138F55D7398D96D8093D951 /* analyzer.py in Resources */ = {isa = PBXBuildFile; fileRef = EC603D8E7A8E0DD113C174BB /* analyzer.py */; };
+		1F79A47BEF8649BAF132A57F /* AlertExplanationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2879274F7AD19AC7F2F22D47 /* AlertExplanationView.swift */; };
+		2B111F3CA61E9B43BCEA891B /* GCSProcessService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1263800F19D2CD42409464DF /* GCSProcessService.swift */; };
+		3470A2C48748F4BAD520EEAF /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ACBF6FE3DBC7EE0DCE73010 /* LibraryStore.swift */; };
+		3B5A50C2502810407C46FBA6 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49A90C24B554927A24D87CB4 /* Models.swift */; };
+		3BC941433531EB6D0D29FF87 /* ReportRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3231E8CAB4E8B448FE112E3 /* ReportRenderer.swift */; };
+		3CD6BF0C8CCD4BF5408696DC /* AnalysisService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 767956B06EAA778ABDE3E546 /* AnalysisService.swift */; };
+		4C9E15E5221464DDA4E19B15 /* libKataLogCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 9FE3B699A73B88B059D1ABA7 /* libKataLogCore.a */; };
+		4DE75377E0595A1F4D9CAF16 /* gcs_collect.py in Resources */ = {isa = PBXBuildFile; fileRef = CA3768D8DAE5602B32723F6D /* gcs_collect.py */; };
+		4F0878508BC3F619360FC520 /* DroneAnnotationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A07E65B3288F0CCC78ABC99F /* DroneAnnotationStore.swift */; };
+		63DA243174849ADBE2F827BB /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD3E883DBD573A4915EAB398 /* main.swift */; };
+		6EF20646AD4817137B1BC471 /* GCSModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9BF98186288FB77D7CDC93D /* GCSModels.swift */; };
+		9D3BC30BE8EEE560D0CC2E2D /* AlertKnowledge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DC881E5A3314E11ACF46DD1 /* AlertKnowledge.swift */; };
+		9E8B88AC99D42CB8A7CF9A23 /* ReportInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = A212A8CC9F08D187462D8ACB /* ReportInteraction.swift */; };
+		AFC4E1BC00350A4426AD22E7 /* GCSStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44288B5CAF3F1AFD2A1B24A7 /* GCSStore.swift */; };
+		C9210DFBEBBEDA89BED4FCF3 /* FlightDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A827A86B61CF8D2BE671D9 /* FlightDetailView.swift */; };
+		D3F7E1E2E6A7AD254836BFC0 /* DroneAnnotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5BE6BDA87F822ED233D32F /* DroneAnnotations.swift */; };
+		E0171A9EE311264A85A19C0E /* ReportStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = B026F80BFABB5D3B2AE6107F /* ReportStyle.swift */; };
+		E74F447128F666DE6B29CB5D /* GCSCollectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA713F204AA86A1025CDA21F /* GCSCollectionView.swift */; };
+		EA5556CA10BD284FEA285397 /* FleetMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4A48F7FF34BF817A29A662 /* FleetMapView.swift */; };
+		FE6A095B24CDDEAE2DFB193B /* KataLog.icns in Resources */ = {isa = PBXBuildFile; fileRef = 15D7E9BEE4F099F75643C742 /* KataLog.icns */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		89B3660F1F778385246D69F0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BD6FF7C02326B01276596D62 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 07B9B7041EE5E6AC4D2F4575;
+			remoteInfo = KataLogCore;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		00A827A86B61CF8D2BE671D9 /* FlightDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightDetailView.swift; sourceTree = "<group>"; };
+		0ACBF6FE3DBC7EE0DCE73010 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
+		1263800F19D2CD42409464DF /* GCSProcessService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GCSProcessService.swift; sourceTree = "<group>"; };
+		15D7E9BEE4F099F75643C742 /* KataLog.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = KataLog.icns; sourceTree = "<group>"; };
+		2879274F7AD19AC7F2F22D47 /* AlertExplanationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertExplanationView.swift; sourceTree = "<group>"; };
+		44288B5CAF3F1AFD2A1B24A7 /* GCSStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GCSStore.swift; sourceTree = "<group>"; };
+		4788E90D9FA8547F19241078 /* flight_data.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = flight_data.py; sourceTree = "<group>"; };
+		49A90C24B554927A24D87CB4 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		4F4A48F7FF34BF817A29A662 /* FleetMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetMapView.swift; sourceTree = "<group>"; };
+		67CA2340F1A10C83ADAB2077 /* KataLog.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KataLog.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		767956B06EAA778ABDE3E546 /* AnalysisService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisService.swift; sourceTree = "<group>"; };
+		8B5BE6BDA87F822ED233D32F /* DroneAnnotations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneAnnotations.swift; sourceTree = "<group>"; };
+		9DC881E5A3314E11ACF46DD1 /* AlertKnowledge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertKnowledge.swift; sourceTree = "<group>"; };
+		9FE3B699A73B88B059D1ABA7 /* libKataLogCore.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libKataLogCore.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		A07E65B3288F0CCC78ABC99F /* DroneAnnotationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneAnnotationStore.swift; sourceTree = "<group>"; };
+		A212A8CC9F08D187462D8ACB /* ReportInteraction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportInteraction.swift; sourceTree = "<group>"; };
+		B026F80BFABB5D3B2AE6107F /* ReportStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportStyle.swift; sourceTree = "<group>"; };
+		B700FADA1EBD3DB70D878460 /* DroneAnnotationViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneAnnotationViews.swift; sourceTree = "<group>"; };
+		BA713F204AA86A1025CDA21F /* GCSCollectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GCSCollectionView.swift; sourceTree = "<group>"; };
+		BD3E883DBD573A4915EAB398 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		C3231E8CAB4E8B448FE112E3 /* ReportRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportRenderer.swift; sourceTree = "<group>"; };
+		CA3768D8DAE5602B32723F6D /* gcs_collect.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = gcs_collect.py; sourceTree = "<group>"; };
+		D80CA19A2463BE25542CC90E /* DroneRegistryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneRegistryView.swift; sourceTree = "<group>"; };
+		E9BF98186288FB77D7CDC93D /* GCSModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GCSModels.swift; sourceTree = "<group>"; };
+		EC603D8E7A8E0DD113C174BB /* analyzer.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = analyzer.py; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		8924778D60D3A8778286D990 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4C9E15E5221464DDA4E19B15 /* libKataLogCore.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		20CC674791F27DD5DD63D0E8 /* KataLog */ = {
+			isa = PBXGroup;
+			children = (
+				2879274F7AD19AC7F2F22D47 /* AlertExplanationView.swift */,
+				A07E65B3288F0CCC78ABC99F /* DroneAnnotationStore.swift */,
+				B700FADA1EBD3DB70D878460 /* DroneAnnotationViews.swift */,
+				D80CA19A2463BE25542CC90E /* DroneRegistryView.swift */,
+				4F4A48F7FF34BF817A29A662 /* FleetMapView.swift */,
+				00A827A86B61CF8D2BE671D9 /* FlightDetailView.swift */,
+				BA713F204AA86A1025CDA21F /* GCSCollectionView.swift */,
+				44288B5CAF3F1AFD2A1B24A7 /* GCSStore.swift */,
+				0ACBF6FE3DBC7EE0DCE73010 /* LibraryStore.swift */,
+				BD3E883DBD573A4915EAB398 /* main.swift */,
+			);
+			name = KataLog;
+			path = Sources/KataLog;
+			sourceTree = "<group>";
+		};
+		791EC7E752A91483C5FC81D6 /* icon */ = {
+			isa = PBXGroup;
+			children = (
+				15D7E9BEE4F099F75643C742 /* KataLog.icns */,
+			);
+			name = icon;
+			path = assets/icon;
+			sourceTree = "<group>";
+		};
+		799813F878ABB4D87CE03B62 /* KataLogCore */ = {
+			isa = PBXGroup;
+			children = (
+				9DC881E5A3314E11ACF46DD1 /* AlertKnowledge.swift */,
+				767956B06EAA778ABDE3E546 /* AnalysisService.swift */,
+				8B5BE6BDA87F822ED233D32F /* DroneAnnotations.swift */,
+				E9BF98186288FB77D7CDC93D /* GCSModels.swift */,
+				1263800F19D2CD42409464DF /* GCSProcessService.swift */,
+				49A90C24B554927A24D87CB4 /* Models.swift */,
+				A212A8CC9F08D187462D8ACB /* ReportInteraction.swift */,
+				C3231E8CAB4E8B448FE112E3 /* ReportRenderer.swift */,
+				B026F80BFABB5D3B2AE6107F /* ReportStyle.swift */,
+			);
+			name = KataLogCore;
+			path = Sources/KataLogCore;
+			sourceTree = "<group>";
+		};
+		CF7CDB9A9540AAF23DC61F55 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				EC603D8E7A8E0DD113C174BB /* analyzer.py */,
+				4788E90D9FA8547F19241078 /* flight_data.py */,
+				CA3768D8DAE5602B32723F6D /* gcs_collect.py */,
+			);
+			name = Resources;
+			path = Sources/KataLog/Resources;
+			sourceTree = "<group>";
+		};
+		D1CFEF813CED1ACFFC70045E = {
+			isa = PBXGroup;
+			children = (
+				791EC7E752A91483C5FC81D6 /* icon */,
+				20CC674791F27DD5DD63D0E8 /* KataLog */,
+				799813F878ABB4D87CE03B62 /* KataLogCore */,
+				CF7CDB9A9540AAF23DC61F55 /* Resources */,
+				E8619ED7B457A14A7B5E50BB /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		E8619ED7B457A14A7B5E50BB /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				67CA2340F1A10C83ADAB2077 /* KataLog.app */,
+				9FE3B699A73B88B059D1ABA7 /* libKataLogCore.a */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		07B9B7041EE5E6AC4D2F4575 /* KataLogCore */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AD374EC4C27B1F4B67FC9A78 /* Build configuration list for PBXNativeTarget "KataLogCore" */;
+			buildPhases = (
+				475D5BFA5B57B0F3BA64920D /* Sources */,
+				A60EF03AF967531579B097D0 /* Copy Swift Objective-C Interface Header */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = KataLogCore;
+			packageProductDependencies = (
+			);
+			productName = KataLogCore;
+			productReference = 9FE3B699A73B88B059D1ABA7 /* libKataLogCore.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		1AF478270C2F2F3A7F27CD05 /* KataLog */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 30559BC6B95699A081A261D7 /* Build configuration list for PBXNativeTarget "KataLog" */;
+			buildPhases = (
+				938BC814A0C8EF71835E0629 /* Sources */,
+				F0E65F9DAE56F89BAB00C7D8 /* Resources */,
+				8924778D60D3A8778286D990 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5E7E580D22B939FD7CFDC0D2 /* PBXTargetDependency */,
+			);
+			name = KataLog;
+			packageProductDependencies = (
+			);
+			productName = KataLog;
+			productReference = 67CA2340F1A10C83ADAB2077 /* KataLog.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		BD6FF7C02326B01276596D62 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 68CEE50574E788D01E3D2C07 /* Build configuration list for PBXProject "KataLog" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = D1CFEF813CED1ACFFC70045E;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = E8619ED7B457A14A7B5E50BB /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1AF478270C2F2F3A7F27CD05 /* KataLog */,
+				07B9B7041EE5E6AC4D2F4575 /* KataLogCore */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		F0E65F9DAE56F89BAB00C7D8 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FE6A095B24CDDEAE2DFB193B /* KataLog.icns in Resources */,
+				1138F55D7398D96D8093D951 /* analyzer.py in Resources */,
+				0F0CC77AF5A17C689B4646C3 /* flight_data.py in Resources */,
+				4DE75377E0595A1F4D9CAF16 /* gcs_collect.py in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A60EF03AF967531579B097D0 /* Copy Swift Objective-C Interface Header */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(DERIVED_SOURCES_DIR)/$(SWIFT_OBJC_INTERFACE_HEADER_NAME)",
+			);
+			name = "Copy Swift Objective-C Interface Header";
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/include/$(PRODUCT_MODULE_NAME)/$(SWIFT_OBJC_INTERFACE_HEADER_NAME)",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "ditto \"${SCRIPT_INPUT_FILE_0}\" \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		475D5BFA5B57B0F3BA64920D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9D3BC30BE8EEE560D0CC2E2D /* AlertKnowledge.swift in Sources */,
+				3CD6BF0C8CCD4BF5408696DC /* AnalysisService.swift in Sources */,
+				D3F7E1E2E6A7AD254836BFC0 /* DroneAnnotations.swift in Sources */,
+				6EF20646AD4817137B1BC471 /* GCSModels.swift in Sources */,
+				2B111F3CA61E9B43BCEA891B /* GCSProcessService.swift in Sources */,
+				3B5A50C2502810407C46FBA6 /* Models.swift in Sources */,
+				9E8B88AC99D42CB8A7CF9A23 /* ReportInteraction.swift in Sources */,
+				3BC941433531EB6D0D29FF87 /* ReportRenderer.swift in Sources */,
+				E0171A9EE311264A85A19C0E /* ReportStyle.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		938BC814A0C8EF71835E0629 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1F79A47BEF8649BAF132A57F /* AlertExplanationView.swift in Sources */,
+				4F0878508BC3F619360FC520 /* DroneAnnotationStore.swift in Sources */,
+				06363387B2ACC69BB5BBDBB0 /* DroneAnnotationViews.swift in Sources */,
+				0BDEB2BD8A2DDE5F525C0A51 /* DroneRegistryView.swift in Sources */,
+				EA5556CA10BD284FEA285397 /* FleetMapView.swift in Sources */,
+				C9210DFBEBBEDA89BED4FCF3 /* FlightDetailView.swift in Sources */,
+				E74F447128F666DE6B29CB5D /* GCSCollectionView.swift in Sources */,
+				AFC4E1BC00350A4426AD22E7 /* GCSStore.swift in Sources */,
+				3470A2C48748F4BAD520EEAF /* LibraryStore.swift in Sources */,
+				63DA243174849ADBE2F827BB /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		5E7E580D22B939FD7CFDC0D2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 07B9B7041EE5E6AC4D2F4575 /* KataLogCore */;
+			targetProxy = 89B3660F1F778385246D69F0 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		4586E90F80E8E7172332936F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		51D335C090C9E66C8F0B234C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		725F5C7B8D1BADC07994CB79 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mehdiguiard.KataLogCore;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		7821195D4F92F13CF50E38C1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mehdiguiard.KataLogCore;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		7BD14548201395B919D98172 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 6;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = KataLog;
+				INFOPLIST_KEY_CFBundleIconFile = KataLog;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "KataLog se connecte à votre GCS pour découvrir votre flotte et récupérer ses logs.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.5.1;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mehdiguiard.katalog;
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Release;
+		};
+		AEA03AA5158083DF523D0121 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 6;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = KataLog;
+				INFOPLIST_KEY_CFBundleIconFile = KataLog;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "KataLog se connecte à votre GCS pour découvrir votre flotte et récupérer ses logs.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.5.1;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mehdiguiard.katalog;
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		30559BC6B95699A081A261D7 /* Build configuration list for PBXNativeTarget "KataLog" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AEA03AA5158083DF523D0121 /* Debug */,
+				7BD14548201395B919D98172 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		68CEE50574E788D01E3D2C07 /* Build configuration list for PBXProject "KataLog" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				51D335C090C9E66C8F0B234C /* Debug */,
+				4586E90F80E8E7172332936F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		AD374EC4C27B1F4B67FC9A78 /* Build configuration list for PBXNativeTarget "KataLogCore" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				725F5C7B8D1BADC07994CB79 /* Debug */,
+				7821195D4F92F13CF50E38C1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = BD6FF7C02326B01276596D62 /* Project object */;
+}
