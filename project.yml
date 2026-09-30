@@ -35,12 +35,13 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mehdiguiard.katalog
-        MARKETING_VERSION: 0.5.2
-        CURRENT_PROJECT_VERSION: 7
+        MARKETING_VERSION: 0.6.0
+        CURRENT_PROJECT_VERSION: 14
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: KataLog
         INFOPLIST_KEY_CFBundleIconFile: KataLog
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: KataLog se connecte à votre GCS pour découvrir votre flotte et récupérer ses logs.
+        INFOPLIST_KEY_NSDesktopFolderUsageDescription: KataLog accède aux dossiers de logs choisis sur votre Bureau pour les analyser et y conserver les copies collectées.
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         INFOPLIST_KEY_KatalogSparkleVersion: 2.10.0
         INFOPLIST_KEY_KatalogUpdatesEnabled: NO

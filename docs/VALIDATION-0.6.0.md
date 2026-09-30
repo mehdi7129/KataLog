@@ -1,3 +1,7 @@
+> **Recette de livraison 0.6.0 :** voir [RELEASE-0.6.0.md](RELEASE-0.6.0.md).
+> Ce document conserve le plan et les étapes de validation historiques ; les mentions
+> « aucune release » ci-dessous décrivent leur état au moment du contrôle.
+
 # Validation de la candidate 0.6.0
 
 Ce document décrit les contrôles de la candidate locale. Il distingue les tests

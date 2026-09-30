@@ -8,8 +8,10 @@ l’ancienne app. Fermez KataLog avant ce remplacement. La bibliothèque, les
 numéros de drones, les vues enregistrées et le dossier de collecte restent dans
 Application Support et ne sont pas contenus dans l’app.
 
-Les versions **0.5.1 et 0.5.2** utilisent cette procédure. Leur premier passage
-à une version contenant Sparkle reste manuel.
+Les versions **0.5.1, 0.5.2 et 0.6.0** utilisent cette procédure. Le passage
+à 0.6.0 conserve la bibliothèque existante ; la projection SQLite est reconstruite
+localement sans imposer de réanalyse des ULogs. Sparkle est embarqué, mais aucun
+flux public n’est activé dans cette release.
 
 ### Package de review 0.6
 

@@ -75,4 +75,20 @@ final class GCSFleetObservationTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(RegistryObservationFormat.date("2030-01-01T00:00:00.000Z")),
                        try XCTUnwrap(RegistryObservationFormat.date("2030-01-01T00:00:00Z")))
     }
+
+    func testFailedRegistrationRestoresExistingRegistryBytesAndRevision() throws {
+        let file = try file(), store = GCSFleetObservationStore(file: file, canMutate: { true })
+        store.record([try drone()], authorized: [uuid])
+        let original = try Data(contentsOf: file), revision = store.state.revision
+        let another = "0102030405060708090A0B0C"
+        XCTAssertThrowsError(try store.register([], authorized: [uuid, another]) {
+            throw AnalysisError.unavailable("Settings write refused for this test")
+        })
+        XCTAssertEqual(try Data(contentsOf: file), original)
+        XCTAssertEqual(store.state.revision, revision)
+        XCTAssertEqual(store.state.drones.map(\.uuid), [uuid])
+        try store.register([], authorized: [uuid, another]) {}
+        XCTAssertEqual(Set(store.state.drones.map(\.uuid)), [uuid, another])
+        XCTAssertNil(store.errorMessage)
+    }
 }

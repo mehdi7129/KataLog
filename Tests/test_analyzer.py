@@ -261,6 +261,42 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(result["logs"][0]["droneName"], "Fleet drone 8")
         self.assertEqual(result["importStats"]["unchanged"], 1)
 
+    def test_cloud_only_optional_card_name_does_not_block_import_or_cached_rescan(self):
+        log = self.source / 'card/log/old.ulg'
+        log.parent.mkdir(parents=True)
+        log.write_bytes(synthetic_ulog(drone_name=None))
+        metadata = (self.source / 'card/data/name.txt').resolve()
+        metadata.parent.mkdir()
+        metadata.write_text('Hydrated card name')
+        actual = metadata.stat()
+        attributes = {key: getattr(actual, key) for key in dir(actual) if key.startswith('st_')}
+        attributes['st_flags'] = 0x40000060
+        original_stat, original_open = Path.stat, Path.open
+        attempts = []
+
+        def file_stat(path, *args, **kwargs):
+            return SimpleNamespace(**attributes) if path == metadata else original_stat(path, *args, **kwargs)
+
+        def file_open(path, *args, **kwargs):
+            if path == metadata:
+                attempts.append(path)
+                raise AssertionError('Optional cloud-only name.txt must not be opened to hydrate it')
+            return original_open(path, *args, **kwargs)
+
+        with patch.object(Path, 'stat', file_stat), patch.object(Path, 'open', file_open), \
+             patch.object(analyzer.sys, 'platform', 'darwin'):
+            first = self.scan()
+            second = self.scan()
+        self.assertEqual(attempts, [])
+        self.assertEqual(first['importStats']['imported'], 1)
+        self.assertEqual(second['importStats']['unchanged'], 1)
+        self.assertEqual(first['logs'][0]['status'], 'ok')
+        self.assertEqual(second['logs'][0]['droneName'], 'Drone non identifié')
+        hydrated = self.scan()
+        self.assertEqual(hydrated['logs'][0]['id'], first['logs'][0]['id'])
+        self.assertEqual(hydrated['logs'][0]['droneName'], 'Hydrated card name')
+        self.assertEqual(hydrated['importStats']['unchanged'], 1)
+
     def test_cli_scan_and_snapshot(self):
         self.copy()
         for command in (

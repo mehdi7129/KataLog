@@ -1,3 +1,7 @@
+> **Recette de livraison 0.6.0 :** voir [RELEASE-0.6.0.md](RELEASE-0.6.0.md).
+> Ce document conserve le plan et les étapes de validation historiques ; les mentions
+> « aucune release » ci-dessous décrivent leur état au moment du contrôle.
+
 > **Exécution en cours :** suivre [IMPLEMENTATION-0.6.0.md](IMPLEMENTATION-0.6.0.md), les [contrats](CONTRACTS-0.6.md) et les états du [backlog](BACKLOG-0.6.0.md). Les descriptions et gates ci-dessous sont le plan de référence, pas une annonce de release.
 
 # KataLog 0.6.0 — plan de développement

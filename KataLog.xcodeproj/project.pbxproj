@@ -21,26 +21,32 @@
 		1F79A47BEF8649BAF132A57F /* AlertExplanationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2879274F7AD19AC7F2F22D47 /* AlertExplanationView.swift */; };
 		244CACA55F30DDA40588BBA7 /* ApplicationLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81608F1EC59D6A4B4309FB7A /* ApplicationLifecycle.swift */; };
 		2B111F3CA61E9B43BCEA891B /* GCSProcessService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1263800F19D2CD42409464DF /* GCSProcessService.swift */; };
+		2C65A8F9F63417D88CC74C2F /* library_sources.py in Resources */ = {isa = PBXBuildFile; fileRef = 4EAE586501564398DAC80B69 /* library_sources.py */; };
 		3470A2C48748F4BAD520EEAF /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ACBF6FE3DBC7EE0DCE73010 /* LibraryStore.swift */; };
+		3898E772B1A14F8BC289D101 /* LibraryHelpViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5EB0EE7CFDB8B5DE1DDBE53 /* LibraryHelpViews.swift */; };
 		3B5A50C2502810407C46FBA6 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49A90C24B554927A24D87CB4 /* Models.swift */; };
 		3BC941433531EB6D0D29FF87 /* ReportRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3231E8CAB4E8B448FE112E3 /* ReportRenderer.swift */; };
 		3CD6BF0C8CCD4BF5408696DC /* AnalysisService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 767956B06EAA778ABDE3E546 /* AnalysisService.swift */; };
 		3ED9370C71C3E4285F21B031 /* EngineRuntimeResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD541BCB131D49CF40F668A0 /* EngineRuntimeResolver.swift */; };
 		4223A85F86AB072D4D8A8869 /* library_archives.py in Resources */ = {isa = PBXBuildFile; fileRef = 3247BD603F080AB50D31FEA9 /* library_archives.py */; };
+		4765C3F67E0138495E6EBF07 /* SourcesImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7075CAFA2CC4FEBAA301301C /* SourcesImportView.swift */; };
 		4886455A754F4290297CBE4A /* EngineOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FD04F510482B3719AD7CD79 /* EngineOperations.swift */; };
 		4B86F6CCC67DEDF0E5E9AA45 /* ParameterComparison.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7EE405B99CA1977F2472FB4 /* ParameterComparison.swift */; };
 		4C9E15E5221464DDA4E19B15 /* libKataLogCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 9FE3B699A73B88B059D1ABA7 /* libKataLogCore.a */; };
 		4DE75377E0595A1F4D9CAF16 /* gcs_collect.py in Resources */ = {isa = PBXBuildFile; fileRef = CA3768D8DAE5602B32723F6D /* gcs_collect.py */; };
 		4F0878508BC3F619360FC520 /* DroneAnnotationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A07E65B3288F0CCC78ABC99F /* DroneAnnotationStore.swift */; };
 		4F67B7410FF75722B6A99E25 /* library_storage.py in Resources */ = {isa = PBXBuildFile; fileRef = B1EE23A87F76652BFFAF41B7 /* library_storage.py */; };
+		5165BFA8B0EC7811C04BEF1F /* WorkspaceDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE95C4D29AE5477B63160E3E /* WorkspaceDesign.swift */; };
 		54EDE7EFFC2FA19C752E51E3 /* AppPreviewConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = E98860FD022BF7F7428184D5 /* AppPreviewConfiguration.swift */; };
 		63DA243174849ADBE2F827BB /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD3E883DBD573A4915EAB398 /* main.swift */; };
 		6EF20646AD4817137B1BC471 /* GCSModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9BF98186288FB77D7CDC93D /* GCSModels.swift */; };
 		6F05FE6129C7D6A5FBA722D4 /* GCSQueueRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 509DD61E32EADEC4B75D6E54 /* GCSQueueRepository.swift */; };
 		7706D666FE74BF8BB7DC6420 /* LibraryStorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2199BD4DC630CCF86B4C4F8 /* LibraryStorageService.swift */; };
 		77F0C88A506BE0B40E028ED3 /* MaskImpact06.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFF65C0B487A5E345983033B /* MaskImpact06.swift */; };
+		7C6D3C71BF1E27AF0BE9FD75 /* CoreLibraryUX.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54FB48920B4EBE713B760440 /* CoreLibraryUX.swift */; };
 		84987209B56C609F522B0BDA /* FlightStudyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B085C2B7B159C343A410F297 /* FlightStudyStore.swift */; };
 		85D4FA6D7AABAE03E8CA7736 /* Workspace06View.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9A172B8D44CC0C1F51B4646 /* Workspace06View.swift */; };
+		8AE37F23A9C80658CAD06EFC /* SourcesImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45F6134D0159F030AB69770D /* SourcesImportStore.swift */; };
 		8BFD16EE6274FB18DA381311 /* ReportExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9725E1DD4102C316B4DBDFB /* ReportExportService.swift */; };
 		8DA6390DA4C619A1F354FBE0 /* UpdatePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC36BEBC525C10247219C76B /* UpdatePolicy.swift */; };
 		91657763976C25B68DA10FC2 /* library_reports.py in Resources */ = {isa = PBXBuildFile; fileRef = 5369C54E1184E23D26B6DAC2 /* library_reports.py */; };
@@ -51,6 +57,7 @@
 		9FE53A4AB01CA1A65997F1F3 /* FlightAnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 250C21DF8E49488C594D7485 /* FlightAnalysisView.swift */; };
 		A8733E5DE8EE1895DF681CF7 /* library_repository.py in Resources */ = {isa = PBXBuildFile; fileRef = F3E6103FEB3E5830E8AFE8BB /* library_repository.py */; };
 		AD703E61D8DD32144C991593 /* RecordedMetadataView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2E283DB8D687AB07D82F948 /* RecordedMetadataView.swift */; };
+		AD99079BA035AFD388F3DD67 /* signal_assessment.py in Resources */ = {isa = PBXBuildFile; fileRef = 293BF69519EAB96FA6E8F777 /* signal_assessment.py */; };
 		AFC4E1BC00350A4426AD22E7 /* GCSStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44288B5CAF3F1AFD2A1B24A7 /* GCSStore.swift */; };
 		B733E9AEBC091B4723F3A709 /* LibraryWriterLease.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46D1BE9A940609E99FB3ECAA /* LibraryWriterLease.swift */; };
 		B7FB782F83E6735C68F14563 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 8313E156EF1AEF1010BAD510 /* Sparkle */; };
@@ -96,6 +103,7 @@
 		15D7E9BEE4F099F75643C742 /* KataLog.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = KataLog.icns; sourceTree = "<group>"; };
 		250C21DF8E49488C594D7485 /* FlightAnalysisView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightAnalysisView.swift; sourceTree = "<group>"; };
 		2879274F7AD19AC7F2F22D47 /* AlertExplanationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertExplanationView.swift; sourceTree = "<group>"; };
+		293BF69519EAB96FA6E8F777 /* signal_assessment.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = signal_assessment.py; sourceTree = "<group>"; };
 		3247BD603F080AB50D31FEA9 /* library_archives.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = library_archives.py; sourceTree = "<group>"; };
 		34AD89AA23F72FC6283E90E9 /* telemetry_extractor.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = telemetry_extractor.py; sourceTree = "<group>"; };
 		3776621835431D949972CFCA /* LibraryViewStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryViewStore.swift; sourceTree = "<group>"; };
@@ -103,16 +111,20 @@
 		3929246EF13BE77D33E614D2 /* TimelineSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineSelection.swift; sourceTree = "<group>"; };
 		3A22EB2F4DB6766C557625E5 /* ScopeEditor06.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScopeEditor06.swift; sourceTree = "<group>"; };
 		44288B5CAF3F1AFD2A1B24A7 /* GCSStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GCSStore.swift; sourceTree = "<group>"; };
+		45F6134D0159F030AB69770D /* SourcesImportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcesImportStore.swift; sourceTree = "<group>"; };
 		46D1BE9A940609E99FB3ECAA /* LibraryWriterLease.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryWriterLease.swift; sourceTree = "<group>"; };
 		4788E90D9FA8547F19241078 /* flight_data.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = flight_data.py; sourceTree = "<group>"; };
 		49A90C24B554927A24D87CB4 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		4EAE586501564398DAC80B69 /* library_sources.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = library_sources.py; sourceTree = "<group>"; };
 		4F4A48F7FF34BF817A29A662 /* FleetMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetMapView.swift; sourceTree = "<group>"; };
 		509DD61E32EADEC4B75D6E54 /* GCSQueueRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GCSQueueRepository.swift; sourceTree = "<group>"; };
 		5369C54E1184E23D26B6DAC2 /* library_reports.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = library_reports.py; sourceTree = "<group>"; };
 		53B41688D88BD65000BB0B41 /* LibraryStorageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStorageStore.swift; sourceTree = "<group>"; };
+		54FB48920B4EBE713B760440 /* CoreLibraryUX.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreLibraryUX.swift; sourceTree = "<group>"; };
 		67CA2340F1A10C83ADAB2077 /* KataLog.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KataLog.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6C74BC6513FA9237CC8CF2AA /* EventDictionaryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventDictionaryService.swift; sourceTree = "<group>"; };
 		6FD04F510482B3719AD7CD79 /* EngineOperations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineOperations.swift; sourceTree = "<group>"; };
+		7075CAFA2CC4FEBAA301301C /* SourcesImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcesImportView.swift; sourceTree = "<group>"; };
 		767956B06EAA778ABDE3E546 /* AnalysisService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisService.swift; sourceTree = "<group>"; };
 		7857E2633A19111A82DF1360 /* UpdateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateStore.swift; sourceTree = "<group>"; };
 		81608F1EC59D6A4B4309FB7A /* ApplicationLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationLifecycle.swift; sourceTree = "<group>"; };
@@ -137,7 +149,9 @@
 		B80F2C01F1D2B5D5CB596859 /* ProcessLifetime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessLifetime.swift; sourceTree = "<group>"; };
 		BA713F204AA86A1025CDA21F /* GCSCollectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GCSCollectionView.swift; sourceTree = "<group>"; };
 		BD3E883DBD573A4915EAB398 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		BE95C4D29AE5477B63160E3E /* WorkspaceDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceDesign.swift; sourceTree = "<group>"; };
 		C3231E8CAB4E8B448FE112E3 /* ReportRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportRenderer.swift; sourceTree = "<group>"; };
+		C5EB0EE7CFDB8B5DE1DDBE53 /* LibraryHelpViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryHelpViews.swift; sourceTree = "<group>"; };
 		C823AC8E27FE792570BB618A /* FlightSheet06.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightSheet06.swift; sourceTree = "<group>"; };
 		CA3768D8DAE5602B32723F6D /* gcs_collect.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = gcs_collect.py; sourceTree = "<group>"; };
 		D04D50D0B4BE0AF590382E3B /* AnalysisRevisionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisRevisionsView.swift; sourceTree = "<group>"; };
@@ -193,6 +207,7 @@
 				B4C54501883F0A480DCA8EBB /* GCSFleetObservationStore.swift */,
 				44288B5CAF3F1AFD2A1B24A7 /* GCSStore.swift */,
 				D2C120A7ADD1771A31CA7DFE /* ImportOptions06.swift */,
+				C5EB0EE7CFDB8B5DE1DDBE53 /* LibraryHelpViews.swift */,
 				53B41688D88BD65000BB0B41 /* LibraryStorageStore.swift */,
 				0ACBF6FE3DBC7EE0DCE73010 /* LibraryStore.swift */,
 				3776621835431D949972CFCA /* LibraryViewStore.swift */,
@@ -201,9 +216,12 @@
 				E2E283DB8D687AB07D82F948 /* RecordedMetadataView.swift */,
 				F4392CBB7FCBFA35145CCC17 /* ReportPreviewStore.swift */,
 				3A22EB2F4DB6766C557625E5 /* ScopeEditor06.swift */,
+				45F6134D0159F030AB69770D /* SourcesImportStore.swift */,
+				7075CAFA2CC4FEBAA301301C /* SourcesImportView.swift */,
 				9E37575D142A735F0733E355 /* UpdateSettingsView.swift */,
 				7857E2633A19111A82DF1360 /* UpdateStore.swift */,
 				A9A172B8D44CC0C1F51B4646 /* Workspace06View.swift */,
+				BE95C4D29AE5477B63160E3E /* WorkspaceDesign.swift */,
 			);
 			name = KataLog;
 			path = Sources/KataLog;
@@ -224,6 +242,7 @@
 				9DC881E5A3314E11ACF46DD1 /* AlertKnowledge.swift */,
 				0CF1B557B87CF0542B7B021C /* AnalysisRevisionService.swift */,
 				767956B06EAA778ABDE3E546 /* AnalysisService.swift */,
+				54FB48920B4EBE713B760440 /* CoreLibraryUX.swift */,
 				F78C0E50EA6B58794247C08E /* DiagnosticReport.swift */,
 				8B5BE6BDA87F822ED233D32F /* DroneAnnotations.swift */,
 				6FD04F510482B3719AD7CD79 /* EngineOperations.swift */,
@@ -264,8 +283,10 @@
 				3247BD603F080AB50D31FEA9 /* library_archives.py */,
 				5369C54E1184E23D26B6DAC2 /* library_reports.py */,
 				F3E6103FEB3E5830E8AFE8BB /* library_repository.py */,
+				4EAE586501564398DAC80B69 /* library_sources.py */,
 				B1EE23A87F76652BFFAF41B7 /* library_storage.py */,
 				B7B81D6550EFCFC9AB10269F /* px4_events.py */,
+				293BF69519EAB96FA6E8F777 /* signal_assessment.py */,
 				34AD89AA23F72FC6283E90E9 /* telemetry_extractor.py */,
 			);
 			name = Resources;
@@ -380,8 +401,10 @@
 				4223A85F86AB072D4D8A8869 /* library_archives.py in Resources */,
 				91657763976C25B68DA10FC2 /* library_reports.py in Resources */,
 				A8733E5DE8EE1895DF681CF7 /* library_repository.py in Resources */,
+				2C65A8F9F63417D88CC74C2F /* library_sources.py in Resources */,
 				4F67B7410FF75722B6A99E25 /* library_storage.py in Resources */,
 				01FAD357C747066DFEAB7B90 /* px4_events.py in Resources */,
+				AD99079BA035AFD388F3DD67 /* signal_assessment.py in Resources */,
 				CA5280482EA82FEC2B0460D6 /* telemetry_extractor.py in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -415,6 +438,7 @@
 				9D3BC30BE8EEE560D0CC2E2D /* AlertKnowledge.swift in Sources */,
 				C4F2D97AF71575A2FB74F124 /* AnalysisRevisionService.swift in Sources */,
 				3CD6BF0C8CCD4BF5408696DC /* AnalysisService.swift in Sources */,
+				7C6D3C71BF1E27AF0BE9FD75 /* CoreLibraryUX.swift in Sources */,
 				C1396172B3A5C1F2B5E7BD1C /* DiagnosticReport.swift in Sources */,
 				D3F7E1E2E6A7AD254836BFC0 /* DroneAnnotations.swift in Sources */,
 				4886455A754F4290297CBE4A /* EngineOperations.swift in Sources */,
@@ -465,6 +489,7 @@
 				028F506545A2CC000DC10FF8 /* GCSFleetObservationStore.swift in Sources */,
 				AFC4E1BC00350A4426AD22E7 /* GCSStore.swift in Sources */,
 				0B2871C810BAEDD6AD60B155 /* ImportOptions06.swift in Sources */,
+				3898E772B1A14F8BC289D101 /* LibraryHelpViews.swift in Sources */,
 				1E5EA08A906E690DDCE90454 /* LibraryStorageStore.swift in Sources */,
 				3470A2C48748F4BAD520EEAF /* LibraryStore.swift in Sources */,
 				091C66D92888242DA707372B /* LibraryViewStore.swift in Sources */,
@@ -472,9 +497,12 @@
 				AD703E61D8DD32144C991593 /* RecordedMetadataView.swift in Sources */,
 				0CCAF21EB6BE6CB9D2590097 /* ReportPreviewStore.swift in Sources */,
 				C95D637CF952A96D6CD0907C /* ScopeEditor06.swift in Sources */,
+				8AE37F23A9C80658CAD06EFC /* SourcesImportStore.swift in Sources */,
+				4765C3F67E0138495E6EBF07 /* SourcesImportView.swift in Sources */,
 				F65723071801E971BF3CE7B7 /* UpdateSettingsView.swift in Sources */,
 				CB71A87047390D93774FA67F /* UpdateStore.swift in Sources */,
 				85D4FA6D7AABAE03E8CA7736 /* Workspace06View.swift in Sources */,
+				5165BFA8B0EC7811C04BEF1F /* WorkspaceDesign.swift in Sources */,
 				63DA243174849ADBE2F827BB /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -644,7 +672,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 14;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = KataLog;
 				INFOPLIST_KEY_CFBundleIconFile = KataLog;
@@ -652,6 +680,7 @@
 				INFOPLIST_KEY_KatalogUpdateChannel = disabled;
 				INFOPLIST_KEY_KatalogUpdatesEnabled = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSDesktopFolderUsageDescription = "KataLog accède aux dossiers de logs choisis sur votre Bureau pour les analyser et y conserver les copies collectées.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "KataLog se connecte à votre GCS pour découvrir votre flotte et récupérer ses logs.";
 				INFOPLIST_KEY_SUAllowsAutomaticUpdates = NO;
 				INFOPLIST_KEY_SUAutomaticallyUpdate = NO;
@@ -665,7 +694,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.5.2;
+				MARKETING_VERSION = 0.6.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -681,7 +710,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 14;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = KataLog;
 				INFOPLIST_KEY_CFBundleIconFile = KataLog;
@@ -689,6 +718,7 @@
 				INFOPLIST_KEY_KatalogUpdateChannel = disabled;
 				INFOPLIST_KEY_KatalogUpdatesEnabled = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSDesktopFolderUsageDescription = "KataLog accède aux dossiers de logs choisis sur votre Bureau pour les analyser et y conserver les copies collectées.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "KataLog se connecte à votre GCS pour découvrir votre flotte et récupérer ses logs.";
 				INFOPLIST_KEY_SUAllowsAutomaticUpdates = NO;
 				INFOPLIST_KEY_SUAutomaticallyUpdate = NO;
@@ -702,7 +732,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.5.2;
+				MARKETING_VERSION = 0.6.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",

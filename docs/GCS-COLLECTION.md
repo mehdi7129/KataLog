@@ -7,14 +7,18 @@ simulateur sont synthétiques. Les captures réseau, UUID réels, chemins de log
 et preuves opérationnelles sont conservés hors du dépôt.
 
 KataLog demande uniquement l'inventaire et le téléchargement des logs des drones
-explicitement inscrits dans la flotte. L'app ne pilote pas les drones et ne
+inscrits dans la flotte, individuellement ou par l’action **Tout collecter**. L'app ne pilote pas les drones et ne
 modifie ni firmware, paramètres ni fichiers distants.
 
 ## Comportement de l'app
 
 - Connexion MQTT, reconnexion et expiration de télémétrie après 10 secondes.
-- UUID complet comme clé ; appareils inconnus exclus de la collecte.
-- Tout collecter : inventaire des appareils autorisés actuellement visibles.
+- UUID complet valide comme clé ; aucun numéro de stock inventé.
+- **Tout collecter** : enregistrement groupé des appareils éligibles visibles
+  sur la GCS connectée, puis inventaire et collecte. Le registre conserve aussi
+  les appareils sans logs. La simple découverte n’inscrit pas un appareil.
+- Avec **Tout collecter**, registre et réglages sont sauvegardés avant l’inventaire.
+  Un échec annule le départ et restaure le registre précédent ; aucun transfert ne démarre.
 - Appareil explicitement armé exclu ; champ absent = état inconnu.
 - Deux UUID en parallèle, un fichier à la fois par UUID.
 - Pause après les fichiers actifs ; arrêt immédiat sur le Mac et reprise manuelle.
@@ -54,7 +58,9 @@ répertoires différents portant le même basename doivent rester distincts sur 
 ## Validation et intégrité
 
 Écrire dans un fichier temporaire, comparer taille annoncée et reçue, vérifier
-signature ULog et SHA256, puis publier le fichier et son manifeste atomiquement.
+signature ULog et SHA256, puis finaliser le fichier et son manifeste. Ces deux
+opérations disposent d’une preuve intermédiaire durable pour reprendre après
+interruption ; elles ne forment pas une transaction atomique commune.
 Le SHA local identifie la copie ; sans empreinte distante, il ne prouve pas une
 égalité de contenu distant ni ne détecte tout remplacement de même chemin/taille.
 
@@ -63,6 +69,12 @@ implicitement. Les commandes JSONL exposent `retryable` et les événements
 `transfer_started`, `transfer_finished`, `transfer_end` et `error`.
 Un arrêt local porte `cancelled:true`, `retryable:false` et
 `cancellationRemoteStopped:false`.
+
+Si iCloud a retiré du Mac le fichier ou son manifeste, la collecte s’arrête avec
+une explication et sans nouvelle tentative automatique. Dans Finder, télécharger
+le dossier, attendre la fin, puis relancer la collecte. Les copies, manifestes et
+preuves intermédiaires sont conservés : une preuve temporairement dans le cloud
+n’est pas traitée comme un fichier à télécharger de nouveau depuis le drone.
 
 Les événements retained/anciens ne valident pas un nouveau transfert. La progression
 indéterminée ne devient pas un faux pourcentage. Quitter un autre client FTP ciblant

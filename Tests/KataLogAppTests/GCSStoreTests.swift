@@ -1,6 +1,8 @@
 import XCTest
 import Combine
 import Darwin
+import AppKit
+import SwiftUI
 import KataLogCore
 @testable import KataLog
 
@@ -174,7 +176,9 @@ ids=['0102030405060708090A0B0C','1112131415161718191A1B1C']
 if cmd=='discover':
     emit('connection',connected=True)
     while True:
-        emit('drones',drones=[dict(uuid=u,time_usec=time.time()*1e6) for u in (ids[1:] if mode=='offline' else ids)]);time.sleep(.15)
+        visible=ids[1:] if mode=='offline' else (ids+[ids[0]] if mode=='duplicate' else ids)
+        if mode=='invalid-uuid': visible=['not-a-drone-uuid']
+        emit('drones',drones=[dict(uuid=u,time_usec=time.time()*1e6,arming_state=2 if mode=='armed' and u==ids[0] else 1) for u in visible]);time.sleep(.15)
 u=arg('--uuid')
 paths=['/fs/microsd/log/2026-09-01/a.ulg','/fs/microsd/log/2026-09-01/b.ulg']
 if cmd=='inventory':
@@ -186,6 +190,7 @@ if cmd=='inventory':
         item=dict(path=p,size=64,isDownloaded=local.exists())
         if local.exists(): item.update(localPath=str(local),sha256=hashlib.sha256(local.read_bytes()).hexdigest())
         files.append(item)
+    if mode=='empty-inventory': files=[]
     if mode.startswith('paged'):
         emit('inventory_started',uuid=u,inventoryID='fixture',totalFiles=len(files))
         emit('inventory_page',uuid=u,inventoryID='fixture',pageIndex=1 if mode=='paged-invalid' else 0,files=files[:1])
@@ -228,6 +233,158 @@ else:
             store.connect()
         }
         return (store, root)
+    }
+
+    func testBulkCollectionRegistersAllNewDronesAndSurvivesRestartWithoutDuplicates() async throws {
+        let (store, root) = try fixture(mode: "normal", configure: false)
+        defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        store.autoImport = false; store.host = "localhost"; store.connect()
+        try await waitUntil { store.canCollectAll }
+        XCTAssertTrue(store.allowedUUIDs.isEmpty, "Discovery alone must not register a device.")
+        XCTAssertEqual(store.newCollectableDroneCount, 2)
+        store.collectAll()
+        XCTAssertEqual(store.allowedUUIDs, [first, second], "Admission must be committed synchronously before collecting.")
+        let settings = try JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: root.appendingPathComponent("gcs-settings.json")))
+        XCTAssertEqual(settings.allowedUUIDs, [first, second])
+        let registered = try JSONDecoder().decode(GCSFleetObservationState.self, from: Data(contentsOf: root.appendingPathComponent("fleet.json")))
+        XCTAssertEqual(Set(registered.drones.map(\.uuid)), [first, second])
+        XCTAssertTrue(registered.drones.allSatisfy { $0.authorized && $0.lastSeenSource == "gcs-telemetry" && $0.lastSeenAtUTC != nil })
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("annotations.json").path), "No stock number is invented.")
+        try await waitUntil { !store.isBusy && store.batchProgress.completedCount == 4 }
+        let requests = try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8)
+        XCTAssertEqual(requests.split(separator: "\n").count, 4)
+        store.collectAll()
+        try await waitUntil { !store.isBusy && store.cachedFileCount == 4 }
+        XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8), requests)
+        XCTAssertEqual(store.newCollectableDroneCount, 0)
+        let reloaded = GCSStore(storageDirectory: root)
+        XCTAssertEqual(reloaded.allowedUUIDs, [first, second])
+        XCTAssertEqual(reloaded.queue.count, 4)
+        let fleet = GCSFleetObservationStore(file: root.appendingPathComponent("fleet.json"), canMutate: { true })
+        XCTAssertEqual(fleet.state.drones.count, 2)
+    }
+
+    func testConnectedCollectionFitsMinimumContentWidthBeforeAndAfterEnrollment() async throws {
+        let (store, root) = try fixture(mode: "empty-inventory", configure: false)
+        defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        let library = LibraryStore(storageDirectory: root)
+        store.autoImport = false; store.host = "localhost"; store.connect()
+        try await waitUntil { store.canCollectAll }
+        _ = NSApplication.shared
+        for registered in [false, true] {
+            if registered {
+                store.collectAll()
+                try await waitUntil { !store.isBusy && store.completedInventoryUUIDs.count == 2 }
+            }
+            for scheme in [ColorScheme.dark, .light] {
+                let content = ScrollView {
+                    GCSCollectionView(store: store, library: library, dark: scheme == .dark).padding(20)
+                }
+                .environment(\.colorScheme, scheme).preferredColorScheme(scheme)
+                .background(Color(nsColor: .windowBackgroundColor))
+                let controller = NSHostingController(rootView: content)
+                let view = controller.view
+                view.frame = NSRect(x: 0, y: 0, width: 660, height: 1_800)
+                let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+                window.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
+                window.isReleasedWhenClosed = false; window.contentViewController = controller
+                defer { window.close() }
+                try await Task.sleep(for: .milliseconds(100))
+                view.layoutSubtreeIfNeeded()
+                let fitting = controller.sizeThatFits(in: CGSize(width: 660, height: 1_800))
+                XCTAssertLessThanOrEqual(fitting.width, 660.5, "The connected collection must fit the workspace's minimum content width.")
+                if let output = ProcessInfo.processInfo.environment["KATALOG_UI_ARTIFACTS"] {
+                    let directory = URL(fileURLWithPath: output)
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+                    view.cacheDisplay(in: view.bounds, to: bitmap)
+                    try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                        .write(to: directory.appendingPathComponent("gcs-connected-\(registered ? "registered" : "new")-\(scheme).png"))
+                }
+            }
+        }
+    }
+
+    func testBulkCollectionCombinesRegisteredAndNewDronesEvenWithNoLogs() async throws {
+        let (store, root) = try fixture(mode: "empty-inventory", configure: false)
+        defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        store.autoImport = false; store.host = "localhost"; store.setAllowed(uuid: first, allowed: true); store.connect()
+        try await waitUntil { store.canCollectAll }
+        XCTAssertEqual(store.newCollectableDroneCount, 1)
+        store.collectAll()
+        try await waitUntil { !store.isBusy && store.completedInventoryUUIDs.count == 2 }
+        XCTAssertEqual(store.allowedUUIDs, [first, second])
+        XCTAssertTrue(store.queue.isEmpty)
+        XCTAssertFalse(store.hasIncompleteInventory)
+        XCTAssertEqual(store.batchStatusMessage, "Aucun log disponible · inventaire terminé sur 2 drones.")
+        let fleet = GCSFleetObservationStore(file: root.appendingPathComponent("fleet.json"), canMutate: { true })
+        XCTAssertEqual(Set(fleet.state.drones.filter(\.authorized).map(\.uuid)), [first, second])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("trace.jsonl").path))
+    }
+
+    func testBulkAdmissionExcludesArmedAndUnseenDevicesAndDeduplicatesTelemetry() async throws {
+        for mode in ["armed", "offline", "duplicate"] {
+            let (store, root) = try fixture(mode: mode, configure: false)
+            defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+            store.autoImport = false; store.host = "localhost"; store.connect()
+            try await waitUntil { store.canCollectAll }
+            let expected: Set<String> = mode == "duplicate" ? [first, second] : [second]
+            store.collectAll()
+            XCTAssertEqual(store.allowedUUIDs, expected)
+            try await waitUntil { !store.isBusy && store.batchProgress.completedCount == expected.count * 2 }
+            XCTAssertEqual(Set(store.queue.map(\.droneUUID)), expected)
+            XCTAssertEqual(store.queue.count, expected.count * 2)
+            XCTAssertEqual(store.expectedInventoryUUIDs, expected)
+        }
+    }
+
+    func testBulkAdmissionRefusesInvalidDiscoveryUUIDs() async throws {
+        let (store, root) = try fixture(mode: "invalid-uuid", configure: false)
+        defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        store.autoImport = false; store.host = "localhost"; store.connect()
+        try await waitUntil { store.errorMessage != nil }
+        store.collectAll()
+        XCTAssertFalse(store.canCollectAll)
+        XCTAssertTrue(store.allowedUUIDs.isEmpty)
+        XCTAssertTrue(store.queue.isEmpty)
+    }
+
+    func testBulkAdmissionDoesNotDownloadWhenSettingsCannotBeSaved() async throws {
+        let (store, root) = try fixture(mode: "normal", configure: false)
+        defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        store.autoImport = false; store.host = "localhost"; store.connect()
+        try await waitUntil { store.canCollectAll }
+        let settings = root.appendingPathComponent("gcs-settings.json")
+        let original = try Data(contentsOf: settings)
+        try FileManager.default.moveItem(at: settings, to: root.appendingPathComponent("saved-settings.json"))
+        try FileManager.default.createDirectory(at: settings, withIntermediateDirectories: false)
+        store.collectAll()
+        XCTAssertTrue(store.errorMessage?.contains("Collecte non démarrée") == true)
+        XCTAssertTrue(store.allowedUUIDs.isEmpty)
+        XCTAssertTrue(store.queue.isEmpty)
+        XCTAssertFalse(store.isBusy)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("fleet.json").path), "Failed settings must roll back the new fleet registration.")
+        XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("saved-settings.json")), original)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("trace.jsonl").path))
+    }
+
+    func testBulkAdmissionPreservesUnreadableRegistryAndRefusesToStart() async throws {
+        let (store, root) = try fixture(mode: "normal", configure: false)
+        defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("fleet.json")
+        let future = Data(#"{"schemaVersion":2,"revision":0,"drones":[]}"#.utf8)
+        try future.write(to: file)
+        store.autoImport = false; store.host = "localhost"; store.connect()
+        try await waitUntil { store.canCollectAll }
+        store.collectAll()
+        XCTAssertTrue(store.errorMessage?.contains("Collecte non démarrée") == true)
+        XCTAssertTrue(store.allowedUUIDs.isEmpty)
+        XCTAssertTrue(store.queue.isEmpty)
+        XCTAssertFalse(store.isBusy)
+        XCTAssertEqual(try Data(contentsOf: file), future)
+        let saved = try JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: root.appendingPathComponent("gcs-settings.json")))
+        XCTAssertTrue(saved.allowedUUIDs.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("trace.jsonl").path))
     }
 
     func testCollectAllRunsTwoDronesRetriesAndSkipsVerifiedCache() async throws {

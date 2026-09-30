@@ -2,7 +2,8 @@ import AppKit
 import SwiftUI
 import KataLogCore
 
-/// Read-only log collection. Fleet membership is an explicit choice by the operator.
+/// Read-only drone access. Bulk collection also registers the connected devices
+/// explicitly selected by the operator's “Tout collecter” action.
 struct GCSCollectionView: View {
     @ObservedObject var store: GCSStore
     @ObservedObject var library: LibraryStore
@@ -41,9 +42,15 @@ struct GCSCollectionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             header
-            HStack(alignment: .top, spacing: 18) {
-                networkCard.frame(maxWidth: .infinity)
-                optionsCard.frame(width: 290)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 18) {
+                    networkCard.frame(minWidth: 340, maxWidth: .infinity)
+                    optionsCard.frame(width: 270)
+                }
+                VStack(alignment: .leading, spacing: 18) {
+                    networkCard
+                    optionsCard
+                }
             }
             messages
             batchProgressCard
@@ -59,7 +66,7 @@ struct GCSCollectionView: View {
                 Image(systemName: "info.circle").font(.system(size: 16))
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Récupération des logs uniquement.").font(.system(size: 12, weight: .medium))
-                    Text("Les originaux restent sur les drones. Seuls les appareils ajoutés à votre flotte peuvent être collectés.")
+                    Text("Les originaux restent sur les drones. « Tout collecter » ajoute automatiquement les nouveaux drones disponibles sur cette GCS à votre bibliothèque. Leur numéro de stock peut être renseigné plus tard.")
                         .font(.system(size: 11)).foregroundStyle(palette.secondary)
                 }
             }
@@ -70,29 +77,47 @@ struct GCSCollectionView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Collecte des logs").font(.system(size: 32, weight: .semibold)).tracking(-1.2)
-                    .foregroundStyle(palette.primary)
-                Text("Les drones de votre flotte, depuis votre GCS.")
-                    .font(.system(size: 12)).foregroundStyle(palette.secondary)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 16) {
+                heading
+                Spacer(minLength: 10)
+                collectionActions
             }
-            Spacer(minLength: 10)
-            Label("Lecture seule", systemImage: "lock")
+            VStack(alignment: .leading, spacing: 16) {
+                heading
+                collectionActions
+            }
+        }
+    }
+
+    private var heading: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Collecte des logs").font(.system(size: 28, weight: .semibold)).tracking(-1)
+                .foregroundStyle(palette.primary)
+            Text("Les drones connectés à votre GCS, en une collecte.")
+                .font(.system(size: 12)).foregroundStyle(palette.secondary)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var collectionActions: some View {
+        HStack(spacing: 10) {
+            Label("Logs uniquement", systemImage: "lock")
                 .font(.system(size: 11, weight: .medium)).foregroundStyle(palette.secondary)
-                .padding(.horizontal, 12).padding(.vertical, 10)
+                .padding(.horizontal, 10).padding(.vertical, 10)
                 .background(palette.raised, in: RoundedRectangle(cornerRadius: 9))
             action("Tout collecter", symbol: "arrow.down.to.line", primary: true) {
                 store.collectAll()
             }
             .disabled(!store.canCollectAll)
-            .help("Recenser et collecter les nouveaux logs de tous les drones autorisés actuellement connectés.")
+            .help("Ajouter à la bibliothèque les nouveaux drones de cette GCS, puis récupérer les logs manquants de tous les drones disponibles. Les drones signalés armés sont exclus. Aucun numéro de stock n’est nécessaire.")
             .accessibilityIdentifier("gcs.collectAll")
             action("Arrêter", symbol: "stop.fill") { store.stopCollection() }
                 .disabled(!store.canStopCollection)
                 .help("Arrêter immédiatement la collecte sur ce Mac et annuler les transferts en attente.")
                 .accessibilityIdentifier("gcs.stop")
         }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var batchProgressCard: some View {
@@ -297,7 +322,7 @@ struct GCSCollectionView: View {
             if fleet.isEmpty {
                 emptyState(symbol: "airplane", title: store.allowedUUIDs.isEmpty ? "Votre flotte commence ici" : "Aucun drone de la flotte visible",
                            detail: store.allowedUUIDs.isEmpty
-                            ? (store.isConnected ? "Ajoutez ci-dessous les drones que vous souhaitez retrouver et collecter." : "Connectez la GCS pour découvrir les drones, puis ajoutez-les à votre flotte.")
+                            ? (store.isConnected ? "Cliquez sur « Tout collecter » : les nouveaux drones disponibles seront ajoutés à votre bibliothèque et leurs logs récupérés." : "Connectez votre GCS, puis cliquez sur « Tout collecter » pour enregistrer les drones et récupérer leurs logs.")
                             : "Vos \(store.allowedUUIDs.count) appareils sont enregistrés. Ils apparaîtront dès leur connexion à la GCS.")
             } else if visibleFleet.isEmpty {
                 emptyState(symbol: "magnifyingglass", title: "Aucun drone correspondant", detail: "Modifiez votre recherche pour retrouver un drone.")
@@ -541,6 +566,14 @@ struct GCSCollectionView: View {
         card {
             DisclosureGroup(isExpanded: $showUnknown) {
                 VStack(alignment: .leading, spacing: 0) {
+                    if !unknown.isEmpty {
+                        Text(store.newCollectableDroneCount > 0
+                             ? "Inclus dans « Tout collecter » · ajout automatique à la bibliothèque, sans numéro de stock requis."
+                             : "Les drones signalés armés seront disponibles après désarmement.")
+                            .font(.system(size: 11)).foregroundStyle(palette.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 12)
+                    }
                     if unknown.isEmpty {
                         Text(store.isConnected ? "Aucun appareil à ajouter pour le moment." : "Les appareils détectés apparaîtront ici après connexion.")
                             .font(.system(size: 12)).foregroundStyle(palette.secondary).padding(.top, 14)
@@ -551,7 +584,7 @@ struct GCSCollectionView: View {
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(library.annotations.displayName(forGCSUUID: drone.uuid)).font(.system(size: 12, weight: .medium, design: .monospaced))
                                     .help(drone.uuid)
-                                statusDot("À identifier · aucun téléchargement", color: palette.amber)
+                                statusDot(drone.armed == true ? "Armé · collecte bloquée" : "Ajout automatique à la collecte", color: drone.armed == true ? palette.amber : palette.secondary)
                             }
                             Spacer()
                             Button("Identifier…") { editingIdentity = identityTarget(drone.uuid) }

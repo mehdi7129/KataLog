@@ -42,6 +42,9 @@ MIN_FLIGHT_COVERAGE_FRACTION = 0.99
 ANALYSIS_REVISION_VERSION = 1
 MAX_ANALYSIS_BYTES = 64 * 1024 * 1024
 MAX_REVISION_STORAGE_BYTES = 512 * 1024 * 1024
+CLOUD_SOURCE_DETAIL = ("Fichier présent dans le cloud, mais non téléchargé sur ce Mac. "
+                       "Dans le Finder, utilisez « Télécharger » sur le fichier ou son dossier. "
+                       "Le résumé et les analyses en cache restent disponibles.")
 
 
 class RevisionBudgetError(ValueError):
@@ -50,6 +53,20 @@ class RevisionBudgetError(ValueError):
 
 class ArchiveImportError(ValueError):
     """Refuse this import before any new analysis is published."""
+
+
+class CloudSourceUnavailableError(OSError):
+    """Reading a File Provider placeholder could block while macOS hydrates it."""
+
+
+def require_local_source(path, metadata=None):
+    metadata = metadata if metadata is not None else Path(path).stat()
+    # Some bundled Python versions omit the Darwin constant even though stat
+    # still exposes st_flags. Do not interpret this bit on other platforms.
+    dataless = getattr(stat_module, 'UF_DATALESS', 0x40000000 if sys.platform == 'darwin' else 0)
+    if getattr(metadata, 'st_flags', 0) & dataless:
+        raise CloudSourceUnavailableError(CLOUD_SOURCE_DETAIL)
+    return metadata
 
 
 def utc_now():
@@ -253,6 +270,7 @@ def analysis_revisions(log_id, database, offset=0, limit=32, read_only=False):
 
 
 def digest_file(path):
+    require_local_source(path)
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -275,7 +293,7 @@ def source_availability(path, log_id, known_file=None, checked_at=None):
     path = Path(path)
     result = {"path": str(path), "state": "unknown", "checkedAt": checked_at or utc_now(), "detail": ""}
     try:
-        before = path.stat()
+        before = require_local_source(path)
         if re.fullmatch(r"[a-f0-9]{64}", log_id):
             if not stat_module.S_ISREG(before.st_mode):
                 result.update(state="modified", detail="Le chemin ne désigne plus un fichier ULog original.")
@@ -311,6 +329,8 @@ def source_availability(path, log_id, known_file=None, checked_at=None):
                 result.update(state="offline", detail="Volume non monté ; reconnectez-le pour retrouver la source.")
                 return result
         result.update(state="missing", detail="Fichier actuellement absent de ce chemin ; la provenance reste conservée.")
+    except CloudSourceUnavailableError:
+        result.update(state="inaccessible", detail=CLOUD_SOURCE_DETAIL)
     except PermissionError:
         result.update(state="inaccessible", detail="Accès au fichier refusé ; vérifiez les autorisations du dossier ou du volume.")
     except OSError:
@@ -345,6 +365,7 @@ def card_context(path, root):
         candidate = ancestor / "data" / "name.txt"
         try:
             if candidate.is_file():
+                require_local_source(candidate)
                 with candidate.open("r", encoding="utf-8", errors="replace") as stream:
                     name = clean_name(stream.read(1024))
                 return str(ancestor), name
@@ -699,6 +720,7 @@ def gps_date(datasets, start, coverage):
 
 def analyze_file(path, root, digest=None, detailed=False, event_dictionary_directory=None, origin_context=None):
     path = Path(path).resolve()
+    require_local_source(path)
     digest = digest or digest_file(path)
     # The physical input may be a managed copy. Identity fallback, filename,
     # card name and calendar provenance still belong to the original source.
@@ -1120,6 +1142,9 @@ def detail(log_id, database, output=None, read_only=False, revision=None):
                     candidate = analyze_file(path, path.parent, log_id, detailed=True, event_dictionary_directory=Path(database).resolve().parent / 'event-dictionaries')
                     if stat_signature(path.stat()) != before:
                         continue
+                except CloudSourceUnavailableError as error:
+                    errors.append(str(error))
+                    continue
                 except OSError:
                     continue
                 if candidate['status'] == 'error':

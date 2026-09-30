@@ -19,6 +19,7 @@ import re
 import select
 import signal
 import socket
+import stat
 import struct
 import sys
 import time
@@ -37,6 +38,9 @@ MAX_FILES = 100_000
 MAX_DIRECTORIES = 4096
 MAX_DEPTH = 8
 MAX_INVENTORY_FRAME_BYTES = 256 * 1024
+# Darwin's UF_DATALESS is absent from some bundled Python stat modules. Other
+# platforms have no st_flags and therefore never take the cloud-only branch.
+UF_DATALESS = getattr(stat, "UF_DATALESS", 0x40000000)
 MQTT_TOPICS = (
     "send_mqtt_drone_status_list", "send_mqtt_ftp_list", "ftp_list_dir",
     "download_path", "send_mqtt_ftp_end_session", "send_mqtt_ftp_transfer_status",
@@ -54,6 +58,55 @@ class CollectionError(Exception):
 
 class Cancelled(CollectionError):
     pass
+
+
+class CloudFileUnavailable(CollectionError):
+    """An existing cloud placeholder is neither a cache miss nor a retryable transfer."""
+
+
+def require_local_data(path, metadata=None, *, missing_ok=False):
+    try:
+        metadata = path.stat(follow_symlinks=False) if metadata is None else metadata
+    except FileNotFoundError:
+        if missing_ok:
+            return None
+        raise
+    if getattr(metadata, "st_flags", 0) & UF_DATALESS:
+        raise CloudFileUnavailable(
+            f"Ce fichier est conservé dans le cloud et n’est pas téléchargé sur ce Mac : {path}. "
+            "Téléchargez le dossier de collecte dans le Finder, attendez la fin du téléchargement, "
+            "puis relancez la collecte. Les fichiers existants sont conservés.")
+    return metadata
+
+
+@contextlib.contextmanager
+def local_reader(path, *, text=False):
+    """Check metadata immediately before opening; reject a replaced path too.
+
+    Opening a dataless file can block inside File Provider before Python reads
+    any bytes, so checking only the opened descriptor would be too late.
+    """
+    before = require_local_data(path)
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    try:
+        current = require_local_data(path, os.fstat(descriptor))
+        if (before.st_dev, before.st_ino) != (current.st_dev, current.st_ino):
+            raise CollectionError("Le fichier local a changé pendant sa vérification ; relancez la collecte. Fichiers conservés.")
+        stream = os.fdopen(descriptor, "r" if text else "rb", **({"encoding": "utf-8"} if text else {}))
+        descriptor = None
+        with stream:
+            yield stream
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def read_local_manifest(path):
+    with local_reader(path, text=True) as stream:
+        data = stream.read(16385)
+    if len(data) > 16384:
+        raise CollectionError("Le manifeste de collecte dépasse la taille autorisée ; fichiers conservés.")
+    return json.loads(data)
 
 
 def retryable_error(error):
@@ -480,7 +533,7 @@ def local_target(destination, identity, remote, *, create=True):
 
 def hash_file(path):
     digest = hashlib.sha256()
-    with path.open("rb") as stream:
+    with local_reader(path) as stream:
         if stream.read(7) != MAGIC:
             raise CollectionError("Signature ULog invalide.")
         stream.seek(0)
@@ -491,12 +544,16 @@ def hash_file(path):
 
 def cache_record(target, source):
     manifest = target.with_name(target.name + ".katalog.json")
+    # Do not turn an unavailable original/proof into a cache miss: that would
+    # schedule an unnecessary new copy or hide why the local verification stalls.
+    require_local_data(target, missing_ok=True)
+    require_local_data(manifest, missing_ok=True)
     if not target.exists() or not manifest.is_file() or manifest.is_symlink():
         return None
     try:
         if target.stat().st_size != source["size"] or manifest.stat().st_size > 16384:
             return None
-        record = json.loads(manifest.read_text())
+        record = read_local_manifest(manifest)
         # UUID + remote path + listed size identify the collected log. A GCS can
         # move between networks/ports; its original address remains provenance.
         if not record_matches_source(record, source):
@@ -504,6 +561,8 @@ def cache_record(target, source):
         if hash_file(target) != record["sha256"]:
             return None
         return record
+    except CloudFileUnavailable:
+        raise
     except (OSError, ValueError, CollectionError):
         return None
 
@@ -536,12 +595,15 @@ def sync_directory(path):
 def recover_pending_commit(target, source):
     """Complete only our own interrupted commit; never adopt an arbitrary ULog."""
     pending = target.with_name(target.name + ".katalog.pending.json")
+    manifest = target.with_name(target.name + ".katalog.json")
+    for path in (pending, target, manifest):
+        require_local_data(path, missing_ok=True)
     if not pending.exists() and not pending.is_symlink():
         return
     try:
         if pending.is_symlink() or not pending.is_file() or pending.stat().st_size > 16384:
             raise CollectionError("Marqueur de finalisation invalide ; fichiers conservés.")
-        record = json.loads(pending.read_text())
+        record = read_local_manifest(pending)
         if not record_matches_source(record, source):
             raise CollectionError("Une finalisation précédente ne correspond pas à ce log ; fichiers conservés.")
         transaction = record.get("transaction")
@@ -550,8 +612,10 @@ def recover_pending_commit(target, source):
                 or type(transaction.get("device")) is not int or type(transaction.get("inode")) is not int):
             raise CollectionError("Identité de finalisation invalide ; fichiers conservés.")
         part = target.with_name(transaction["part"])
+        require_local_data(part, missing_ok=True)
         if not target.exists() and not target.is_symlink() and not part.exists() and not part.is_symlink():
             # No collected data remains to finish; the next attempt may start fresh.
+            require_local_data(pending)
             pending.unlink()
             return
         candidate = target if target.exists() or target.is_symlink() else part
@@ -559,17 +623,21 @@ def recover_pending_commit(target, source):
                 or hash_file(candidate) != record["sha256"]):
             raise CollectionError("Le fichier ne correspond pas à la finalisation interrompue ; il est conservé.")
         if candidate == part:
+            require_local_data(part)
+            require_local_data(pending)
             os.link(part, target)  # Exclusive: a manually added file is never overwritten.
             sync_directory(target.parent)
-        manifest = target.with_name(target.name + ".katalog.json")
         if manifest.exists() or manifest.is_symlink():
             existing = cache_record(target, source)
             if existing is None or existing["sha256"] != record["sha256"]:
                 raise CollectionError("Un autre manifeste occupe la destination ; il est conservé.")
+            require_local_data(pending)
             pending.unlink()
         else:
+            require_local_data(pending)
             os.replace(pending, manifest)
         if same_file_identity(part, transaction):
+            require_local_data(part)
             part.unlink()
         sync_directory(target.parent)
     except (ValueError, TypeError) as error:
@@ -613,7 +681,7 @@ def copy_http(host, http_port, staging, part, expected, report):
             os.fsync(output.fileno())
     if total != expected:
         raise CollectionError("Téléchargement incomplet : %s / %s octets." % (total, expected), retryable=True)
-    with part.open("rb") as stream:
+    with local_reader(part) as stream:
         if stream.read(7) != MAGIC:
             raise CollectionError("Signature ULog invalide.")
     return digest.hexdigest()
@@ -639,6 +707,7 @@ def download(host, port, http_port, identity, remote, expected, destination):
     manifest = target.with_name(target.name + ".katalog.json")
     pending = target.with_name(target.name + ".katalog.pending.json")
     pending_created = False
+    preserve_cloud_files = False
     transaction = {}
     if manifest.exists() or manifest.is_symlink():
         raise CollectionError("Un manifeste sans fichier associé existe déjà ; il est conservé.")
@@ -692,8 +761,8 @@ def download(host, port, http_port, identity, remote, expected, destination):
         verify_remote_size(host, port, identity, remote, expected)
         record = {"source": source, "sha256": digest, "staging": staging,
                   "collectedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-        stat = part.stat()
-        transaction = {"part": part.name, "device": stat.st_dev, "inode": stat.st_ino}
+        part_stat = require_local_data(part)
+        transaction = {"part": part.name, "device": part_stat.st_dev, "inode": part_stat.st_ino}
         record["transaction"] = transaction
         # Persist proof of ownership before publishing the complete ULog. If the
         # manifest rename fails or the process dies, the next attempt can recover
@@ -705,17 +774,27 @@ def download(host, port, http_port, identity, remote, expected, destination):
             os.fsync(stream.fileno())
         sync_directory(target.parent)
         # Hard link creation refuses to overwrite a concurrently created target.
+        require_local_data(part)
+        require_local_data(pending)
+        require_local_data(target, missing_ok=True)
+        require_local_data(manifest, missing_ok=True)
         os.link(part, target)
         sync_directory(target.parent)
+        require_local_data(part)
         part.unlink()
+        require_local_data(pending)
         os.replace(pending, manifest)
         sync_directory(target.parent)
         emit("downloaded", uuid=identity, path=remote, localPath=str(target), bytes=expected,
              sha256=digest, cached=False)
+    except CloudFileUnavailable:
+        preserve_cloud_files = True
+        raise
     finally:
-        part.unlink(missing_ok=True)
-        if pending_created and not same_file_identity(target, transaction):
-            pending.unlink(missing_ok=True)
+        if not preserve_cloud_files:
+            part.unlink(missing_ok=True)
+            if pending_created and not same_file_identity(target, transaction):
+                pending.unlink(missing_ok=True)
 
 
 def discover(host, port):

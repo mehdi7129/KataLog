@@ -1,8 +1,8 @@
 # Distribution macOS hors App Store
 
 Le dépôt reste privé jusqu’à une décision explicite de publication. La version
-locale 0.5.2 (7) prépare une installation autonome ; elle ne livre pas les autres
-lots 0.6.0 et ne contient pas encore Sparkle.
+0.6.0 (14) fournit une installation autonome ; Sparkle est embarqué avec un flux
+désactivé. La mise à jour s’effectue par DMG. Voir [la recette](RELEASE-0.6.0.md).
 
 ## Parcours utilisateur
 

@@ -45,6 +45,8 @@ struct EventBrowserView: View {
     @State private var selected: LibraryEventOccurrence?
     @State private var dictionaryMessage: String?
     @State private var dictionaryBusy = false
+    @Environment(\.colorScheme) private var scheme
+    private var palette: Palette { Palette(dark: scheme == .dark) }
     private var filterKey: String { [levelSource, level, search, logID ?? "", library.views.state.activeScope.description, String(library.views.state.revision), String(library.historyPage?.revision ?? 0)].joined(separator: "|") }
 
     var body: some View {
@@ -60,15 +62,9 @@ struct EventBrowserView: View {
                         .disabled(dictionaryBusy || library.isReadOnly || library.hasActiveWork || library.hasExternalActivity())
                         .help("Fichier all_events.json.xz exact du firmware ; aucun dictionnaire générique n’est substitué.")
                 }
-                HStack {
-                    Picker("Niveau", selection: $levelSource) {
-                        Text("Interne").tag("internal"); Text("Externe").tag("external")
-                    }.pickerStyle(.segmented).frame(width: 200)
-                    Picker("Sévérité", selection: $level) {
-                        Text("Tous les niveaux").tag("")
-                        ForEach(["EMERGENCY", "ALERT", "CRITICAL", "ERROR", "WARNING", "NOTICE", "INFO", "DEBUG"] + (8...15).map { "RAW_\($0)" } + ["UNKNOWN"], id: \.self) { Text($0).tag($0) }
-                    }.frame(width: 220)
-                    TextField("Rechercher un ID ou du texte", text: $search).textFieldStyle(.roundedBorder)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) { levelFilters; searchField.frame(minWidth: 200) }
+                    VStack(alignment: .leading, spacing: 12) { levelFilters; searchField }
                 }
                 if let coverage = store.page?.coverage {
                     VStack(alignment: .leading, spacing: 5) {
@@ -78,7 +74,7 @@ struct EventBrowserView: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         if coverage.previousParserLogs > 0 { Text("\(coverage.previousParserLogs) fiches proviennent d’un ancien parseur ; les données restent accessibles.").font(.caption).foregroundStyle(.secondary) }
-                    }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+                    }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(palette.raised, in: RoundedRectangle(cornerRadius: 12))
                 }
                 if let message = dictionaryMessage { Text(message).font(.callout).textSelection(.enabled) }
                 if let error = store.error {
@@ -93,7 +89,11 @@ struct EventBrowserView: View {
                         Button("Suivante") { if let next = page.nextCursor { cursors.append(next); reload(cursor: next) } }.disabled(page.nextCursor == nil || store.isLoading)
                     }
                     if page.occurrences.isEmpty, !store.isLoading {
-                        ContentUnavailableView("Aucun événement dans les données disponibles", systemImage: "list.bullet", description: Text("Les fiches non analysées ou sans source ne permettent pas de conclure à une absence d’événements.")).frame(maxWidth: .infinity)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("Aucun événement dans les données disponibles", systemImage: "list.bullet").font(.system(size: 13, weight: .medium))
+                            Text("Les fiches non analysées ou sans source ne permettent pas de conclure à une absence d’événements.")
+                                .font(.caption).foregroundStyle(palette.secondary)
+                        }.padding(.vertical, 14).frame(maxWidth: .infinity, alignment: .leading)
                     }
                     LazyVStack(alignment: .leading, spacing: 8) {
                         ForEach(page.occurrences) { occurrence in
@@ -108,18 +108,34 @@ struct EventBrowserView: View {
                                     }
                                     Text(occurrence.event.message ?? "Événement brut · ID \(occurrence.event.eventID.description)").font(.callout).lineLimit(3)
                                     Text("ID \(occurrence.event.eventID.description) · \(EventTranslationLabel.describe(occurrence.event.translationStatus)) · \(occurrence.event.topic ?? "event") [\(occurrence.event.instance ?? 0)]").font(.caption).foregroundStyle(.secondary)
-                                }.padding(13).frame(maxWidth: .infinity, alignment: .leading).background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+                                }.padding(13).frame(maxWidth: .infinity, alignment: .leading).background(palette.raised, in: RoundedRectangle(cornerRadius: 10))
                             }.buttonStyle(.plain).accessibilityLabel("Événement \(occurrence.event.eventID.description), \(eventLevel(occurrence.event)), \(occurrence.droneName)")
                         }
                     }
                 }
-            }.padding(24)
+            }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
+                .background(palette.card, in: RoundedRectangle(cornerRadius: 17))
+                .overlay(RoundedRectangle(cornerRadius: 17).stroke(palette.border, lineWidth: 1))
         }
         .task(id: filterKey) { cursors = [nil]; selected = nil; reload() }
         .onDisappear { store.cancel() }
         .sheet(item: $selected) { occurrence in
             EventDetailSheet(occurrence: occurrence)
         }
+    }
+    private var levelFilters: some View {
+        HStack(spacing: 12) {
+            Picker("Niveau", selection: $levelSource) {
+                Text("Interne").tag("internal"); Text("Externe").tag("external")
+            }.pickerStyle(.segmented).frame(width: 200)
+            Picker("Sévérité", selection: $level) {
+                Text("Tous les niveaux").tag("")
+                ForEach(["EMERGENCY", "ALERT", "CRITICAL", "ERROR", "WARNING", "NOTICE", "INFO", "DEBUG"] + (8...15).map { "RAW_\($0)" } + ["UNKNOWN"], id: \.self) { Text($0).tag($0) }
+            }.frame(width: 220)
+        }
+    }
+    private var searchField: some View {
+        TextField("Rechercher un ID ou du texte", text: $search).textFieldStyle(.roundedBorder)
     }
     private func eventLevel(_ event: PX4Event) -> String {
         (levelSource == "external" ? event.externalLevelName : event.internalLevelName) ?? event.level

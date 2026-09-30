@@ -22,11 +22,13 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var mapPage: LibraryLogPage?
     @Published private(set) var occurrencePage: LibraryMessagePage?
     @Published private(set) var isQuerying = false
+    @Published private(set) var isCancellingQuery = false
+    @Published private(set) var queryWasCancelled = false
     @Published private(set) var queryError: String?
     @Published private(set) var catalogue: LibraryCataloguePage?
     @Published private(set) var catalogueError: String?
     private var queryTask: Task<Void, Never>?
-    private var queryToken = UUID()
+    @Published private(set) var queryToken = UUID()
     private var viewSubscription: AnyCancellable?
     var hasExternalActivity: () -> Bool = { false }
     var willMaintainLibrary: () throws -> Void = {}
@@ -259,10 +261,22 @@ final class LibraryStore: ObservableObject {
     }
 
     func cancelImport() { analysisRefreshTask?.cancel(); importTask?.cancel() }
+    /// Keep mutations disabled until the owned helper has actually stopped.
+    /// Invalidating the token also prevents a late response from publishing.
+    func cancelQuery() async {
+        guard isQuerying, !isCancellingQuery, let task = queryTask else { return }
+        isCancellingQuery = true
+        let token = UUID(); queryToken = token
+        task.cancel()
+        await task.value
+        guard queryToken == token else { return }
+        queryTask = nil; isQuerying = false; isCancellingQuery = false
+        queryWasCancelled = true; queryError = nil
+    }
     func prepareForTermination() {
         cancelImport(); exportTask?.cancel(); queryTask?.cancel(); flightTask?.cancel(); reloadTask?.cancel()
         progressTask?.cancel(); queryToken = UUID(); flightToken = UUID(); loadToken = UUID()
-        isQuerying = false; isLoading = false; isLoadingFlight = false
+        isQuerying = false; isCancellingQuery = false; isLoading = false; isLoadingFlight = false
     }
     var hasActiveWork: Bool { isImporting || isExporting || isMaintainingLibrary || isQuerying || isLoading || isLoadingFlight }
 
@@ -456,7 +470,7 @@ final class LibraryStore: ObservableObject {
     /// Each response belongs to the captured annotations, scope and request
     /// token. A superseded query can never replace newer visible results.
     func loadHistory(cursor: String? = nil) {
-        guard !isImporting, !isMaintainingLibrary else { return }
+        guard !isImporting, !isMaintainingLibrary, !isCancellingQuery else { return }
         queryTask?.cancel()
         let token = UUID(); queryToken = token
         guard let engine = engineURL else { return }
@@ -465,7 +479,7 @@ final class LibraryStore: ObservableObject {
                                           maskedMessageKeys: views.state.maskedMessageKeys)
         request.cursor = cursor
         request.sortOrder = views.state.historySort ?? "recent"
-        isQuerying = true; queryError = nil
+        isQuerying = true; queryWasCancelled = false; queryError = nil
         let database = databaseURL, readOnly = isReadOnly
         queryTask = Task { [weak self] in
             do {
@@ -492,14 +506,14 @@ final class LibraryStore: ObservableObject {
     }
 
     func loadOccurrences(groupID: String, cursor: String? = nil) {
-        guard !isImporting, !isMaintainingLibrary else { return }
+        guard !isImporting, !isMaintainingLibrary, !isCancellingQuery else { return }
         queryTask?.cancel(); let token = UUID(); queryToken = token
         guard let engine = engineURL else { return }
         var request = LibraryQueryRequest(kind: "messages", scope: views.state.activeScope, annotations: annotations.state,
                                           maskedMessageKeys: views.state.maskedMessageKeys)
         request.groupID = groupID; request.cursor = cursor
         request.sortOrder = views.state.historySort ?? "recent"
-        isQuerying = true; queryError = nil
+        isQuerying = true; queryWasCancelled = false; queryError = nil
         let database = databaseURL
         queryTask = Task { [weak self] in
             do {
@@ -514,14 +528,14 @@ final class LibraryStore: ObservableObject {
     }
 
     func loadAuxiliary(kind: String, cursor: String? = nil, search: String? = nil) {
-        guard !isImporting, !isMaintainingLibrary, ["drones", "map", "groups"].contains(kind) else { return }
+        guard !isImporting, !isMaintainingLibrary, !isCancellingQuery, ["drones", "map", "groups"].contains(kind) else { return }
         queryTask?.cancel(); let token = UUID(); queryToken = token
         guard let engine = engineURL, FileManager.default.fileExists(atPath: databaseURL.path) else { return }
         var request = LibraryQueryRequest(kind: kind, scope: views.state.activeScope, annotations: annotations.state,
                                           maskedMessageKeys: views.state.maskedMessageKeys)
         request.cursor = cursor; request.registrySearch = search
         request.sortOrder = views.state.historySort ?? "recent"
-        isQuerying = true; queryError = nil
+        isQuerying = true; queryWasCancelled = false; queryError = nil
         let database = databaseURL
         queryTask = Task { [weak self] in
             do {

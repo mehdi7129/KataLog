@@ -273,6 +273,128 @@ class ValidationTests(unittest.TestCase):
                 error.close()
 
 
+class LocalCloudCacheTests(unittest.TestCase):
+    @staticmethod
+    @contextlib.contextmanager
+    def dataless(paths):
+        """Simulate filesystem metadata; bytes on disk remain available to prove preservation."""
+        original = Path.stat
+
+        def flagged(path, *args, **kwargs):
+            result = original(path, *args, **kwargs)
+            if path not in paths:
+                return result
+
+            class CloudStat:
+                st_flags = 0x40000060
+
+                def __getattr__(self, name):
+                    return getattr(result, name)
+
+            return CloudStat()
+
+        with patch.object(Path, "stat", flagged):
+            yield
+
+    def cache(self, folder):
+        target = gcs.local_target(folder, UUID, REMOTE)
+        target.write_bytes(BODY)
+        source = {"uuid": UUID, "path": REMOTE, "size": len(BODY)}
+        manifest = target.with_name(target.name + ".katalog.json")
+        manifest.write_text(json.dumps({"source": source, "sha256": hashlib.sha256(BODY).hexdigest()}))
+        return target, manifest, source
+
+    def test_cloud_original_or_manifest_blocks_download_before_open_and_network(self):
+        for which in ("original", "manifest"):
+            with self.subTest(which=which), tempfile.TemporaryDirectory() as folder:
+                target, manifest, _ = self.cache(folder)
+                before = {path: path.read_bytes() for path in (target, manifest)}
+                cloud = target if which == "original" else manifest
+                output = io.StringIO()
+                with self.dataless({cloud}), contextlib.redirect_stdout(output), \
+                     patch.object(gcs.os, "open", side_effect=AssertionError("Must not open cloud data")), \
+                     patch.object(gcs, "MQTT") as mqtt, patch.object(gcs, "verify_remote_size") as listing:
+                    with self.assertRaisesRegex(gcs.CollectionError, "Finder") as caught:
+                        gcs.download("gcs.local", 1999, 8080, UUID, REMOTE, len(BODY), folder)
+                    self.assertFalse(gcs.retryable_error(caught.exception))
+                    self.assertIn(str(cloud), str(caught.exception))
+                    mqtt.assert_not_called(); listing.assert_not_called()
+                self.assertEqual(output.getvalue(), "")
+                self.assertEqual({path: path.read_bytes() for path in before}, before)
+                self.assertEqual(set(target.parent.iterdir()), set(before))
+
+    def test_inventory_cloud_manifest_is_an_error_not_a_cache_miss(self):
+        with tempfile.TemporaryDirectory() as folder:
+            target, manifest, _ = self.cache(folder)
+            before = manifest.read_bytes()
+            with self.dataless({manifest}), \
+                 patch.object(gcs.os, "open", side_effect=AssertionError("Must not read or hydrate the cache")), \
+                 patch.object(gcs, "list_directory", return_value=([], [{"path": REMOTE, "size": len(BODY)}])), \
+                 patch.object(gcs, "MQTT") as mqtt:
+                with self.assertRaises(gcs.CloudFileUnavailable) as caught:
+                    gcs.inventory("gcs.local", 1999, UUID, folder)
+                self.assertFalse(caught.exception.retryable)
+                mqtt.assert_not_called()
+            self.assertEqual(manifest.read_bytes(), before)
+            self.assertEqual(target.read_bytes(), BODY)
+
+    def test_hash_rechecks_original_after_manifest_read(self):
+        with tempfile.TemporaryDirectory() as folder:
+            target, manifest, source = self.cache(folder)
+            cloud = set()
+            original_match = gcs.record_matches_source
+            original_open = gcs.os.open
+
+            def evict_after_proof(record, expected):
+                cloud.add(target)
+                return original_match(record, expected)
+
+            def opening(path, *args, **kwargs):
+                self.assertNotEqual(Path(path), target, "The newly evicted ULog must not be opened")
+                return original_open(path, *args, **kwargs)
+
+            with self.dataless(cloud), patch.object(gcs, "record_matches_source", evict_after_proof), \
+                 patch.object(gcs.os, "open", opening):
+                with self.assertRaises(gcs.CloudFileUnavailable):
+                    gcs.cache_record(target, source)
+            self.assertEqual(target.read_bytes(), BODY)
+            self.assertIsNotNone(gcs.cache_record(target, source), "After hydration the same cache is reusable")
+
+    def test_pending_recovery_preserves_cloud_marker_original_and_part_without_network(self):
+        for which in ("pending", "part", "original", "manifest"):
+            with self.subTest(which=which), tempfile.TemporaryDirectory() as folder:
+                target = gcs.local_target(folder, UUID, REMOTE)
+                part = target.with_name(target.name + "." + "a" * 32 + ".part")
+                part.write_bytes(BODY)
+                metadata = part.stat()
+                source = {"uuid": UUID, "path": REMOTE, "size": len(BODY)}
+                record = {"source": source, "sha256": hashlib.sha256(BODY).hexdigest(),
+                          "transaction": {"part": part.name, "device": metadata.st_dev, "inode": metadata.st_ino}}
+                pending = target.with_name(target.name + ".katalog.pending.json")
+                pending.write_text(json.dumps(record))
+                cloud = pending if which == "pending" else part
+                if which == "original":
+                    gcs.os.link(part, target); cloud = target
+                if which == "manifest":
+                    cloud = target.with_name(target.name + ".katalog.json")
+                    cloud.write_text(json.dumps(record))
+                before = {path: path.read_bytes() for path in target.parent.iterdir()}
+                original_open = gcs.os.open
+
+                def opening(path, *args, **kwargs):
+                    self.assertNotEqual(Path(path), cloud, "Recovery must not hydrate a placeholder")
+                    return original_open(path, *args, **kwargs)
+
+                with self.dataless({cloud}), patch.object(gcs.os, "open", opening), \
+                     patch.object(gcs.os, "link", side_effect=AssertionError("No promotion before verification")), \
+                     patch.object(gcs, "MQTT") as mqtt:
+                    with self.assertRaises(gcs.CloudFileUnavailable) as caught:
+                        gcs.download("gcs.local", 1999, 8080, UUID, REMOTE, len(BODY), folder)
+                    self.assertFalse(caught.exception.retryable)
+                    mqtt.assert_not_called()
+                self.assertEqual({path: path.read_bytes() for path in target.parent.iterdir()}, before)
+
+
 class SimulatorTests(unittest.TestCase):
     def collect(self, sim, directory):
         output = io.StringIO()
@@ -392,6 +514,28 @@ class SimulatorTests(unittest.TestCase):
                 self.assertFalse(pending.exists())
                 self.assertTrue(manifest.exists())
                 self.assertEqual(json.loads(manifest.read_text())["sha256"], hashlib.sha256(BODY).hexdigest())
+
+    def test_cloud_eviction_before_promotion_keeps_part_and_proof_for_local_recovery(self):
+        with Simulator() as sim, tempfile.TemporaryDirectory() as directory:
+            target = gcs.local_target(directory, UUID, REMOTE)
+            pending = target.with_name(target.name + ".katalog.pending.json")
+            # The newly written marker becomes cloud-only just before promotion.
+            with LocalCloudCacheTests.dataless({pending}), self.assertRaises(gcs.CloudFileUnavailable) as caught:
+                self.collect(sim, directory)
+            self.assertFalse(gcs.retryable_error(caught.exception))
+            self.assertFalse(target.exists())
+            self.assertTrue(pending.exists(), "Keep ownership proof after a cloud availability error")
+            proof = json.loads(pending.read_text())
+            part = target.with_name(proof["transaction"]["part"])
+            self.assertEqual(part.read_bytes(), BODY, "Keep the completed copy rather than downloading it again")
+            before = len(sim.requests)
+            # Hydration is represented by removing only the mocked dataless flag.
+            recovered = self.collect(sim, directory)[-1]
+            self.assertTrue(recovered["cached"])
+            self.assertEqual(len(sim.requests), before)
+            self.assertEqual(target.read_bytes(), BODY)
+            self.assertFalse(pending.exists())
+            self.assertFalse(part.exists())
 
     def test_recovery_preserves_manual_replacement_even_when_bytes_match(self):
         with Simulator() as sim, tempfile.TemporaryDirectory() as directory:

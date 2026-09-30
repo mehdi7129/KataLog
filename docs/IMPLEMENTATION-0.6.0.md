@@ -1,3 +1,7 @@
+> **Recette de livraison 0.6.0 :** voir [RELEASE-0.6.0.md](RELEASE-0.6.0.md).
+> Ce document conserve le plan et les étapes de validation historiques ; les mentions
+> « aucune release » ci-dessous décrivent leur état au moment du contrôle.
+
 # KataLog 0.6.0 — code, preuves et portes restantes
 
 Suivi du 30 septembre 2026. **Branche de développement, sans release 0.6.0 ni publication publique.**

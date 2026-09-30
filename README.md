@@ -1,43 +1,37 @@
 # KataLog — bibliothèque locale de logs PX4
 
-Version installée de référence **0.5.2 (build 7)**, native macOS / SwiftUI : interface bento monochrome,
-thèmes clair et sombre, carte Apple Maps, fiche de log, collecte GCS,
-import réel avec `pyulog` et cache SQLite. Les données
-affichées proviennent des imports ; aucun exemple figé n’alimente l’interface.
+**0.6.0 (build 14)** · macOS · SwiftUI · Apple Silicon · GPL-3.0-only
 
-Les sources **0.6.0 en préparation** implémentent l’index paginé, les sauvegardes,
-la restauration, la file GCS durable, les événements PX4 et les courbes à la demande.
-Les nouveaux parcours conservent la composition bento et la palette de 0.5.2 :
-Vue d’ensemble, sidebar compacte et accès direct aux thèmes. Ils sont activés dans les builds
-stables à partir de **0.6.0**. **KataLog Preview** conserve sa bibliothèque
-distincte ; `KATALOG_UI_PREVIEW=1` reste disponible en développement. Sparkle 2.10.0 est
-embarqué mais son feed reste désactivé. L’app installée 0.5.2 n’est pas remplacée.
-Voir le [suivi d’implémentation et ses limites](docs/IMPLEMENTATION-0.6.0.md),
-les [contrats](docs/CONTRACTS-0.6.md), la [matrice de validation](docs/VALIDATION-0.6.0.md) et le [plan de développement](docs/PLAN-0.6.0.md).
+KataLog rassemble l’historique de votre flotte : logs PX4, alertes filtrables,
+trajectoires Apple Maps, courbes et rapports. Interface **bento monochrome**,
+thèmes **clair / sombre / système**, données conservées sur votre Mac.
 
-Le package de review **0.6.0 (12)** contient **KataLog Preview.app** : il peut
-coexister avec KataLog et utilise `~/Library/Application Support/KataLogPreview-0.6/`.
-Il ouvre directement les nouveaux écrans, sans Terminal. Les données de l’app
-installée sont conservées ; la bibliothèque de la Preview commence vide.
-Importer en mode **Référencer** analyse les fichiers existants sans les copier.
-Ce package local est signé Developer ID et notarisé ; il passe les neuf contrôles de
-distribution sur macOS 27.0.1. Il n’est pas une release et son updater
-reste désactivé. Les builds 8 à 11 sont des candidates historiques.
+### Ce qui change en 0.6.0
 
-Cette Preview ajoute la gestion persistante des **Sources d’import**
-(retrait/restauration sans suppression), les **Drones scannés** avec identités
-provisoires séparées, le **Temps de vol cumulé** avec couverture et les badges de
-signaux distincts de la qualité de lecture. Les aides sont accessibles au survol
-ou au clic et reprises dans les rapports HTML/JSON.
+- **Tout collecter** inscrit les nouveaux drones visibles sur la GCS dans le
+  registre, puis récupère leurs logs. Aucun ajout un par un ni numéro de stock
+  préalable n’est nécessaire. Les copies déjà vérifiées sont réutilisées.
+- Bibliothèque paginée, filtres et vues enregistrées ; agrégats calculés sur
+  toute la sélection, indépendamment de la page affichée.
+- Sources d’import retirables et restaurables sans supprimer fichiers ou analyses.
+- Drones scannés, durée enregistrée, temps de vol cumulé et couverture explicités.
+  Les badges décrivent les signaux observés ; ils ne certifient pas une panne.
+- Événements PX4, courbes à la demande, révisions d’analyse, sauvegarde/restauration
+  et rapports HTML/JSON cohérents avec les explications de l’app.
+- Navigation compacte ; Alertes, Stockage, Collecte et Rapports simplifiés pour
+  garder leurs actions accessibles jusque dans une fenêtre de 900×620.
 
-L'[audit du 30 septembre](docs/AUDIT-2026-09-30.md) et le
-[backlog exécutable](docs/BACKLOG-0.6.0.md) détaillent les corrections préalables,
-les données restant à exploiter et les critères de sortie de chaque lot.
+[Télécharger la release](https://github.com/mehdi7129/KataLog/releases/tag/v0.6.0) ·
+[Notes et validation](docs/RELEASE-0.6.0.md) · [Installation et mises à jour](docs/UPDATING.md)
 
-## Essayer la Preview 0.6.0
+Le dépôt reste privé jusqu’à une décision explicite de publication publique.
+Les mises à jour de cette version se font par DMG ; le moteur Sparkle est embarqué,
+mais son flux distant reste désactivé tant qu’un endpoint public n’est pas qualifié.
 
-1. Ouvrir son DMG, glisser **KataLog Preview.app** dans Applications, éjecter,
-   puis lancer la Preview. Elle dispose de sa propre bibliothèque vide.
+## Prise en main
+
+1. Ouvrir le DMG, glisser **KataLog.app** dans Applications, éjecter, puis lancer.
+   Une installation existante retrouve sa bibliothèque ; une nouvelle commence vide.
 2. Importer un dossier en choisissant **Référencer les fichiers** ou **Copier
    vers mes archives**. Le second mode vérifie taille et SHA-256 avant l’analyse ;
    son dossier est conservé au redémarrage. Attendre le bilan avant de retirer la carte SD.
@@ -57,18 +51,18 @@ les données restant à exploiter et les critères de sortie de chaque lot.
    doit être remplacé par une synthèse et un manifeste.
 
 La collecte utilise une file SQLite durable et importe exactement les fichiers
-reçus, sans créer automatiquement une seconde archive. Les drones autorisés
-restent dans le registre, même sans log. La comparaison des paramètres conserve
+reçus, sans créer automatiquement une seconde archive. Les drones ajoutés lors de la collecte
+restent dans le registre, même sans log ni numéro de stock. La comparaison des paramètres conserve
 les valeurs et types ; elle n’attribue pas une cause de panne.
-Le parseur courant est **1.4.0**, avec projection SQLite **6**. Les anciennes
+Le parseur courant est **1.4.0**, avec projection SQLite **7**. Les anciennes
 analyses sont conservées et leur recalcul est explicite.
 
-## Utilisation de la version installée 0.5.2
+## Installation et utilisation
 
 ### Installer une release
 
 **Le dépôt reste privé tant que la publication publique n’est pas décidée.**
-Le package local **0.5.2** est un **DMG** avec **KataLog.app** et un lien
+Le package **0.6.0** est un **DMG** avec **KataLog.app** et un lien
 **Applications** : ouvrir le DMG, glisser KataLog dans Applications, éjecter,
 puis lancer l’app. Le moteur ARM64 est embarqué ; aucun App Store, Terminal,
 Homebrew ni Python séparé n’est requis pour utiliser l’app.
@@ -76,10 +70,10 @@ Homebrew ni Python séparé n’est requis pour utiliser l’app.
 **Compatibilité : Mac Apple Silicon, macOS 15 minimum, recette locale sur macOS 27.**
 Les minima des composants natifs sont contrôlés au packaging. L’exécution sur
 macOS 15 demande une recette sur cette version ; le test macOS 27 ne la remplace pas.
-La [recette 0.5.2](docs/DISTRIBUTION-VALIDATION.md) consigne les tests réalisés et
+La [recette 0.6.0](docs/RELEASE-0.6.0.md) consigne les tests réalisés et
 les limites de qualification.
 
-Les archives publiées seront proposées sur la
+Les archives sont proposées sur la
 [page Releases](https://github.com/mehdi7129/KataLog/releases).
 Les ZIP de l’ancienne 0.5.1 restent dans une archive privée distincte et ne sont
 pas réutilisés dans cette distribution. Pour compiler depuis les sources, voir
@@ -94,7 +88,7 @@ remplacer l'app depuis le nouveau DMG, puis la rouvrir.
 Le remplacement du bundle conserve la bibliothèque, les numéros de drones,
 les classements et réglages dans `~/Library/Application Support/KataLog/`.
 Le dossier personnalisé et les logs collectés restent en place. Les migrations
-seront détaillées dans les notes de release. Les anciennes archives privées
+sont détaillées dans les notes de release. Les anciennes archives privées
 restent dans une archive distincte et ne sont pas distribuées ici.
 
 ### Premiers imports
@@ -133,7 +127,7 @@ restent dans une archive distincte et ne sont pas distribuées ici.
 
 1. Ouvrir **Carte**. Si les fichiers ont été importés avec une ancienne version,
    cliquer **Actualiser les analyses** : KataLog relit les copies locales avec le
-   parseur **1.2.0**, sans les télécharger à nouveau ni dupliquer l’historique.
+   parseur **1.4.0**, sans les télécharger à nouveau ni dupliquer l’historique.
 2. Choisir le drone et rechercher un fichier ou une date. La carte affiche les
    **80 logs géolocalisés les plus récents** du périmètre, avec un aperçu de
    **256 points maximum par log** ; la limite est affichée et la liste conserve
@@ -154,7 +148,7 @@ l’app ne demande pas la localisation du Mac. Le fond Apple Maps utilise le ré
 Sans trajectoire exploitable, les messages et les mesures restent accessibles.
 Voir le [contrat d’import et des détails](docs/IMPORT-CONTRACT.md).
 
-### Rapport HTML interactif — 0.5.1
+### Rapport HTML interactif
 
 Depuis **Rapports**, exporter la bibliothèque en HTML, puis ouvrir le fichier dans
 un navigateur. **Exporter ce log** utilise la même présentation pour une seule
@@ -187,12 +181,12 @@ filtres du rapport HTML.
 ### Collecter depuis une GCS
 
 1. Ouvrir **Collecte GCS**, saisir son adresse IP ou hostname, puis **Connecter**.
-2. Ajouter explicitement les drones souhaités à **Ma flotte**. Leur UUID complet
-   est conservé ; les appareils non enregistrés ne sont pas collectés.
-3. Cliquer **Tout collecter** pour inventorier les drones autorisés actuellement
-   connectés et récupérer leurs nouveaux logs. Les drones explicitement armés sont
-   exclus. Pour choisir les fichiers d’un drone : **Voir les logs**, puis
-   **Collecter la sélection**.
+2. Cliquer **Tout collecter** : les drones éligibles visibles sur cette GCS sont
+   enregistrés automatiquement, puis leurs nouveaux logs sont récupérés. Leur UUID
+   complet reste dans le registre, même sans log ; le numéro de stock est facultatif.
+3. Les appareils explicitement armés, hors ligne ou sans UUID valide sont exclus.
+   Un échec d’enregistrement bloque le départ. Pour choisir les fichiers d’un
+   drone : l’ajouter à **Ma flotte**, **Voir les logs**, puis **Collecter la sélection**.
 4. **Analyser après collecte**, activé par défaut, ajoute les fichiers vérifiés à
    la bibliothèque existante. Le cache et l’import évitent les copies inutiles.
 
@@ -229,11 +223,14 @@ Chaque log reçoit un manifeste de provenance `.ulg.katalog.json` avec son SHA25
 La reconnaissance d’un fichier déjà collecté vérifie UUID, chemin distant, taille
 et empreinte locale, même si la file a été perdue ou si l’adresse de la GCS change.
 Un fichier existant sans preuve valide est conservé et signalé pour examen.
+Si iCloud a retiré une copie ou son manifeste du Mac, KataLog explique comment
+télécharger le dossier dans Finder avant de relancer. Il conserve les fichiers
+existants et ne programme pas un doublon depuis le drone pour ce seul motif.
 
 Protocole validé : **GCS Drotek 3.7.2**, MQTT 1999 et HTTP 8080, deux IOSTAR3
 firmware 4.1.5. Voir le [contrat et la recette](docs/GCS-COLLECTION.md).
 
-## Fonctions de la version installée 0.5.2
+## Fonctions disponibles
 
 - Scan récursif `.ulg` / `.ULG`, progression et annulation.
 - Identification par `sys_uuid`, noms issus du log ou de `data/name.txt` ;
@@ -272,10 +269,10 @@ reconnu comme le même drone physique.
 
 ## Validation
 
-L’audit de référence 0.5.2 avait exécuté **175 tests** et l’installation utilisateur
-fonctionne sur macOS 27. Les corrections et nouvelles suites 0.6 sont consignées
-dans le [suivi d’implémentation](docs/IMPLEMENTATION-0.6.0.md), avec la version
-testée et les limites de chaque preuve. Le benchmark synthétique porte sur
+Les résultats du package 0.6.0 figurent dans la
+[recette de release](docs/RELEASE-0.6.0.md). Le
+[suivi d’implémentation](docs/IMPLEMENTATION-0.6.0.md) conserve les étapes
+antérieures, avec la version testée et les limites de chaque preuve. Le benchmark synthétique porte sur
 50 000 logs, 5 millions de messages et 500 identités ; ce n’est pas le parsing
 de 50 000 ULogs ni une qualification de 500 drones physiques.
 Les fixtures publiques sont synthétiques. Le test des neuf logs du corpus réel
@@ -320,52 +317,32 @@ Le projet prépare un dépôt public. Les logs, CSV de stock, identifiants réel
 coordonnées, bibliothèques, réglages locaux et preuves opérationnelles n'en font
 pas partie. Les anciens commits et assets restent dans une archive privée distincte ; voir [la préparation publique](docs/PUBLICATION.md).
 
-La distribution autonome **0.5.2** utilise un **DMG signé et notarisé**, à ouvrir pour glisser
+La distribution autonome **0.6.0** utilise un **DMG signé et notarisé**, à ouvrir pour glisser
 **KataLog dans Applications**, sans App Store ni installation séparée de Python.
 Le moteur de la base 0.5.1 reste externe ; son ancien ZIP est conservé séparément en privé.
 
-## Limites de la version installée 0.5.2
+## Limites et couverture
 
-Les corrections et fonctions 0.6 ci-dessus sont disponibles dans la Preview ;
-ce bilan décrit l’installation 0.5.2 existante.
-
-- Sans `sys_uuid`, l'identité de remplacement peut différer entre résumé et fiche
-  (C01 dans l'audit) : le numéro manuel peut ne plus apparaître dans la fiche et
-  ses exports. L'export flotte conserve l'identité du résumé. Corrigé dans la Preview 0.6.
-- Les événements binaires PX4 (`event`) sont comptés mais restent non décodés sans
-  dictionnaire du firmware. Tous les messages texte disponibles sont conservés ;
-  absence de texte ne signifie pas absence d’alerte.
-- Les familles suivent des règles textuelles. Un groupe de textes identiques
-  n’est pas un nombre d’incidents, et une alerte n’est pas une panne confirmée.
-- Le temps en vol repose sur `landed=false`, dans la portion enregistrée, sans
-  extrapoler les extrémités. La qualification des lacunes/couvertures insuffisantes
-  reste à améliorer, notamment pour les logs courts (C11 dans l'audit).
-  La Preview 0.6 qualifie cette couverture et conserve les durées inconnues.
-- Les dates GPS sont UTC ; les dates issues des chemins restent sans fuseau.
-- L’inspecteur affiche les 100 premières occurrences ; les exports les contiennent
-  toutes. Les filtres de l’interface ne réduisent pas l’export.
-- Les imports de cartes SD conservent des références aux fichiers, sans archivage
-  automatique des ULog. Les fichiers reçus par la collecte GCS sont copiés localement.
-  Garder les originaux pour les analyses approfondies et les versions futures du parseur.
-- Le cache de fiche conserve GPS, paramètres et topics, mais pas toutes les séries
-  de télémétrie ni les événements binaires bruts. Les graphiques temporels de
-  télémétrie, vues enregistrées, filtres de période dans l’app et choix d’un
-  sous-ensemble de la flotte avant export sont désormais disponibles dans la Preview 0.6. Le rapport HTML
-  permet déjà de filtrer localement les données exportées et leur impression.
-- Tous les résumés, messages et aperçus du snapshot sont encore chargés en mémoire ;
-  seuls les détails sont demandés par log. Pagination et benchmark d’un historique
-  représentatif restent nécessaires avant de qualifier 500 drones.
-- Le moteur distribué est embarqué dans l’app ; la compilation des sources nécessite toujours les outils de développement.
-- La collecte est limitée à 2 UUID simultanés et au protocole GCS testé. La recette
-  réelle 0.3 confirme ce parallélisme sur deux drones ; une collecte complète de
-  500 drones et les réessais après perte réseau réelle restent à qualifier.
-- Aucun indicateur universel de fermeture d’un log n’est disponible : sa taille
-  doit être stable avant et après transfert. Un état d’armement absent reste inconnu.
-- Ne pas lancer un autre client FTP sur le même drone pendant sa collecte : les
-  réponses de cette GCS n’ont pas de request ID. Quitter KataLog interrompt la copie
-  locale ; une copie déjà demandée à la GCS peut continuer. Le délai client de
-  300 à 3 600 secondes ne garantit pas un arrêt distant. La reprise recommence
-  le fichier ou vérifie son cache, sans reprise à un offset réseau.
+- Les événements PX4 exigent le dictionnaire exact du firmware pour être traduits.
+  Leurs données brutes et leur niveau connu restent disponibles en son absence.
+- Une alerte est une observation, pas une cause de panne confirmée. Les familles
+  textuelles sont personnalisables ; les messages d’origine restent conservés.
+- Le temps en vol dépend des topics et de leur couverture ; une durée inconnue
+  n’est pas assimilée à zéro. Les dates GPS sont UTC, les dates de chemins restent
+  sans fuseau lorsqu’aucune information fiable ne permet de le déterminer.
+- Les vues sont paginées. Les rapports permettent de choisir la sélection ou
+  toute la bibliothèque ; leur périmètre est annoncé avant génération.
+- Le cache ne remplace pas les ULogs pour recalculer une analyse ou lire toutes
+  les séries. Conserver les originaux ou utiliser l’archivage vérifié à l’import.
+- La collecte accepte deux UUID en parallèle, un fichier par UUID. Un arrêt agit
+  immédiatement sur le Mac ; une copie déjà lancée par la GCS peut continuer.
+  Sans request ID distant, éviter les autres clients FTP sur le même drone.
+  La reprise recommence un fichier ou vérifie son cache, sans offset réseau.
+- Les benchmarks de 500 drones sont synthétiques. Ils ne qualifient pas une
+  collecte radio simultanée de 500 appareils. Voir la recette de release pour
+  distinguer les essais logiciels, locaux et matériels.
+- macOS 15 est le minimum déclaré ; la recette locale est exécutée sur macOS 27.
+  Le flux de mise à jour automatique est désactivé ; utiliser le DMG.
 
 ## Moteur Python pour le développement
 

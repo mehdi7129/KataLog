@@ -19,7 +19,7 @@ final class WorkspacePreviewTests: XCTestCase {
             .deletingLastPathComponent().appendingPathComponent("Sources/KataLog/Resources")
     }
 
-    private func fixture(count: Int = 120) async throws -> Fixture {
+    private func fixture(count: Int = 120, blockQueries: Bool = false) async throws -> Fixture {
         let environment = ProcessInfo.processInfo.environment
         guard let python = environment["KATALOG_TEST_PYTHON"] ?? environment["KATALOG_PYTHON"],
               FileManager.default.isExecutableFile(atPath: python) else {
@@ -68,10 +68,31 @@ final class WorkspacePreviewTests: XCTestCase {
         var state = GCSCollectionState(downloadDirectory: root.appendingPathComponent("Collected Logs").path)
         state.host = ""; state.reconnect = false; state.autoImport = false
         try JSONEncoder().encode(state).write(to: root.appendingPathComponent("gcs-settings.json"))
-        let library = LibraryStore(storageDirectory: root, engine: resources.appendingPathComponent("analyzer.py"), pagedNavigation: true)
+        var engine = resources.appendingPathComponent("analyzer.py")
+        if blockQueries {
+            engine = root.appendingPathComponent("blocked-query.py")
+            try """
+            import sys,time,signal,runpy
+            from pathlib import Path
+            if sys.argv[1]=='query':
+                signal.signal(signal.SIGTERM,signal.SIG_IGN)
+                Path(\(String(reflecting: root.appendingPathComponent("query-blocked").path))).write_text('ready')
+                while True: time.sleep(.02)
+            sys.path.insert(0,\(String(reflecting: resources.path)))
+            runpy.run_path(\(String(reflecting: resources.appendingPathComponent("analyzer.py").path)),run_name='__main__')
+            """.write(to: engine, atomically: true, encoding: .utf8)
+        }
+        let library = LibraryStore(storageDirectory: root, engine: engine, pagedNavigation: true)
+        addTeardownBlock { @MainActor in library.prepareForTermination() }
         let gcs = GCSStore(storageDirectory: root, collector: collector, snapshot: { library.snapshot })
         let fixture = Fixture(root: root, library: library, gcs: gcs, noNetworkMarker: noNetworkMarker)
-        try await settle(library)
+        if blockQueries {
+            let deadline = Date().addingTimeInterval(8)
+            while !FileManager.default.fileExists(atPath: root.appendingPathComponent("query-blocked").path), Date() < deadline {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("query-blocked").path))
+        } else { try await settle(library) }
         XCTAssertNil(library.queryError)
         return fixture
     }
@@ -86,7 +107,8 @@ final class WorkspacePreviewTests: XCTestCase {
         XCTAssertFalse(library.isQuerying || library.isLoading || library.isLoadingFlight, "Isolated library did not settle within 20 seconds.")
     }
 
-    private func render<V: View>(_ content: V, name: String, width: CGFloat, height: CGFloat, scheme: ColorScheme) async throws -> NSSize {
+    private func render<V: View>(_ content: V, name: String, width: CGFloat, height: CGFloat, scheme: ColorScheme,
+                                settleDelay: Duration = .milliseconds(450)) async throws -> NSSize {
         _ = NSApplication.shared
         let controller = NSHostingController(rootView: content.environment(\.colorScheme, scheme).preferredColorScheme(scheme).background(Color(nsColor: .windowBackgroundColor)))
         let host = controller.view
@@ -95,7 +117,10 @@ final class WorkspacePreviewTests: XCTestCase {
         window.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
         window.isReleasedWhenClosed = false; window.contentViewController = controller
         defer { window.close() }
-        try await Task.sleep(for: .milliseconds(450))
+        window.setContentSize(NSSize(width: width, height: height))
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: settleDelay)
+        host.frame = NSRect(x: 0, y: 0, width: width, height: height)
         host.layoutSubtreeIfNeeded()
         // Probe the requested size, not the unconstrained ideal size (a larger ideal is allowed).
         let fitting = controller.sizeThatFits(in: CGSize(width: width, height: height))
@@ -139,6 +164,30 @@ final class WorkspacePreviewTests: XCTestCase {
         XCTAssertFalse(f.gcs.isConnected)
     }
 
+    func testBlockedReadAndCancellationRenderRecoverableStatesAtMinimumWindow() async throws {
+        let f = try await fixture(count: 1, blockQueries: true)
+        try f.library.views.setTheme("dark")
+        let waiting = try await render(Workspace06View(library: f.library, gcs: f.gcs),
+            name: "query-waiting-dark", width: 900, height: 620, scheme: .dark, settleDelay: .seconds(13))
+        XCTAssertTrue(f.library.isQuerying, "The delayed hint must not time out a long-running query.")
+        XCTAssertNil(f.library.historyPage, "Pending results are not an established empty selection.")
+        XCTAssertLessThanOrEqual(waiting.width, 900.5); XCTAssertLessThanOrEqual(waiting.height, 620.5)
+        await f.library.cancelQuery()
+        XCTAssertTrue(f.library.queryWasCancelled); XCTAssertFalse(f.library.hasActiveWork)
+        try f.library.views.setTheme("light")
+        let cancelled = try await render(Workspace06View(library: f.library, gcs: f.gcs),
+            name: "query-cancelled-light", width: 900, height: 620, scheme: .light)
+        XCTAssertLessThanOrEqual(cancelled.width, 900.5); XCTAssertLessThanOrEqual(cancelled.height, 620.5)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: f.noNetworkMarker.path))
+        for scheme in [ColorScheme.dark, .light] {
+            let fitting = try await render(LibraryReadRecoveryNotice(requestID: "fixture", isCancelling: false,
+                palette: Palette(dark: scheme == .dark), cancel: {}, delay: .milliseconds(1)),
+                name: "query-help-\(scheme)", width: 610, height: 240, scheme: scheme)
+            XCTAssertLessThanOrEqual(fitting.width, 610.5)
+            XCTAssertLessThanOrEqual(fitting.height, 240.5)
+        }
+    }
+
     func testOverviewRendersInBothThemesAtDesktopSizeWithoutStartingCollection() async throws {
         for count in [1, 120] {
             let f = try await fixture(count: count)
@@ -149,6 +198,25 @@ final class WorkspacePreviewTests: XCTestCase {
                                                         width: 1440, height: 980, scheme: scheme)
                 XCTAssertLessThanOrEqual(fitting.width, 1440.5)
                 XCTAssertLessThanOrEqual(fitting.height, 980.5)
+            }
+            XCTAssertFalse(FileManager.default.fileExists(atPath: f.noNetworkMarker.path))
+            XCTAssertFalse(f.gcs.isConnected)
+        }
+    }
+
+    func testBentoUtilityPagesFitSingleLogAndWideFleetWindows() async throws {
+        // These panels mix forms, summary cards and expanding secondary details.
+        // Cover the narrow/single-log case as well as a populated desktop layout.
+        for (count, width, height) in [(1, 900.0, 620.0), (1, 1440.0, 980.0), (120, 1440.0, 980.0)] {
+            let f = try await fixture(count: count)
+            for page in [Workspace06View.Page.alerts, .storage, .reports, .settings] {
+                for scheme in [ColorScheme.dark, .light] {
+                    let fitting = try await renderWorkspace(f, page: page,
+                        name: "bento-\(page)-\(count)-\(Int(width))-\(scheme)",
+                        width: width, height: height, scheme: scheme)
+                    XCTAssertLessThanOrEqual(fitting.width, width + 0.5)
+                    XCTAssertLessThanOrEqual(fitting.height, height + 0.5)
+                }
             }
             XCTAssertFalse(FileManager.default.fileExists(atPath: f.noNetworkMarker.path))
             XCTAssertFalse(f.gcs.isConnected)

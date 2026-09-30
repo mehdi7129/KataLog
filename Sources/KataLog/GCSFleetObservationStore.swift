@@ -51,6 +51,42 @@ final class GCSFleetObservationStore {
     }
     func record(_ observed: [GCSDrone], authorized: Set<String>) {
         guard writable else { return }
+        do {
+            let next = try updatedState(observed, authorized: authorized)
+            guard next.drones != state.drones else { flush(); return }
+            state = next; dirty = true; flush()
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    /// Registration is explicit and must be durable before any inventory or
+    /// download starts. Keep the previous registry if saving GCS settings fails.
+    /// Settings remain the authority after a crash between the two atomic files;
+    /// the next attachment reconciles the registry without starting a transfer.
+    func register(_ observed: [GCSDrone], authorized: Set<String>, saveSettings: () throws -> Void) throws {
+        guard writable, canMutate() else {
+            throw AnalysisError.unavailable(errorMessage ?? "Le registre des drones ne peut pas être modifié pour le moment.")
+        }
+        let next = try updatedState(observed, authorized: authorized)
+        let previous = FileManager.default.fileExists(atPath: file.path) ? try Data(contentsOf: file) : nil
+        do {
+            try write(next)
+            do { try saveSettings() }
+            catch {
+                // Only this operation's own write is rolled back, synchronously
+                // on the main actor; no other observation can interleave here.
+                if let previous { try previous.write(to: file, options: .atomic) }
+                else { try FileManager.default.removeItem(at: file) }
+                throw error
+            }
+            state = next; dirty = false; errorMessage = nil
+        } catch {
+            let message = "Les drones n’ont pas pu être enregistrés : \(error.localizedDescription)"
+            errorMessage = message
+            throw AnalysisError.engine(message)
+        }
+    }
+
+    private func updatedState(_ observed: [GCSDrone], authorized: Set<String>) throws -> GCSFleetObservationState {
         var entries = Dictionary(uniqueKeysWithValues: state.drones.map { ($0.uuid, $0) })
         let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         for drone in observed where authorized.contains(drone.uuid) && drone.lastSeen > .distantPast {
@@ -63,18 +99,22 @@ final class GCSFleetObservationStore {
         }
         for uuid in entries.keys { entries[uuid]?.authorized = authorized.contains(uuid) }
         let next = entries.values.sorted { $0.uuid < $1.uuid }
-        guard next != state.drones else { flush(); return }
-        guard next.count <= 10_000, state.revision < Int.max else { errorMessage = "Le registre des observations dépasse son budget."; return }
-        state.drones = next; state.revision += 1; dirty = true; flush()
+        guard next != state.drones else { return state }
+        guard next.count <= 10_000, state.revision < Int.max else { throw AnalysisError.engine("Le registre des observations dépasse son budget.") }
+        var result = state; result.drones = next; result.revision += 1
+        return result
+    }
+    private func write(_ state: GCSFleetObservationState) throws {
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(state)
+        guard data.count <= 4 * 1024 * 1024 else { throw AnalysisError.engine("Le registre des observations dépasse 4 Mio.") }
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: file, options: .atomic)
     }
     func flush() {
         guard dirty, writable, canMutate() else { return }
         do {
-            let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-            let data = try encoder.encode(state)
-            guard data.count <= 4 * 1024 * 1024 else { throw AnalysisError.engine("Le registre des observations dépasse 4 Mio.") }
-            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try data.write(to: file, options: .atomic); dirty = false; errorMessage = nil
+            try write(state); dirty = false; errorMessage = nil
         } catch { errorMessage = "Les observations GCS ne peuvent pas être enregistrées : \(error.localizedDescription)" }
     }
 }

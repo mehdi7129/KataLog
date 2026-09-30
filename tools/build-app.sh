@@ -7,8 +7,8 @@ build_dir="${KATALOG_BUILD_DIR:-/private/tmp/katalog-swift-build}"
 configuration="${KATALOG_CONFIGURATION:-release}"
 sign_identity="${KATALOG_SIGN_IDENTITY:--}"
 output_dir="${KATALOG_DIST_DIR:-$project_dir/dist}"
-version="${KATALOG_VERSION:-0.5.2}"
-build_number="${KATALOG_BUILD_NUMBER:-7}"
+version="${KATALOG_VERSION:-0.6.0}"
+build_number="${KATALOG_BUILD_NUMBER:-14}"
 update_channel="${KATALOG_UPDATE_CHANNEL:-disabled}"
 update_feed_url="${KATALOG_UPDATE_FEED_URL:-}"
 update_public_key="${KATALOG_UPDATE_PUBLIC_KEY:-}"
@@ -162,11 +162,12 @@ cat > "$app_path/Contents/Info.plist" <<'PLIST'
   <key>CFBundleName</key><string>KataLog</string>
   <key>CFBundleDisplayName</key><string>KataLog</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.5.2</string>
-  <key>CFBundleVersion</key><string>7</string>
+  <key>CFBundleShortVersionString</key><string>0.6.0</string>
+  <key>CFBundleVersion</key><string>14</string>
   <key>KatalogBundledEngineRequired</key><true/>
   <key>CFBundleIconFile</key><string>KataLog</string>
   <key>NSLocalNetworkUsageDescription</key><string>KataLog se connecte à votre GCS pour découvrir votre flotte et récupérer ses logs.</string>
+  <key>NSDesktopFolderUsageDescription</key><string>KataLog accède aux dossiers de logs choisis sur votre Bureau pour les analyser et y conserver les copies collectées.</string>
   <key>LSMinimumSystemVersion</key><string>15.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
   <key>NSHighResolutionCapable</key><true/>

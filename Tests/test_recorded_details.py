@@ -1,4 +1,7 @@
 """Public fixtures for message origin, typed parameters and subsystem fields."""
+import builtins
+import contextlib
+import io
 import json
 from pathlib import Path
 import struct
@@ -6,12 +9,14 @@ import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 import numpy as np
 
 sys.path[:0] = [str(Path(__file__).resolve().parent), str(Path(__file__).resolve().parents[1] / 'Sources/KataLog/Resources')]
 import analyzer
 import flight_data
 import library_repository as repository
+import library_reports as reports
 from fixture_ulog import record, synthetic_ulog
 
 
@@ -36,6 +41,104 @@ class RecordedDetailsTests(unittest.TestCase):
         db = analyzer.open_database(self.database, read_only=True)
         try: self.identity = db.execute('SELECT id FROM logs').fetchone()[0]
         finally: db.close()
+
+    @contextlib.contextmanager
+    def evicted_source(self, changed_signature=True):
+        """Simulate metadata-only iCloud eviction; any hydration attempt fails."""
+        actual = self.file.stat()
+        attributes = {name: getattr(actual, name) for name in dir(actual) if name.startswith('st_')}
+        attributes['st_flags'] = getattr(actual, 'st_flags', 0) | 0x40000000
+        if changed_signature:
+            attributes['st_ctime_ns'] += 1
+        placeholder = SimpleNamespace(**attributes)
+        original_stat, original_open, original_io_open = Path.stat, builtins.open, io.open
+        attempts = []
+
+        def metadata(path, *args, **kwargs):
+            return placeholder if path == self.file else original_stat(path, *args, **kwargs)
+
+        def guarded(original):
+            def open_file(path, *args, **kwargs):
+                if not isinstance(path, int) and Path(path) == self.file:
+                    attempts.append(str(path))
+                    raise AssertionError('A dataless ULog must never be opened to hydrate it.')
+                return original(path, *args, **kwargs)
+            return open_file
+
+        with patch.object(Path, 'stat', metadata), patch.object(analyzer.sys, 'platform', 'darwin'), \
+             patch.object(builtins, 'open', guarded(original_open)), patch.object(io, 'open', guarded(original_io_open)):
+            yield placeholder
+        self.assertEqual(attempts, [])
+
+    def test_dataless_sources_keep_queries_cached_details_and_report_complete_without_opening_ulog(self):
+        saved_detail = analyzer.detail(self.identity, self.database)
+        db = analyzer.open_database(self.database, read_only=True)
+        self.addCleanup(db.close)
+        before = repository.query(db, {'kind': 'logs', 'includeMessages': True}, read_only=True)['snapshot']['logs'][0]
+        summary_bytes = db.execute('SELECT summary FROM logs WHERE id=?', (self.identity,)).fetchone()[0]
+        detail_bytes = db.execute('SELECT summary FROM flight_details WHERE log_id=?', (self.identity,)).fetchone()[0]
+        for changed_signature in [False, True]:
+            with self.subTest(changed_signature=changed_signature), self.evicted_source(changed_signature):
+                current = repository.query(db, {'kind': 'logs', 'includeMessages': True}, read_only=True)['snapshot']['logs'][0]
+                self.assertEqual(current['messages'], before['messages'])
+                self.assertEqual(current['sourcePaths'], before['sourcePaths'])
+                self.assertEqual(current['id'], self.identity)
+                observation = current['sourceAvailability'][0]
+                self.assertEqual(observation['state'], 'inaccessible', 'An unchanged cached stat must not claim the placeholder is present.')
+                self.assertIn('Finder', observation['detail'])
+                self.assertIn('Télécharger', observation['detail'])
+                cached = analyzer.detail(self.identity, self.database, read_only=True)
+                self.assertEqual(cached['metadata']['detailCacheStatus'], 'current')
+                for key in ['messages', 'sourcePaths', 'parameterDetails', 'dropouts', 'batteryDetails', 'gnssDetails']:
+                    self.assertEqual(cached[key], saved_detail[key])
+                capture = self.root / f'capture-{changed_signature}'
+                destination = self.root / f'report-{changed_signature}'
+                reports.capture_report(self.database, capture, {'options': {'includeCachedDetails': True}})
+                result = reports.prepare_report(capture, destination)
+                exported = json.loads((destination / 'rapport.json').read_text())['logs'][0]
+                self.assertEqual(result['logCount'], 1)
+                self.assertEqual(result['messageCount'], len(before['messages']))
+                self.assertEqual(exported['messages'], before['messages'])
+                self.assertEqual(exported['sourcePaths'], before['sourcePaths'])
+                self.assertEqual(exported['parameterDetails'], saved_detail['parameterDetails'])
+        self.assertEqual(db.execute('SELECT summary FROM logs WHERE id=?', (self.identity,)).fetchone()[0], summary_bytes)
+        self.assertEqual(db.execute('SELECT summary FROM flight_details WHERE log_id=?', (self.identity,)).fetchone()[0], detail_bytes)
+
+    def test_dataless_reanalysis_keeps_previous_cache_and_uncached_detail_explains_finder(self):
+        with self.evicted_source():
+            with self.assertRaisesRegex(ValueError, 'Finder.*Télécharger'):
+                analyzer.detail(self.identity, self.database)
+        original = analyzer.detail(self.identity, self.database)
+        db = analyzer.open_database(self.database)
+        try:
+            db.execute('UPDATE flight_details SET parser_version=? WHERE log_id=?', ('1.3.0', self.identity))
+            db.execute('UPDATE logs SET parser_version=? WHERE id=?', ('1.3.0', self.identity))
+            db.commit()
+            saved = db.execute('SELECT summary FROM logs WHERE id=?', (self.identity,)).fetchone()[0]
+        finally:
+            db.close()
+        with self.evicted_source():
+            previous = analyzer.detail(self.identity, self.database)
+            self.assertEqual(previous['metadata']['detailCacheStatus'], 'previous')
+            self.assertEqual(previous['metadata']['detailParserVersion'], '1.3.0')
+            self.assertEqual(previous['messages'], original['messages'])
+            self.assertEqual(previous['sourceAvailability'][0]['state'], 'inaccessible')
+            result = analyzer.refresh_analysis(self.database)
+            self.assertEqual(result['reanalyzed'], 0)
+            self.assertEqual(result['unavailable'], 1)
+        db = analyzer.open_database(self.database, read_only=True)
+        try:
+            self.assertEqual(db.execute('SELECT summary FROM logs WHERE id=?', (self.identity,)).fetchone()[0], saved)
+        finally:
+            db.close()
+
+    def test_dataless_digest_and_direct_analysis_refuse_open_even_without_python_flag_constant(self):
+        with self.evicted_source(), patch.object(analyzer, 'stat_module', SimpleNamespace()):
+            with self.assertRaisesRegex(OSError, 'Finder.*Télécharger'):
+                analyzer.digest_file(self.file)
+            with self.assertRaisesRegex(OSError, 'Finder.*Télécharger'):
+                analyzer.analyze_file(self.file, self.root, digest=self.identity)
+        self.assertEqual(analyzer.digest_file(self.file), self.identity, 'Hydrated sources must still verify normally.')
 
     def test_identical_normal_and_tagged_records_keep_distinct_origins_in_pages(self):
         db = analyzer.open_database(self.database, read_only=True)

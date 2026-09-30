@@ -85,7 +85,11 @@ final class GCSStore: ObservableObject {
     }
     var isReadOnly: Bool { library?.isReadOnly == true }
     var isMaintenanceBlocked: Bool { library?.isMaintainingLibrary == true }
-    var canCollectAll: Bool { !isReadOnly && !isMaintenanceBlocked && queueStorageIssue == nil && downloadDirectoryIssue == nil && isConnected && !isBusy && drones.contains { allowedUUIDs.contains($0.uuid) && $0.isOnline && $0.armed != true } }
+    /// Discovery is limited to the connected GCS. Explicit bulk collection also
+    /// registers its new UUIDs; assigning a stock number is a separate operation.
+    var collectableDrones: [GCSDrone] { drones.filter { GCSIdentity.isValid($0.uuid) && $0.isOnline && $0.armed != true } }
+    var newCollectableDroneCount: Int { collectableDrones.filter { !allowedUUIDs.contains($0.uuid) }.count }
+    var canCollectAll: Bool { !isReadOnly && !isMaintenanceBlocked && queueStorageIssue == nil && downloadDirectoryIssue == nil && isConnected && !isBusy && !collectableDrones.isEmpty }
     var hasIncompleteInventory: Bool { !expectedInventoryUUIDs.isSubset(of: completedInventoryUUIDs) || !inventoryFailures.isEmpty }
     var inventoryCoverageLabel: String { "\(completedInventoryUUIDs.intersection(expectedInventoryUUIDs).count) / \(expectedInventoryUUIDs.count) drones recensés" }
     var batchStatusMessage: String {
@@ -97,6 +101,7 @@ final class GCSStore: ObservableObject {
             return "Collecte partielle · inventaire incomplet · \(inventoryCoverageLabel)"
         }
         if progress.totalCount == 0 && cachedFileCount > 0 { return "À jour · \(cachedFileCount) logs déjà présents et vérifiés." }
+        if progress.totalCount == 0 && !expectedInventoryUUIDs.isEmpty { return "Aucun log disponible · inventaire terminé sur \(expectedInventoryUUIDs.count) drone\(expectedInventoryUUIDs.count == 1 ? "" : "s")." }
         if progress.totalCount == 0 { return "Collectez toute la flotte connectée ou sélectionnez les logs d’un drone." }
         if progress.stoppedCount > 0 && progress.activeCount == 0 && progress.pendingCount == 0 { return "Collecte arrêtée · les fichiers déjà vérifiés sont conservés." }
         if progress.completedCount == progress.totalCount { return "Collecte terminée · tous les fichiers ont été vérifiés." }
@@ -619,7 +624,21 @@ final class GCSStore: ObservableObject {
         guard permitMutation() else { return }
         guard validateDestination(downloadDirectory) else { return }
         guard canCollectAll, let currentHost = connectedHost else { return }
-        let fleet = drones.filter { allowedUUIDs.contains($0.uuid) && $0.isOnline && $0.armed != true }.map(\.uuid)
+        let candidates = collectableDrones
+        let fleet = Set(candidates.map(\.uuid)).sorted()
+        let registered = allowedUUIDs.union(fleet)
+        do {
+            // Do not publish membership or schedule work until both settings and
+            // registry have been saved. A failed admission leaves no queued jobs.
+            try fleetObservations.register(candidates, authorized: registered) {
+                try saveState(authorizing: registered)
+            }
+            allowedUUIDs = registered
+            fleetObservationRevision = fleetObservations.state.revision
+        } catch {
+            errorMessage = "Collecte non démarrée. \(error.localizedDescription)"
+            return
+        }
         let destination = downloadDirectory.path
         beginBatchIfNeeded(); isQueuePaused = false; isBusy = true; isScanningFleet = true; errorMessage = nil
         expectedInventoryUUIDs.formUnion(fleet)
@@ -855,23 +874,25 @@ final class GCSStore: ObservableObject {
         do { try requireDestination(url); return true }
         catch { errorMessage = error.localizedDescription; return false }
     }
-    private func saveState() throws {
+    private func saveState(authorizing proposed: Set<String>? = nil) throws {
         guard permitMutation() else { throw AnalysisError.unavailable(errorMessage ?? "La bibliothèque est en lecture seule.") }
         try prepareQueueStorage()
         let dirty = dirtyTransfers
         _ = try queueRepository?.saveTransfers(dirty)
         var state = GCSCollectionState(downloadDirectory: downloadDirectory.path)
-        state.host = host; state.allowedUUIDs = allowedUUIDs; state.autoImport = autoImport
+        state.host = host; state.allowedUUIDs = proposed ?? allowedUUIDs; state.autoImport = autoImport
         state.reconnect = reconnect; state.queue = []; state.queueStorageVersion = 1
         state.currentBatchID = currentBatchID; state.cachedFileCount = cachedFileCount; state.queuePaused = isQueuePaused; state.inventoryBusyUntil = inventoryBusyUntil
         state.expectedInventoryUUIDs = expectedInventoryUUIDs; state.completedInventoryUUIDs = completedInventoryUUIDs; state.inventoryFailures = inventoryFailures
         try FileManager.default.createDirectory(at: stateURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try JSONEncoder().encode(state).write(to: stateURL, options: .atomic); lastSave = Date()
         configurationDirty = false
-        fleetObservations.record([], authorized: allowedUUIDs)
-        fleetObservationRevision = fleetObservations.state.revision
+        if proposed == nil {
+            fleetObservations.record([], authorized: allowedUUIDs)
+            fleetObservationRevision = fleetObservations.state.revision
+        }
         dirtyTransferIDs.subtract(dirty.map(\.id))
-        if !isBusy, let queueRepository {
+        if proposed == nil, !isBusy, let queueRepository {
             // Prune only when no worker holds an array index across an await.
             queue = try queueRepository.retainedTransfers()
             rebuildQueueIndexes()

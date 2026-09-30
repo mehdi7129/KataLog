@@ -1,3 +1,7 @@
+> **Recette de livraison 0.6.0 :** voir [RELEASE-0.6.0.md](RELEASE-0.6.0.md).
+> Ce document conserve le plan et les étapes de validation historiques ; les mentions
+> « aucune release » ci-dessous décrivent leur état au moment du contrôle.
+
 # Validation de l'interface macOS
 
 ## Référence 0.5.1
