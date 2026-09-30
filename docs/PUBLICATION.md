@@ -10,6 +10,14 @@ La visibilité reste privée pendant la préparation de la distribution publique
 L'app et ses futures archives doivent être reconstruites et auditées avant livraison.
 Les fichiers utilisateur et les originaux restent conservés localement.
 
+La revue du 30 septembre couvre aussi les surfaces GitHub : historique,
+auteurs noreply, branches, PR, runs et annotations. Deux anciennes entrées de
+runs ont été sauvegardées en privé puis supprimées avec autorisation explicite ;
+leurs check-runs ne sont plus accessibles. Le dernier run est skipped sans
+runner ni étape. Il faut refaire cette revue avant le passage public et après
+tout nouveau contenu GitHub. L’absence de données dans l’arbre source ne suffit
+pas à qualifier les métadonnées, pièces jointes, assets ou logs de CI.
+
 ## Ce qui entre dans le dépôt public
 
 - Code source, contrats, documentation technique et scripts reproductibles.

@@ -36,12 +36,31 @@ son emplacement habituel et les destinations explicites sont préservées.
   attribution SPDX et manifeste SHA/version/build. **17 tests distribution
   réussis**, dont six nouveaux tests d’intégrité. Le contrôle est obligatoire
   à partir de 0.6.0 ; les notices tierces sont conservées.
+- **Gate public consolidé :** Python exécute 308 cas en 37,932 s :
+  **307 réussis**, un seul corpus privé absent et annoncé, aucun échec ni skip
+  inattendu. Swift : **214 réussis**, zéro skip/échec ; Node : **13 réussis**,
+  zéro skip/échec. Cela représente **534 tests publics réussis** et une absence
+  privée distincte. Les 17 tests distribution et 38 tests Swift ciblés sont
+  compris dans ces suites ; ils ne sont pas ajoutés au total. Les 94 SHA des
+  inputs Swift restent identiques au gate natif et au clone consolidé.
 - **Matériel :** un drone disponible, découverte passive et inventaire réel
-  de deux ULogs. Le transfert physique n’est pas encore qualifié. Le lancement
+  de deux ULogs. Un premier transfert via le helper signé réussit :
+  **4 272 039 octets en 53,824 s**, signature ULog et SHA vérifiés. L’analyse
+  lit 48 messages avec un statut `ok`. Le second appel retourne le cache en
+  0,185 s, sans nouveau transfert et avec inode/mtime/taille inchangés ; le
+  réimport retrouve une analyse sans doublon ni erreur. Le second log est
+  arrêté localement en 0,838 s : aucun nouveau ULog n’est publié. La GCS finit
+  sa copie distante après 53,477 s, observée par abonnement passif ; la relance
+  réussit en 54,421 s. Les deux fichiers totalisent **8 598 637 octets**, sont
+  vérifiés et analysés (34 et 48 messages), puis retrouvés dans le cache sans
+  nouveau transfert. Le dernier réimport annonce deux inchangés, zéro import
+  ni erreur. Les UUID `metadata.gcsUUID` enregistrés sont vérifiés et égaux à
+  l’identité MQTT du drone ; le `sys_uuid` ULog distinct reste conservé. Le lancement
   du package corrigé ouvre l’Historique vide et les réglages GCS démarrent sans
   UUID installé. Les appels Computer Use suivants expirent ; le titulaire
-  confirme que la page Collecte GCS répond manuellement. Cela ne qualifie pas
-  le transfert GUI. Un seul drone
+  confirme que la page Collecte GCS répond manuellement. Le helper signé et
+  son analyse CLI sont qualifiés par cette recette ; cela ne qualifie pas
+  les boutons et transitions de l’interface GCS. Un seul drone
   ne ferme pas GCS-10 et ne qualifie ni deux transferts physiques concurrents
   ni une flotte de 500 appareils.
 - **Distribution :** Preview corrigée **0.6.0 (9)** construite et signée
@@ -534,16 +553,24 @@ réussis et l’audit final précommit est validé. La tentative de CI distante 
 consignée ci-dessous sans exécution de tests ; les 175 tests de l’audit 0.5.2 restent
 historiques.
 
-### Tentative de CI distante
+### Tentative historique de CI distante et choix des runners
 
-Le [run 36671218490](https://github.com/mehdi7129/KataLog/actions/runs/36671218490)
-de la PR privée, sur le commit `377d8af`, s’est terminé en échec **avant toute
+La tentative de CI de la PR privée, sur le commit `377d8af`, s’est terminée en échec **avant toute
 allocation de runner**. La CI hébergée était indisponible : chacun des quatre
 jobs possède un nom de runner vide et une liste d’étapes vide. **Aucun test distant,
 build ou package n’a été exécuté.** Aucun défaut du code ou du workflow n’a donc
 été reproduit par cette tentative, et aucun succès macOS15/27 en CI n’est
 revendiqué. L8-01 reste une qualification externe : l’exécution distante doit
-être rejouée lorsque la CI hébergée est disponible.
+être rejouée lorsque la CI hébergée est disponible. Les deux anciennes entrées
+de runs ont été sauvegardées localement et retirées avec autorisation du
+titulaire avant toute publication. Les annotations associées ne sont plus
+accessibles ; aucune étape n’avait été exécutée dans ces runs.
+
+Le workflow de la branche corrigée exige maintenant la visibilité `public`
+pour chacun de ses jobs, y compris un déclenchement manuel. Le run de
+`7e2c9bc` est **skipped**, avec deux jobs sans runner, étape ni annotation.
+Il prouve l’absence d’exécution privée de ce workflow, pas une validation
+distante du code. Les runners standard seront utilisés après passage public.
 
 ### Critères à fermer séparément
 
