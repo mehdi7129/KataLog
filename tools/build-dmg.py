@@ -2,6 +2,7 @@
 """Create the standard drag-to-Applications disk image from a signed app."""
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,10 @@ import shutil
 import tempfile
 
 import dmgbuild
+
+_mount_spec = importlib.util.spec_from_file_location('katalog_dmg_mount', Path(__file__).with_name('dmg_mount.py'))
+dmg_mount = importlib.util.module_from_spec(_mount_spec)
+_mount_spec.loader.exec_module(dmg_mount)
 
 
 def notarize(path, profile):
@@ -87,25 +92,18 @@ def _build_local(app, output, identity, profile=None):
         sign += ['--timestamp']
     subprocess.run(sign + [str(output)], check=True)
     subprocess.run(['/usr/bin/hdiutil', 'verify', str(output)], check=True)
-    with tempfile.TemporaryDirectory(prefix='katalog-dmg-content-', dir='/private/tmp') as mount:
-        mounted = False
-        try:
-            subprocess.run(['/usr/bin/hdiutil', 'attach', '-readonly', '-nobrowse', '-mountpoint', mount, str(output)], check=True, stdout=subprocess.DEVNULL)
-            mounted = True
-            copied = Path(mount) / app.name
-            copied_info = plistlib.loads((copied / 'Contents/Info.plist').read_bytes())
-            for key in ('CFBundleShortVersionString', 'CFBundleVersion', 'KatalogBundledEngineRequired'):
-                if copied_info.get(key) != info.get(key):
-                    raise ValueError('Le bundle copié dans le DMG ne correspond pas au build.')
-            link = Path(mount) / 'Applications'
-            if not link.is_symlink() or str(link.readlink()) != '/Applications':
-                raise ValueError('Le raccourci Applications est invalide.')
-            subprocess.run(['/usr/bin/codesign', '--verify', '--deep', '--strict', str(copied)], check=True)
-            helper = copied / 'Contents/Helpers/KataLogEngine.app/Contents/MacOS/KataLogEngine'
-            subprocess.run([str(helper), '--katalog-runtime-info'], check=True, stdout=subprocess.DEVNULL)
-        finally:
-            if mounted:
-                subprocess.run(['/usr/bin/hdiutil', 'detach', mount], check=True, stdout=subprocess.DEVNULL)
+    with dmg_mount.readonly_mount(output, prefix='katalog-dmg-content-') as mount:
+        copied = mount / app.name
+        copied_info = plistlib.loads((copied / 'Contents/Info.plist').read_bytes())
+        for key in ('CFBundleShortVersionString', 'CFBundleVersion', 'KatalogBundledEngineRequired'):
+            if copied_info.get(key) != info.get(key):
+                raise ValueError('Le bundle copié dans le DMG ne correspond pas au build.')
+        link = mount / 'Applications'
+        if not link.is_symlink() or str(link.readlink()) != '/Applications':
+            raise ValueError('Le raccourci Applications est invalide.')
+        subprocess.run(['/usr/bin/codesign', '--verify', '--deep', '--strict', str(copied)], check=True)
+        helper = copied / 'Contents/Helpers/KataLogEngine.app/Contents/MacOS/KataLogEngine'
+        subprocess.run([str(helper), '--katalog-runtime-info'], check=True, stdout=subprocess.DEVNULL)
     result = {'version': info['CFBundleShortVersionString'], 'build': info['CFBundleVersion'], 'notarization': None}
     if profile:
         result['notarization'] = notarize(output, profile)

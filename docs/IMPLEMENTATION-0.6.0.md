@@ -36,7 +36,7 @@ son emplacement habituel et les destinations explicites sont préservées.
   attribution SPDX et manifeste SHA/version/build. **17 tests distribution
   réussis**, dont six nouveaux tests d’intégrité. Le contrôle est obligatoire
   à partir de 0.6.0 ; les notices tierces sont conservées.
-- **Gate public consolidé :** Python exécute 308 cas en 37,932 s :
+- **Gate public avant le correctif de démontage :** Python exécute 308 cas en 37,932 s :
   **307 réussis**, un seul corpus privé absent et annoncé, aucun échec ni skip
   inattendu. Swift : **214 réussis**, zéro skip/échec ; Node : **13 réussis**,
   zéro skip/échec. Cela représente **534 tests publics réussis** et une absence
@@ -63,7 +63,7 @@ son emplacement habituel et les destinations explicites sont préservées.
   les boutons et transitions de l’interface GCS. Un seul drone
   ne ferme pas GCS-10 et ne qualifie ni deux transferts physiques concurrents
   ni une flotte de 500 appareils.
-- **Distribution :** Preview corrigée **0.6.0 (9)** construite et signée
+- **Distribution avant notarisation :** Preview corrigée **0.6.0 (9)** construite et signée
   Developer ID, **sept gates réussis**. Le scan inspecte 174 fichiers et 472
   payloads embarqués sans finding ; 22 composants natifs ARM64 sans dépendance
   externe. Import, cache, backup/restore, archivage, événements, courbes,
@@ -77,10 +77,49 @@ son emplacement habituel et les destinations explicites sont préservées.
   [RELEASING](RELEASING.md). Aucun credential ni soumission Apple n’est créé
   par cette passe. Le feed Sparkle reste désactivé.
 
-| Package corrigé 0.6.0 (9) | Octets | SHA256 |
+| Package corrigé 0.6.0 (9), avant notarisation | Octets | SHA256 |
 |---|---:|---|
 | DMG preview | 18 857 910 | `8cb8547e1e243ff3f1a0a5adbe7f76f3f27b725aee6ae463cbe119a616c769be` |
 | ZIP preview | 19 020 291 | `afabe2ad6acf8703ba0474d0ff942394d0d17d1eba2e89ae32f2ac27b18393fe` |
+
+### Notarisation de la Preview 0.6.0 (9)
+
+Le profil local est maintenant validé. Apple accepte le ZIP soumis et le
+nouveau DMG ; le journal de l'app contient zéro issue. Les tickets du helper
+et de l'app sont agrafés et validés avant de recréer le ZIP et le DMG.
+Les **174 fichiers originaux du bundle restent identiques** au package signé
+ci-dessus. Les anciens packages sont conservés séparément.
+
+La recette avec `--require-notarized` passe **neuf gates sur macOS 27.0.1** :
+metadata/licence, confidentialité, runtime ARM64 autonome, infrastructure
+Sparkle, signature stricte, import et collecte loopback, ticket/Gatekeeper de
+l'app, intégrité et installation du DMG, ticket/Gatekeeper du DMG. Le contrôle
+du volume monté valide explicitement les tickets de l'app **et du helper**.
+Le scan inspecte 176 fichiers et 472 payloads sans finding ; 22 composants
+natifs ARM64 n'ont aucune dépendance externe.
+
+Le démontage des volumes temporaires dispose de réessais bornés et réserve
+le dernier essai forcé au montage en lecture seule créé par le contexte.
+Un échec conserve le chemin et l'erreur ; aucune suppression récursive du
+répertoire potentiellement monté n'est tentée.
+
+Les **28 tests distribution réussissent**, dont neuf nouveaux cas sur le cycle
+de montage/démontage, le build après exécution du helper et les deux tickets
+dans le DMG. Le gate Python complet final exécute **317 cas : 316 réussis**,
+zéro échec/erreur/skip inattendu et le même corpus privé absent annoncé.
+Les 214 tests Swift et 13 Node précédents portent sur des sources inchangées ;
+ils ne sont pas rejoués pour ce correctif d'outillage. Le total consolidé est
+**543 tests publics réussis**, avec leurs dates et périmètres distincts.
+
+| Package notarisé 0.6.0 (9) | Octets | SHA256 |
+|---|---:|---|
+| DMG preview | 18 853 744 | `965640bf2627384410103cc0f49a22c14aa22256c5fb508f8addc37956284771` |
+| ZIP preview | 19 023 924 | `7531cb287a0f74ba22ac0c1fd7d88720a5e11b8253b2348f9b6915acf219d8b2` |
+
+Cette recette qualifie les fichiers locaux de Preview, pas une release stable,
+un téléchargement GitHub quarantiné, une installation sur Mac vierge/macOS 15
+ni le parcours GUI de mise à jour. Le feed reste désactivé ; aucune publication
+publique n'est effectuée.
 
 Les sources de cette recette sont figées dans une copie locale hors iCloud à
 partir du HEAD distant vérifié. Le dossier Desktop reste indisponible lors des

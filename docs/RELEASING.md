@@ -83,7 +83,16 @@ tickets avec `xcrun stapler validate`, puis vérifier `codesign --verify --deep 
 et `spctl --assess --type execute --verbose=2` sur l’app. Recréer le ZIP final
 avec `ditto -c -k --norsrc --keepParent` depuis cette app après stapling.
 
+Les outils de création du DMG sont testés avec Python 3.13. Si `python3`
+désigne le Python 3.9 fourni avec certains Command Line Tools, préparer le
+venv avec l'interpréteur 3.13 puis le désigner explicitement :
+
 ```sh
+python3.13 -m venv /private/tmp/katalog-dmg-tools-313
+```
+
+```sh
+KATALOG_DMG_BUILD_DIR=/private/tmp/katalog-dmg-tools-313 \
 KATALOG_SIGN_IDENTITY='Developer ID Application: NOM (TEAMID)' \
 KATALOG_NOTARY_PROFILE=MON_PROFIL \
   bash tools/build-dmg.sh

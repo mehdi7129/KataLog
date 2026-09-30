@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import shutil
 import struct
 import subprocess
 import sys
@@ -22,6 +23,82 @@ SPEC.loader.exec_module(recipe)
 
 
 class DistributionRecipeTests(unittest.TestCase):
+    def make_dmg_ticket_fixture(self, directory):
+        work = Path(directory)
+        app = work / "KataLog.app"
+        helper = app / recipe.HELPER_BUNDLE
+        helper.mkdir(parents=True)
+        (helper / "synthetic-runtime").write_bytes(b"Synthetic helper")
+        image = work / "synthetic.dmg"
+        image.write_bytes(b"Synthetic disk image")
+        mount = work / "owned-mount"
+        mount.mkdir()
+        return app, image, mount
+
+    def test_mounted_app_and_helper_tickets_are_required_only_with_notarization_flag(self):
+        for required in (False, True):
+            with self.subTest(required=required), tempfile.TemporaryDirectory(prefix="katalog-ticket-fixture-") as directory:
+                app, image, mount = self.make_dmg_ticket_fixture(directory)
+                calls, detaches = [], []
+
+                def command(arguments):
+                    calls.append(arguments)
+                    if arguments[:2] == ["/usr/bin/hdiutil", "attach"]:
+                        self.assertEqual(arguments[arguments.index("-mountpoint") + 1], mount)
+                        shutil.copytree(app, mount / app.name)
+                        (mount / "Applications").symlink_to("/Applications")
+                    elif arguments[1:3] == ["stapler", "validate"]:
+                        self.assertTrue(Path(arguments[-1]).is_dir())
+                    return b""
+
+                def detach(arguments, **options):
+                    detaches.append(arguments)
+                    if len(detaches) == 1:
+                        raise subprocess.CalledProcessError(16, arguments, stderr=b"Resource busy")
+                    shutil.rmtree(mount / app.name)
+                    (mount / "Applications").unlink()
+                    return subprocess.CompletedProcess(arguments, 0, stdout=b"")
+
+                verifier = recipe.Verification(app, require_notarized=required)
+                with patch.object(verifier, "command", side_effect=command), \
+                     patch.object(recipe.dmg_mount.tempfile, "mkdtemp", return_value=str(mount)), \
+                     patch.object(recipe.dmg_mount.subprocess, "run", side_effect=detach), \
+                     patch.object(recipe.dmg_mount.time, "sleep"):
+                    result = verifier.dmg(image)
+                tickets = [arguments[-1] for arguments in calls if arguments[1:3] == ["stapler", "validate"]]
+                self.assertEqual(tickets, [mount / app.name, mount / app.name / recipe.HELPER_BUNDLE] if required else [])
+                self.assertEqual(result.get("mountedHelperTicketAttached", False), required)
+                self.assertEqual(result.get("mountedAppTicketAttached", False), required)
+                self.assertEqual(len(detaches), 2)
+                self.assertFalse(mount.exists())
+
+    def test_missing_ticket_in_mounted_helper_fails_verification_and_still_detaches(self):
+        with tempfile.TemporaryDirectory(prefix="katalog-ticket-fixture-") as directory:
+            app, image, mount = self.make_dmg_ticket_fixture(directory)
+
+            def command(arguments):
+                if arguments[:2] == ["/usr/bin/hdiutil", "attach"]:
+                    shutil.copytree(app, mount / app.name)
+                    (mount / "Applications").symlink_to("/Applications")
+                elif arguments[1:3] == ["stapler", "validate"] and arguments[-1] == mount / app.name / recipe.HELPER_BUNDLE:
+                    raise recipe.CheckError("Mounted helper ticket is absent")
+                return b""
+
+            def detach(arguments, **options):
+                self.assertEqual(arguments, ["/usr/bin/hdiutil", "detach", str(mount)])
+                shutil.rmtree(mount / app.name)
+                (mount / "Applications").unlink()
+                return subprocess.CompletedProcess(arguments, 0, stdout=b"")
+
+            verifier = recipe.Verification(app, require_notarized=True)
+            with patch.object(verifier, "command", side_effect=command), \
+                 patch.object(recipe.dmg_mount.tempfile, "mkdtemp", return_value=str(mount)), \
+                 patch.object(recipe.dmg_mount.subprocess, "run", side_effect=detach):
+                verifier.check("dmg-ticket-fixture", lambda: verifier.dmg(image))
+            self.assertEqual(verifier.report["checks"][0]["status"], "failed")
+            self.assertEqual(verifier.report["checks"][0]["reason"], "Mounted helper ticket is absent")
+            self.assertFalse(mount.exists())
+
     def make_project_license_bundle(self, directory, version="0.6.0", build="8"):
         project = Path(directory) / "source"
         project.mkdir()

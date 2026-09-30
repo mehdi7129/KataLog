@@ -22,7 +22,9 @@ La recette suivante a révélé un défaut d’isolation GCS de la Preview et un
 reconnexion initiale prématurée ; leurs corrections passent 38 tests ciblés,
 puis 214 tests Swift complets sans échec ni skip. Le premier gate Swift de ces
 corrections avait échoué sur un cas simulé de retry GCS ; sa cause exacte reste
-inconnue. Le package corrigé 0.6.0 (9) passe sept gates locaux, sans notarisation.
+inconnue. Le package corrigé 0.6.0 (9) a d'abord passé sept gates locaux, sans
+notarisation. Sa nouvelle recette notarise l'app et le DMG, valide les tickets
+du helper et de l'app dans le volume monté et passe neuf gates sur macOS 27.0.1.
 La matrice conserve les gels et résultats historiques séparément.
 La licence **GPL-3.0-only** a été choisie par le titulaire. La CI attend la
 visibilité publique et n’alloue aucun runner pendant que le dépôt est privé.
@@ -159,7 +161,7 @@ ne demandent pas de reconstruire l'architecture déjà livrée.
 | L1-03 | P1 | Qualifier remplacement d'ancienne app et déplacement ; QA distribution, stores | L0-09, S | Fermeture/remplacement manuel, app dans deux emplacements ; même bibliothèque/numéros/familles/destination ; copie obsolète détectée ou parcours documenté sans perte | Qualification externe · remplacement |
 | L1-04 | P2 | Rendre build et audit reproductibles depuis checkout propre ; outils packaging | L0-06, L1-01 | Hashes/licences/manifeste vérifiés ; chemins de compilation neutralisés ; helper manquant/mauvaise version refusé ; aucune dépendance à path du poste | Implémenté · package final attendu |
 | L1-05 | P2 | Mesurer taille/démarrage/helper et prévoir refus runtime ; Core resolver/outils | L0-08, L1-04 | Cold/warm et environnements Python/PATH hostiles ; import/fiche/report/simulateur restent autonomes ; message de réparation compréhensible si bundle endommagé | Validé ciblé · helper final et banc natif |
-| L1-06 | P1 | Automatiser contrôles app/DMG/ZIP ; `verify-distribution.py`, release tooling | L1-04 | Outils éprouvés sur fixtures de manifeste/symlinks/contenus/signatures/tickets/SHA et packages de staging ; gate final exécuté en L8-10 après audit L8-09, avec mêmes bits dans DMG/ZIP | Validé ciblé · gate package attendu |
+| L1-06 | P1 | Automatiser contrôles app/DMG/ZIP ; `verify-distribution.py`, release tooling | L1-04 | Outils éprouvés sur fixtures de manifeste/symlinks/contenus/signatures/tickets/SHA et packages de staging ; gate final exécuté en L8-10 après audit L8-09, avec mêmes bits dans DMG/ZIP | Validé ciblé · Preview 9 notarisée |
 
 ## L2 — Conservation, sauvegarde et archives
 
@@ -343,4 +345,4 @@ sont pas des compromis de performance.
 - Port Intel, Windows ou mobile : pas implicites dans cette roadmap macOS
   Apple Silicon ; décision et banc séparés si demandés.
 
-**Prochaines portes :** terminer la recette GUI (Computer Use expire), créer le profil de notarisation, puis exécuter les recettes externes disponibles. Le helper signé a récupéré et analysé les deux logs d’un drone réel : arrêt local, fin distante observée, relance, SHA, cache et réimport sans doublon vérifiés. Cela ne ferme pas la recette à deux drones ni les transitions GUI. Le diagnostic Swift et les sept gates du package corrigé sont réussis ; le premier échec simulé garde sa limite de cause inconnue. La CI utilisera les runners standard après publication publique, conformément au choix utilisateur. L’approbation UI et le choix GPL-3.0-only sont enregistrés. Le feed, la release et le passage public gardent leurs portes distinctes. La branche de développement et les tests ne modifient pas l’installation utilisateur.
+**Prochaines portes :** terminer la recette GUI (Computer Use expire), puis exécuter les recettes externes disponibles. Le profil local de notarisation est validé ; la Preview 0.6.0 (9) et son DMG sont acceptés par Apple et passent neuf gates, dont Gatekeeper et les tickets dans la copie montée. Le helper signé a récupéré et analysé les deux logs d’un drone réel : arrêt local, fin distante observée, relance, SHA, cache et réimport sans doublon vérifiés. Cela ne ferme pas la recette à deux drones ni les transitions GUI. Le diagnostic Swift est réussi ; le premier échec simulé garde sa limite de cause inconnue. La CI utilisera les runners standard après publication publique, conformément au choix utilisateur. L’approbation UI et le choix GPL-3.0-only sont enregistrés. Le feed, la release et le passage public gardent leurs portes distinctes. La branche de développement et les tests ne modifient pas l’installation utilisateur.

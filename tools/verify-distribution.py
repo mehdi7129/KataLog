@@ -32,6 +32,10 @@ import zlib
 import zipfile
 from urllib.parse import urlsplit
 
+_mount_spec = importlib.util.spec_from_file_location("katalog_dmg_mount", Path(__file__).with_name("dmg_mount.py"))
+dmg_mount = importlib.util.module_from_spec(_mount_spec)
+_mount_spec.loader.exec_module(dmg_mount)
+
 PARSER_VERSION = "1.4.0"
 SPARKLE_VERSION = "2.10.0"
 HELPER_BUNDLE = Path("Contents/Helpers/KataLogEngine.app")
@@ -847,21 +851,21 @@ class Verification:
     def dmg(self, path: Path):
         self.command(["/usr/bin/hdiutil", "verify", path])
         self.report["dmgSHA256"] = sha256(path)
-        with tempfile.TemporaryDirectory(prefix="katalog-dmg-recipe-", dir="/private/tmp") as temporary:
-            mount = Path(temporary) / "mount"
-            mount.mkdir()
-            mounted = False
-            try:
-                self.command(["/usr/bin/hdiutil", "attach", "-readonly", "-nobrowse", "-noautoopen", "-mountpoint", mount, path])
-                mounted = True
+        try:
+            with dmg_mount.readonly_mount(path, prefix="katalog-dmg-recipe-", command=self.command) as mount:
                 layout = validate_dmg_layout(mount, app_name=self.app.name)
                 if bundle_manifest(mount / self.app.name) != bundle_manifest(self.app):
                     raise CheckError("DMG app differs from the verified app")
                 self.command(["/usr/bin/codesign", "--verify", "--deep", "--strict", "--verbose=2", mount / self.app.name])
-                return {"imageIntegrity": True, "readOnlyMount": True, "dragToApplications": True, "appMatches": True, **layout}
-            finally:
-                if mounted:
-                    self.command(["/usr/bin/hdiutil", "detach", mount])
+                tickets = {}
+                if self.require_notarized:
+                    for bundle in (mount / self.app.name, mount / self.app.name / HELPER_BUNDLE):
+                        self.command(["/usr/bin/xcrun", "stapler", "validate", bundle])
+                    tickets = {"mountedAppTicketAttached": True, "mountedHelperTicketAttached": True}
+                return {"imageIntegrity": True, "readOnlyMount": True, "dragToApplications": True,
+                        "appMatches": True, **layout, **tickets}
+        except dmg_mount.TemporaryMountError as error:
+            raise CheckError(str(error)) from error
 
 
 def bundle_manifest(root: Path):
