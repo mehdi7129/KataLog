@@ -57,6 +57,16 @@ les valeurs et types ; elle n’attribue pas une cause de panne.
 Le parseur courant est **1.4.0**, avec projection SQLite **7**. Les anciennes
 analyses sont conservées et leur recalcul est explicite.
 
+### En développement : diagnostic complet
+
+Dans **Réglages → Diagnostic local**, la branche de développement propose une
+prévisualisation avant export ZIP : état de l’app, chronologie locale et, à votre
+demande, journaux de la GCS. Les données restent sur le Mac. Les messages GCS
+libres sont retirés par défaut ; les journaux bruts et les ULogs choisis sont deux
+options privées distinctes. Cette fonctionnalité n’est pas dans la release 0.6.0.
+
+[Contenu, limites et recette du diagnostic](docs/DIAGNOSTICS.md).
+
 ## Installation et utilisation
 
 ### Installer une release

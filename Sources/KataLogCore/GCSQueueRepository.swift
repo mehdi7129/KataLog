@@ -88,6 +88,26 @@ public final class GCSQueueRepository: @unchecked Sendable {
         return writes
     }
 
+    /// Count the complete history without decoding the bounded UI page. Jobs
+    /// created since the latest persistence pass are included exactly once.
+    public func transferCount(overlay: [GCSTransfer] = []) throws -> Int {
+        lock.lock(); defer { lock.unlock() }
+        let statement = try prepare("SELECT COUNT(*) FROM transfers")
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else { throw AnalysisError.engine("Le nombre de transferts n’a pas pu être lu.") }
+        var count = Int(sqlite3_column_int64(statement, 0))
+        let identifiers = Array(Set(overlay.map(\.id)))
+        for offset in stride(from: 0, to: identifiers.count, by: 500) {
+            let batch = Array(identifiers[offset..<min(offset + 500, identifiers.count)])
+            let existing = try prepare("SELECT COUNT(*) FROM transfers WHERE id IN (" + Array(repeating: "?", count: batch.count).joined(separator: ",") + ")")
+            defer { sqlite3_finalize(existing) }
+            for (index, id) in batch.enumerated() { bind(id, at: Int32(index + 1), to: existing) }
+            guard sqlite3_step(existing) == SQLITE_ROW else { throw AnalysisError.engine("Le nombre de transferts récents n’a pas pu être lu.") }
+            count += batch.count - Int(sqlite3_column_int64(existing, 0))
+        }
+        return count
+    }
+
     public func retainedTransfers(terminalLimit: Int = 200) throws -> [GCSTransfer] {
         lock.lock(); defer { lock.unlock() }
         let statement = try prepare("SELECT payload FROM transfers WHERE state IN ('queued','retrying','downloading','importing') OR remote_busy_until > ? OR id IN (SELECT id FROM transfers WHERE state NOT IN ('queued','retrying','downloading','importing') ORDER BY position DESC LIMIT ?) ORDER BY position")

@@ -34,6 +34,21 @@ final class GCSQueueRepositoryTests: XCTestCase {
         XCTAssertThrowsError(try reopened.saveTransfers([item]))
     }
 
+    func testDiagnosticCountsCompleteHistoryAndUnsavedJobsBeyondUIWindow() throws {
+        let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("queue.sqlite")
+        let repository = try GCSQueueRepository(url: url)
+        let stored = (0..<700).map { job($0) }
+        try repository.saveTransfers(stored)
+        XCTAssertEqual(try repository.retainedTransfers().count, 200)
+        XCTAssertEqual(try repository.transferCount(), 700)
+        let new = job(701, state: "queued")
+        XCTAssertEqual(try repository.transferCount(overlay: [stored[0], new, new]), 701)
+        try repository.saveTransfers([new])
+        let reopened = try GCSQueueRepository(url: url, readOnly: true)
+        XCTAssertEqual(try reopened.transferCount(overlay: [new]), 701)
+    }
+
     func testPersistedAndLiveOverlayWorkMatchAcrossDroneHTTPVerificationAndCompletion() throws {
         let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("queue.sqlite")

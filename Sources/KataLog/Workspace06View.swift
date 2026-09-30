@@ -10,6 +10,7 @@ struct Workspace06View: View {
     @StateObject private var storage: LibraryStorageStore
     @StateObject private var updates = UpdateStore()
     @StateObject private var reportPreview = ReportPreviewStore()
+    @StateObject private var diagnostics: DiagnosticStore
     @State private var page: Page = .overview
     @State private var showingFlight = false
     @State private var showingScope = false
@@ -33,7 +34,7 @@ struct Workspace06View: View {
     @State private var restoreCandidate: URL?
     @State private var restorePreview: JSONValue?
     @State private var maintenanceTask: Task<Void, Never>?
-    @State private var diagnosticPreview: String?
+    @State private var showingDiagnostic = false
     @State private var importSource: URL?
     @State private var importOptions = ImportOptionsState()
     @State private var maskGroup: LibraryGroup?
@@ -69,6 +70,7 @@ struct Workspace06View: View {
         self.library = library; self.gcs = gcs; views = library.views
         _page = State(initialValue: initialPage)
         _storage = StateObject(wrappedValue: LibraryStorageStore(library: library))
+        _diagnostics = StateObject(wrappedValue: library.diagnosticStore)
     }
     private var totals: LibraryTotals? { library.historyPage?.totals }
     private var theme: ColorScheme? { WorkspaceAppearance.colorScheme(for: views.state.theme) }
@@ -149,7 +151,11 @@ struct Workspace06View: View {
         .sheet(item: $identity) { DroneNumberEditor(target: $0, store: library.annotations) }
         .sheet(isPresented: $showingSources) { SourcesImportView(library: library, externalBusy: gcs.isBusy).preferredColorScheme(theme) }
         .sheet(isPresented: Binding(get: { restorePreview != nil }, set: { if !$0 { restorePreview = nil; restoreCandidate = nil } }), onDismiss: { focusedControl = .restore }) { restoreSheet }
-        .sheet(isPresented: Binding(get: { diagnosticPreview != nil }, set: { if !$0 { diagnosticPreview = nil } }), onDismiss: { focusedControl = .diagnostic }) { diagnosticSheet }
+        .sheet(isPresented: $showingDiagnostic, onDismiss: { diagnostics.dismiss(); focusedControl = .diagnostic }) {
+            DiagnosticView(store: diagnostics, host: gcs.host, readOnly: library.isReadOnly, externalBusy: mutationBusy || library.isExporting,
+                refresh: { diagnostics.load(report: currentDiagnosticReport()) }, close: { showingDiagnostic = false })
+                .preferredColorScheme(theme)
+        }
         .sheet(isPresented: Binding(get: { importSource != nil }, set: { if !$0 { importSource = nil } }), onDismiss: { focusedControl = .importFolder }) {
             if let source = importSource { ImportOptions06(source: source, initialState: importOptions, canApply: { !mutationBusy && !library.isReadOnly }) { destination in
                 if let destination { importOptions.archiveDirectory = destination.path; try ImportOptionsPersistence.save(importOptions, library: library) }
@@ -833,11 +839,22 @@ struct Workspace06View: View {
                 Picker("Thème", selection: themeSelection) { Text("Système").tag("system"); Text("Clair").tag("light"); Text("Sombre").tag("dark") }.pickerStyle(.segmented).disabled(library.isReadOnly || library.isMaintainingLibrary)
             }
             UpdateSettingsView(store: updates, readOnly: library.isReadOnly)
-            panel { Text("Diagnostic local").font(.headline); Text("Versions, système et états de l’app uniquement. Aucun log, texte d’erreur libre, chemin, identité, endpoint GCS ou coordonnée n’est inclus.").font(.callout).foregroundStyle(.secondary); Text("Les comptes de la bibliothèque qualifient la sélection active. Les jobs, masquages et vues qualifient l’app ; chaque compte indique son périmètre dans le JSON.").font(.caption).foregroundStyle(.secondary); Button("Prévisualiser le diagnostic") { makeDiagnostic() }.focused($focusedControl, equals: .diagnostic) }
+            panel {
+                HStack(alignment: .top, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text("Diagnostic local").font(.system(size: 16, weight: .semibold)).tracking(-0.4)
+                        Text("Comprenez les connexions, collectes et analyses à partir du journal de KataLog. Ajoutez les logs GCS ou les ULogs utiles, puis vérifiez le contenu avant l’export.")
+                            .font(.system(size: 12)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "waveform.path.ecg").font(.system(size: 21)).foregroundStyle(palette.secondary).accessibilityHidden(true)
+                }
+                Text("Export local · données privées exclues par défaut · aucun envoi automatique.")
+                    .font(.system(size: 11)).foregroundStyle(palette.secondary)
+                Button("Prévisualiser le diagnostic complet", systemImage: "doc.text.magnifyingglass") { makeDiagnostic() }
+                    .focused($focusedControl, equals: .diagnostic).accessibilityIdentifier("diagnostic.open")
+            }
         }
-    }
-    private var diagnosticSheet: some View {
-        VStack(alignment: .leading, spacing: 16) { Text("Diagnostic sans données privées").font(.title2); ScrollView { Text(diagnosticPreview ?? "").font(.system(.caption, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }; HStack { Button("Fermer") { diagnosticPreview = nil }.keyboardShortcut(.cancelAction); Spacer(); Button("Exporter…") { let panel = NSSavePanel(); panel.nameFieldStringValue = "KataLog-diagnostic.json"; if panel.runModal() == .OK, let url = panel.url { edit { try (diagnosticPreview ?? "").write(to: url, atomically: true, encoding: .utf8) } } } } }.padding(26).frame(width: 640, height: 580)
     }
     private var restoreSheet: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -901,12 +918,15 @@ struct Workspace06View: View {
         reportPreview.load(library: library, mode: reportMode, options: reportOptions)
     }
     private func makeDiagnostic() {
-        var counts = ["jobs": gcs.queue.count, "masks": views.state.maskedMessageKeys.count, "savedViews": views.state.views.count]
-        var scopes: [String: DiagnosticReport.CountScope] = ["jobs": .application, "masks": .application, "savedViews": .application]
+        diagnostics.load(report: currentDiagnosticReport()); showingDiagnostic = true
+    }
+    private func currentDiagnosticReport() -> DiagnosticReport {
+        var counts = ["masks": views.state.maskedMessageKeys.count, "savedViews": views.state.views.count]
+        var scopes: [String: DiagnosticReport.CountScope] = ["masks": .application, "savedViews": .application]
+        if let jobCount = gcs.diagnosticJobCount { counts["jobs"] = jobCount; scopes["jobs"] = .application }
         if let totals { counts["logs"] = totals.logs; counts["messages"] = totals.messages; counts["identities"] = totals.droneCount; scopes["logs"] = .activeSelection; scopes["messages"] = .activeSelection; scopes["identities"] = .activeSelection }
         let helper = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/KataLogEngine.app/Contents/MacOS/KataLogEngine")
-        let report = DiagnosticReport(appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development", appBuild: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "development", operations: ["import": library.isImporting, "collection": gcs.isBusy, "export": library.isExporting, "maintenance": library.isMaintainingLibrary, "readOnly": library.isReadOnly, "gcsConnected": gcs.isConnected], counts: counts, countScope: scopes, runtimeBundled: FileManager.default.isExecutableFile(atPath: helper.path))
-        edit { diagnosticPreview = String(data: try report.data(), encoding: .utf8) }
+        return DiagnosticReport(appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development", appBuild: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "development", operations: ["import": library.isImporting, "collection": gcs.isBusy, "export": library.isExporting, "maintenance": library.isMaintainingLibrary, "readOnly": library.isReadOnly, "gcsConnected": gcs.isConnected], counts: counts, countScope: scopes, runtimeBundled: FileManager.default.isExecutableFile(atPath: helper.path))
     }
 }
 
