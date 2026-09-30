@@ -30,7 +30,7 @@ enum ReportInteraction {
             return !search || matchesLog || norm([message.text,message.title,message.family].join(' ')).includes(search);
           });
           if (hasMessageFilter && !messages.length && !(matchesLog && !family && !level)) return [];
-          return [{log,messages,includeFailsafe:!hasMessageFilter}];
+          return [{log,messages,includeFailsafe:!hasMessageFilter && log.selectionIncludesFailsafe !== false}];
         });
       }
       const withAlerts = item => item.log.status !== 'error' && (item.messages.some(m => m.isAlert) || (item.includeFailsafe && item.log.failsafeObserved));
@@ -67,7 +67,24 @@ enum ReportInteraction {
         }
         return [...days.values()].sort((a,b) => a.day.localeCompare(b.day));
       }
-      if (typeof module !== 'undefined' && module.exports) module.exports = {selectLogs,statistics,familyCounts,dailyCounts,dayKey};
+      function groupCounts(selected) {
+        const groups = new Map();
+        for (const {log,messages} of selected) for (const message of messages) {
+          if (!groups.has(message.groupKey)) groups.set(message.groupKey,{messages:0,logs:new Set(),byLog:new Map()});
+          const group=groups.get(message.groupKey);
+          group.messages++; group.logs.add(log.id);
+          group.byLog.set(log.id,(group.byLog.get(log.id)||0)+1);
+        }
+        return groups;
+      }
+      function pageWindow(values, index=0, size=100) {
+        const limit = Number.isInteger(size) && size > 0 ? size : 100;
+        const last = Math.max(0, Math.ceil(values.length/limit)-1);
+        const page = Math.max(0,Math.min(last,Number.isInteger(index)?index:0));
+        const start=page*limit, end=Math.min(values.length,start+limit);
+        return {items:values.slice(start,end),index:page,start,end,total:values.length,hasPrevious:page>0,hasNext:end<values.length};
+      }
+      if (typeof module !== 'undefined' && module.exports) module.exports = {selectLogs,statistics,familyCounts,dailyCounts,dayKey,groupCounts,pageWindow};
       if (typeof document === 'undefined') return;
       const $ = id => document.getElementById(id);
       const el = (tag, className, text) => {
@@ -94,8 +111,72 @@ enum ReportInteraction {
         const filters = {drone:'',family:'',level:'',query:'',day:''};
         const cards = [...document.querySelectorAll('.log-card')];
         const groupCards = [...document.querySelectorAll('.alert-group')];
-        let current = [], pendingSearch;
+        let current = [], pendingSearch, currentByLog=new Map(), currentGroups=new Map(), printing=false;
+        const logByID = new Map(data.logs.map(log=>[log.id,log]));
+        const cardByID = new Map(cards.map(card=>[card.dataset.log,card]));
+        const detailPages = new Map(), pageSize=100;
         const empty = (container,text) => container.replaceChildren(el('p','empty-state',text));
+        const table = headers => {
+          const wrap=el('div','table-wrap'), node=el('table'), head=el('thead'), tr=el('tr'), body=el('tbody');
+          for(const label of headers)tr.append(el('th','',label));
+          head.append(tr);node.append(head,body);wrap.append(node);return {wrap,node,body};
+        };
+        function detailWindow(card,values) {
+          if(printing)return {items:values,start:0,end:values.length,total:values.length,index:0,hasPrevious:false,hasNext:false};
+          const page=pageWindow(values,detailPages.get(card)||0,pageSize);detailPages.set(card,page.index);return page;
+        }
+        function pager(card,page,noun,refresh) {
+          const controls=el('div','detail-pagination');
+          controls.style.cssText='display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:12px 0';
+          const label=el('span','muted',page.total ? integer.format(page.start+1)+'–'+integer.format(page.end)+' / '+count(page.total,noun) : 'Aucun '+noun+' pour ces filtres.');
+          label.setAttribute('role','status');
+          controls.append(label);
+          if(!printing&&page.total>pageSize){
+            const changePage=(index,direction)=>{
+              const active=document.activeElement,restoreFocus=active?.dataset.detailPage===direction&&card.contains(active);
+              detailPages.set(card,index);refresh(card);
+              if(restoreFocus){
+                const buttons=[...card.querySelectorAll('.detail-pagination button')];
+                const target=buttons.find(node=>node.dataset.detailPage===direction&&!node.disabled)||buttons.find(node=>!node.disabled);
+                target?.focus({preventScroll:true});
+              }
+            };
+            const previous=button('Précédent',()=>changePage(page.index-1,'previous'));previous.disabled=!page.hasPrevious;previous.dataset.detailPage='previous';
+            const next=button('Suivant',()=>changePage(page.index+1,'next'));next.disabled=!page.hasNext;next.dataset.detailPage='next';
+            previous.setAttribute('aria-label','Page précédente des '+noun+' du détail');next.setAttribute('aria-label','Page suivante des '+noun+' du détail');
+            controls.append(previous,next,el('small','muted','Toutes les données restent dans ce rapport. L’impression couvre la sélection intégrale.'));
+          }
+          return controls;
+        }
+        function clearDetail(card,selector) {const target=card.querySelector(selector);if(target){target.replaceChildren();target.hidden=true;}}
+        function hydrateLog(card) {
+          const target=card.querySelector('.lazy-message-table'), item=currentByLog.get(card.dataset.log);
+          if(!target)return;
+          if(!card.open||card.hidden||!item){clearDetail(card,'.lazy-message-table');return;}
+          const page=detailWindow(card,item.messages), content=table(['t (s)','Niveau','Famille','Message source']);content.node.className='message-table';
+          for(const message of page.items){
+            const row=el('tr','message-row');row.dataset.index=String(message.index);
+            const tone=rank(message.level)>=5?'danger':rank(message.level)>=4?'warning':'neutral';
+            const level=el('td'),family=el('td','',message.family);level.append(el('span','severity '+tone,message.level));
+            if(message.sourceFamily)family.append(el('small','','Manuelle · détectée : '+message.sourceFamily));
+            row.append(el('td','mono',Number.isFinite(message.timeSeconds)?message.timeSeconds.toFixed(2):'non disponible'),level,family,el('td','raw',message.text));content.body.append(row);
+          }
+          target.replaceChildren(pager(card,page,'message',hydrateLog),content.wrap);target.hidden=false;
+        }
+        function hydrateGroup(card) {
+          const target=card.querySelector('.lazy-occurrence-table'), group=currentGroups.get(card.dataset.group);
+          if(!target)return;
+          if(!card.open||card.hidden||!group){clearDetail(card,'.lazy-occurrence-table');return;}
+          const values=[...group.byLog.keys()].sort(),page=detailWindow(card,values),content=table(['Drone','Log','Messages']);
+          for(const id of page.items){
+            const log=logByID.get(id),logCard=cardByID.get(id);if(!log||!logCard)continue;
+            const row=el('tr','group-occurrence');row.dataset.log=id;
+            const cell=el('td'),link=el('a','',log.fileName+' · '+log.date);link.href='#'+logCard.id;link.dataset.openLog=logCard.id;
+            link.addEventListener('click',()=>{logCard.open=true;hydrateLog(logCard);});cell.append(link);
+            row.append(el('td','',log.droneName),cell,el('td','occurrence-message-count',integer.format(group.byLog.get(id))));content.body.append(row);
+          }
+          target.replaceChildren(pager(card,page,'log',hydrateGroup),content.wrap);target.hidden=false;
+        }
         function filterFamily(name) { filters.family = filters.family === name ? '' : name; $('family-filter').value = filters.family; render(); }
         function drawFamilies(selected,stats) {
           const values = familyCounts(selected), container = $('family-chart'), legend = $('family-legend');
@@ -164,13 +245,11 @@ enum ReportInteraction {
             control.append(el('strong','timeline-value',String(item.total)),bars,el('span','timeline-label',label)); container.append(control);
           }
         }
-        function render() {
+        function render(resetPages=true) {
+          if(resetPages)detailPages.clear();
           current = selectLogs(data.logs,filters);
-          const stats = statistics(current), byLog = new Map(current.map(item=>[item.log.id,item])), groups = new Map();
-          for (const item of current) for (const message of item.messages) {
-            if (!groups.has(message.groupKey)) groups.set(message.groupKey,{messages:0,logs:new Set()});
-            const group=groups.get(message.groupKey); group.messages++; group.logs.add(item.log.id);
-          }
+          const stats = statistics(current), byLog = new Map(current.map(item=>[item.log.id,item])), groups = groupCounts(current);
+          currentByLog=byLog;currentGroups=groups;
           $('stat-drones').textContent = integer.format(stats.droneCount);
           $('stat-logs').textContent = integer.format(stats.logCount);
           $('stat-quality').textContent = count(stats.validLogCount,'lisible')+' · '+stats.failedLogCount+' en erreur';
@@ -183,24 +262,23 @@ enum ReportInteraction {
           if(filters.level) scope.push($('level-filter').selectedOptions[0].textContent);
           if(filters.query.trim()) scope.push('Recherche : '+filters.query.trim());
           if(filters.day) scope.push('Période : '+prettyDay(filters.day));
-          $('filter-status').textContent = (scope.length?scope.join(' · '):'Toute la bibliothèque')+' — '+stats.logCount+' / '+data.logs.length+' fichiers · '+count(stats.messageCount,'message');
+          $('filter-status').textContent = (scope.length?scope.join(' · '):'Tout le périmètre exporté')+' — '+stats.logCount+' / '+data.logs.length+' fichiers · '+count(stats.messageCount,'message');
           $('reset-filters').disabled = !scope.length;
           $('group-summary').textContent = count(groups.size,'groupe')+' · '+count(stats.messageCount,'message');
           $('groups-empty').hidden = groups.size>0; $('logs-empty').hidden = current.length>0;
           for (const card of cards) {
             const item = byLog.get(card.dataset.log); card.hidden = !item;
-            if (!item) continue;
+            if (!item) {clearDetail(card,'.lazy-message-table');continue;}
             card.querySelector('.visible-message-count').textContent = count(item.messages.length,'message');
-            const indices = new Set(item.messages.map(message=>message.index));
-            for (const row of card.querySelectorAll('.message-row')) row.hidden = !indices.has(Number(row.dataset.index));
+            hydrateLog(card);
           }
           const droneIDs = new Set(current.map(item=>item.log.droneID));
           for (const section of document.querySelectorAll('.drone-section')) section.hidden = !droneIDs.has(section.dataset.drone);
           for (const card of groupCards) {
             const group = groups.get(card.dataset.group); card.hidden = !group;
-            if (!group) continue;
+            if (!group) {clearDetail(card,'.lazy-occurrence-table');continue;}
             card.querySelector('.group-count').textContent = count(group.logs.size,'log')+' · '+count(group.messages,'message');
-            for (const row of card.querySelectorAll('.group-occurrence')) row.hidden = !group.logs.has(row.dataset.log);
+            hydrateGroup(card);
           }
           const otherGroups = $('other-groups');
           if (otherGroups) {
@@ -216,12 +294,22 @@ enum ReportInteraction {
         for (const [id,key] of [['drone-filter','drone'],['family-filter','family'],['level-filter','level']]) $(id).addEventListener('change',e=>{filters[key]=e.target.value;render();});
         $('report-search').addEventListener('input',e=>{filters.query=e.target.value;clearTimeout(pendingSearch);pendingSearch=setTimeout(render,100);});
         $('reset-filters').addEventListener('click',()=>{clearTimeout(pendingSearch);Object.keys(filters).forEach(key=>filters[key]='');['drone-filter','family-filter','level-filter','report-search'].forEach(id=>$(id).value='');render();});
-        $('expand-logs').addEventListener('click',()=>{const visible=cards.filter(card=>!card.hidden), open=!visible.every(card=>card.open);visible.forEach(card=>card.open=open);$('expand-logs').textContent=open?'Replier les logs visibles':'Déplier les logs visibles';});
+        cards.forEach(card=>card.addEventListener('toggle',()=>hydrateLog(card)));
+        groupCards.forEach(card=>card.addEventListener('toggle',()=>hydrateGroup(card)));
+        $('expand-logs').addEventListener('click',()=>{const visible=cards.filter(card=>!card.hidden), open=!visible.every(card=>card.open);visible.forEach(card=>{card.open=open;hydrateLog(card);});$('expand-logs').textContent=open?'Replier les logs visibles':'Déplier les logs visibles';});
         for (const link of document.querySelectorAll('[data-open-log]')) link.addEventListener('click',()=>{const target=$(link.dataset.openLog);if(target)target.open=true;});
-        let printStates=[];
-        window.addEventListener('beforeprint',()=>{printStates=[...document.querySelectorAll('details')].map(node=>[node,node.open]);for(const [node] of printStates)if(!node.closest('[hidden]'))node.open=true;});
-        window.addEventListener('afterprint',()=>{for(const [node,open] of printStates)node.open=open;printStates=[];});
-        $('print-report').addEventListener('click',()=>{clearTimeout(pendingSearch);render();window.print();});
+        let printStates=[],printPages=new Map();
+        window.addEventListener('beforeprint',()=>{
+          if(printing)return;clearTimeout(pendingSearch);render(false);
+          printPages=new Map(detailPages);printStates=[...document.querySelectorAll('details')].map(node=>[node,node.open]);printing=true;
+          for(const [node] of printStates)if(!node.closest('[hidden]'))node.open=true;
+          cards.forEach(hydrateLog);groupCards.forEach(hydrateGroup);
+        });
+        window.addEventListener('afterprint',()=>{
+          if(!printing)return;printing=false;detailPages.clear();for(const [card,index] of printPages)detailPages.set(card,index);
+          for(const [node,open] of printStates)node.open=open;printStates=[];printPages.clear();render(false);
+        });
+        $('print-report').addEventListener('click',()=>{clearTimeout(pendingSearch);render(false);window.print();});
         const themeButton=$('theme-toggle');
         function dark(){return document.documentElement.dataset.theme?document.documentElement.dataset.theme==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;}
         function themeLabel(){themeButton.textContent=dark()?'Thème clair':'Thème sombre';}
@@ -231,6 +319,14 @@ enum ReportInteraction {
       } catch (error) {
         const notice=el('p','notice','Les filtres interactifs n’ont pas pu être chargés. Le rapport complet reste disponible ci-dessous.');
         document.querySelector('.scope-bar').append(notice);
+        // noscript is raw text when page scripts are enabled. These fragments
+        // were escaped by the renderer; parse only that trusted fallback, never
+        // a message or a value from the JSON payload as markup.
+        for(const fallback of document.querySelectorAll('noscript.message-fallback,noscript.occurrence-fallback')){
+          const parsed=new DOMParser().parseFromString(fallback.textContent,'text/html');
+          fallback.replaceWith(...[...parsed.body.childNodes].map(node=>document.importNode(node,true)));
+        }
+        document.querySelectorAll('.lazy-message-table,.lazy-occurrence-table').forEach(node=>node.remove());
         for (const node of document.querySelectorAll('.log-card,.drone-section,.alert-group,.message-row,.group-occurrence')) node.hidden=false;
       }
     })();

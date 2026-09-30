@@ -1,87 +1,112 @@
-# Publier une version macOS
+# Distribution macOS hors App Store
 
-Le dépôt est destiné à devenir public. La visibilité reste privée tant que la
-[préparation publique](PUBLICATION.md) n’est pas terminée. La mise à jour utilisateur est décrite
-dans le [README](../README.md#mettre-à-jour-une-app-déjà-installée) ; KataLog ne
-possède pas encore d’updater automatique.
+Le dépôt reste privé jusqu’à une décision explicite de publication. La version
+locale 0.5.2 (7) prépare une installation autonome ; elle ne livre pas les autres
+lots 0.6.0 et ne contient pas encore Sparkle.
 
-## Distribution cible 0.6.0 : DMG hors App Store
+## Parcours utilisateur
 
-Le téléchargement utilisateur fournit un **DMG signé et notarisé**, avec
-**KataLog.app** et un lien **Applications**. Installation : ouvrir le DMG,
-glisser l'app dans Applications, éjecter puis lancer. Aucun Terminal, Homebrew,
-Python séparé ou App Store n'est requis une fois le moteur embarqué.
+Télécharger le **DMG signé et notarisé**, l’ouvrir, glisser **KataLog.app** dans
+**Applications**, éjecter puis lancer. Aucun Python, Homebrew, Terminal ni App Store
+n’est requis pour utiliser le package. Mac Apple Silicon, macOS 15 minimum ;
+recette exécutée sur macOS 27. Le minimum déclaré ne vaut pas recette physique
+sur toutes les versions de macOS.
 
-L'app est signée avant le packaging ; les tickets de notarisation sont agrafés
-aux livrables appropriés avant vérification. L'archive ZIP utilisée par Sparkle,
-si distincte, provient du même bundle final contrôlé. Clés privées de signature
-et de mise à jour restent dans le Trousseau ou un stockage de secrets.
+## Préparer et tester
 
-La release 0.5.1 privée est encore un ZIP avec Python externe. Ses chemins de
-compilation imposent un nouveau build audité avant publication publique ; elle
-ne doit pas être exposée simplement en changeant la visibilité du dépôt.
+1. Fixer les versions dans `tools/build-app.sh` et `project.yml`, puis `xcodegen generate`.
+2. Exécuter les suites Swift, Python et Node du README. `KATALOG_PRIVATE_FIXTURES`
+   désigne uniquement le corpus local ; les ULog et résultats privés restent hors Git.
+3. Exécuter `python3 tools/check-publication.py --include-untracked` et un scanner
+   de secrets ; vérifier historique, auteurs et tous les assets séparément.
+4. Vérifier certificat Developer ID et profil de notarisation disponibles dans le
+   Trousseau. Les noms et secrets du poste ne doivent pas entrer dans les sources.
 
-## Préparer
-
-1. Mettre à jour `CFBundleShortVersionString` et `CFBundleVersion` dans
-   `tools/build-app.sh`, les versions correspondantes dans `project.yml`, puis
-   exécuter `xcodegen generate`. Incrémenter le build pour chaque nouvelle version.
-2. Actualiser README, CHANGELOG et les résultats réellement vérifiés.
-3. Exécuter les tests Swift, Python et Node documentés. Les tests Python complets
-   utilisent les fixtures ULog privées, qui ne doivent pas entrer dans Git.
-4. Vérifier le diff, le statut Git, l’identité Developer ID et le profil de
-   notarisation du Trousseau. Conserver les logs, bibliothèques, rapports et
-   identifiants d’authentification hors des fichiers publiés.
-5. Contrôler les sources exportées, l'historique destiné au public, les métadonnées
-   d'auteur, les notes et tous les assets. Inspecter les octets des exécutables,
-   les scripts du bundle et les métadonnées des images ; `.gitignore` et notarisation
-   ne remplacent pas cet audit. Construire avec chemins de compilation neutralisés.
-
-## Pipeline ZIP actuel (0.5.1)
-
-Le build local utilise une signature ad hoc par défaut. Pour une release :
+## Construire le moteur et l’app
 
 ```sh
 KATALOG_SIGN_IDENTITY='Developer ID Application: NOM (TEAMID)' \
   bash tools/build-app.sh
+```
 
-xcrun notarytool submit dist/KataLog.zip \
+Le script construit par défaut le helper via `tools/build-engine.sh`. CPython
+portable, wheels et outils PyInstaller sont épinglés avec SHA-256 ; téléchargement
+et build s’effectuent dans `/private/tmp`. Aucun Python global n’est modifié.
+Les licences et le manifest sont embarqués dans le bundle du helper.
+
+Le package utilise `Contents/Helpers/KataLogEngine.app`, avec les composants natifs
+dans Frameworks et les données dans Resources. Ce format évite de placer des
+metadata Python dans un emplacement macOS réservé au code. Le résolveur commun
+vérifie protocole/parseur et n’utilise aucun Python externe dans une app distribuée.
+
+La compilation neutralise les chemins source. Avant signature, les chemins de
+recherche propres à Xcode sont retirés des binaires. Les composants natifs sont
+signés avec hardened runtime et timestamp, puis les bundles imbriqués, puis l’app.
+Un moteur préconstruit peut être désigné par `KATALOG_ENGINE_PATH` ; ses hashes
+source doivent correspondre exactement aux scripts actuels.
+
+Sorties : `dist/KataLog-VERSION-macOS-arm64.zip`, alias local `dist/KataLog.zip`,
+et `dist/LOCAL-APP-PATH.txt` indiquant une copie vérifiée hors Bureau. Les anciennes
+sorties sont conservées en `previous-build.*`. La signature ad hoc par défaut
+sert au développement ; une distribution requiert Developer ID.
+
+## Notariser l’app, puis le DMG
+
+```sh
+xcrun notarytool submit dist/KataLog-VERSION-macOS-arm64.zip \
   --keychain-profile MON_PROFIL --wait
 ```
 
-Continuer uniquement lorsque le service retourne **Accepted**. La copie préparée
-hors du Bureau est indiquée dans `dist/LOCAL-APP-PATH.txt` :
+Continuer uniquement lorsque le statut est **Accepted**. Agrafer le ticket au
+helper imbriqué puis à l’app indiquée dans `LOCAL-APP-PATH.txt`, valider les deux
+tickets avec `xcrun stapler validate`, puis vérifier `codesign --verify --deep --strict`
+et `spctl --assess --type execute --verbose=2` sur l’app. Recréer le ZIP final
+avec `ditto -c -k --norsrc --keepParent` depuis cette app après stapling.
 
 ```sh
-katalog_release_app="$(cat dist/LOCAL-APP-PATH.txt)"
-xcrun stapler staple "$katalog_release_app"
-xcrun stapler validate "$katalog_release_app"
-codesign --verify --strict --verbose=2 "$katalog_release_app"
-spctl --assess --type execute --verbose=2 "$katalog_release_app"
+KATALOG_SIGN_IDENTITY='Developer ID Application: NOM (TEAMID)' \
+KATALOG_NOTARY_PROFILE=MON_PROFIL \
+  bash tools/build-dmg.sh
 ```
 
-Recréer ensuite le ZIP avec `ditto -c -k --norsrc --keepParent`, **après** le
-stapling, depuis cette copie. Nommer l’asset
-`KataLog-VERSION-macOS-arm64.zip`, produire `SHA256SUMS.txt`, puis extraire le ZIP
-dans un dossier temporaire et répéter `codesign`, `stapler validate` et `spctl`.
-Le résultat attendu de Gatekeeper est **Notarized Developer ID**. Ne pas déposer
-un bundle `.app` décompressé sur le Bureau synchronisé : le file provider peut
-ajouter des attributs qui invalident la signature.
+Le script installe uniquement ses outils de build dans un venv temporaire, avec
+requirements et hashes épinglés. Il génère la fenêtre monochrome et le lien
+Applications, vérifie l’image ainsi que la copie du bundle sur le volume monté,
+signe le DMG, attend **Accepted**, puis agrafe et valide son ticket. Un DMG existant
+n’est jamais écrasé ; `KATALOG_DMG_PATH` permet de choisir un nouveau chemin.
+La création et la vérification utilisent un volume local temporaire ; seuls les
+octets vérifiés sont ensuite copiés vers la destination choisie. Cela permet
+de livrer aussi dans un dossier géré par FileProvider.
 
-## Publier et vérifier
+Aucun attribut FinderInfo n’est ajouté au bundle signé : masquer son extension
+avec SetFile casserait la vérification stricte. Les réglages de fenêtre restent
+dans le .DS_Store généré du volume, sans coordonnées ni état de flotte.
 
-- Committer les sources et la documentation vérifiées, pousser la branche et un
-  tag annoté `vVERSION` pointant exactement vers ce commit.
-- Créer la release avec `gh release create --verify-tag`, les notes via
-  `--notes-file`, le ZIP installable et `SHA256SUMS.txt`. Les assets sont les seuls
-  binaires distribués ; les archives « Source code » de GitHub ne contiennent
-  pas l’app compilée.
-- Vérifier le tag distant, le statut publié, les deux assets et la visibilité attendue
-  du dépôt et le périmètre audité. Retélécharger les assets via GitHub avec un compte autorisé et
-  contrôler leurs empreintes avec `shasum -a 256 -c SHA256SUMS.txt`.
-- Ne pas réutiliser un tag publié pour remplacer silencieusement une autre
-  version. En cas de correction après publication, préparer une nouvelle version.
+## Recette finale
 
-La notarisation ne remplace pas les tests fonctionnels. Python, `pyulog` et
-`numpy` ne sont pas embarqués dans la release 0.5.1 ; ils restent des prérequis
-sur un nouveau Mac.
+```sh
+python3 tools/verify-distribution.py \
+  --app /chemin/vers/KataLog.app \
+  --dmg dist/KataLog-VERSION-macOS-arm64.dmg \
+  --report reports/verification-distribution.json \
+  --require-notarized
+```
+
+La recette inspecte signatures, ticket/Gatekeeper, metadata et symlinks, tous les
+Mach-O/minima/dépendances, et le contenu décompressé des archives Python. Elle
+exécute le moteur sans Python dans le PATH, avec HOME isolé et variables Python
+invalides : import synthétique, réimport/cache/détails conservés hors source et
+simulateur GCS localhost avec réutilisation d’un téléchargement vérifié.
+
+Vérifier aussi le lancement après copie puis éjection du DMG, l’import et l’export
+natifs, et la conservation du numéro/dossier après redémarrage avec une bibliothèque
+isolée. Une recette locale sur macOS 27 ne remplace pas un Mac vierge/macOS 15 ou
+un essai radio GCS réel. Calculer SHA256SUMS après toutes les opérations de stapling.
+
+## Publication séparée
+
+Committer les sources et docs validées. Lorsqu’une publication est demandée,
+fixer un tag annoté correspondant au commit, puis créer la release avec le DMG,
+le ZIP éventuel et leurs checksums. Vérifier le téléchargement et la quarantaine
+des assets depuis GitHub. Ne pas exposer les anciens assets 0.5.1 : ils restent
+dans l’archive privée distincte. Les clés privées et rapports de flotte restent locaux.

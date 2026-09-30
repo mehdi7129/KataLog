@@ -82,7 +82,7 @@ fichiers ; voir [GitHub — visibilité](https://docs.github.com/en/repositories
 
 ## Installation utilisateur cible
 
-La distribution 0.6.0 se fait **hors App Store** : télécharger le DMG, l'ouvrir,
+La distribution autonome 0.5.2 et la future 0.6.0 se font **hors App Store** : télécharger le DMG, l'ouvrir,
 glisser KataLog dans Applications, éjecter puis lancer. Le moteur est embarqué.
 Un appcast public signé permet les updates Sparkle sans compte GitHub utilisateur.
 Voir le [plan 0.6.0](PLAN-0.6.0.md) et la [procédure de release](RELEASING.md).

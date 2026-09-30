@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.0 — en préparation, non publiée
+
+- Identité stable entre résumé et fiche ; ancienne analyse conservée sans source ; durée de vol et GNSS qualifiés par couverture.
+- Projections SQLite version 6, requêtes paginées et scope partagé ; annotations, masquages, recherche Unicode et tri intégrés aux agrégats.
+- Sauvegardes vérifiées, restauration avec recovery, archives et réassociation SHA ; nettoyage de cache réversible sans supprimer les sources.
+- File GCS SQLite durable, inventaires en pages, progression par phase, imports exacts et arrêt borné des helpers ; protection du verrou après décès du parent.
+- Événements binaires bruts, dictionnaires locaux exact SHA, couverture des caches et niveaux interne/externe distincts.
+- Catalogue réel Batterie/GNSS/EKF, quatre courbes partageant 2 048 points, segments et pertes annoncés ; relevé HTML/JSON exportable.
+- Rapports de toute la sélection par pages, capture cohérente, publication atomique, progression/annulation et partage conservateur.
+- Nouveaux écrans bento clair/sombre/Système **en preview uniquement** ; activation après validation visuelle.
+- Sparkle 2.10.0 embarqué et signatures testées ; **feed désactivé** jusqu’au choix et à la recette de staging.
+- CI autonome Python/Swift/Node et packaging ARM64 ; diagnostic sans données privées par défaut, inventaire des licences et contrôles de publication.
+
+La validation finale, les mesures et les gates externes sont suivis dans
+[IMPLEMENTATION-0.6.0.md](docs/IMPLEMENTATION-0.6.0.md). Aucune release publique
+ni modification de l’app installée ne découle de ce lot.
+
 ## À venir — préparation publique
 
 - Fixtures et exemples anonymisés ; GCS configurée par l'utilisateur.
@@ -10,6 +27,26 @@
 
 Le dépôt historique et la release 0.5.1 sont isolés dans une archive privée distincte.
 Ce dépôt démarre avec les sources nettoyées et ne contient aucun ancien asset.
+
+## 0.5.2 — distribution autonome
+
+- Helper macOS ARM64 embarqué avec CPython 3.13.15, NumPy 2.5.3 et pyulog 1.2.4 ;
+  dépendances épinglées et téléchargements contrôlés par SHA-256, licences incluses.
+- Résolveur partagé import/collecte : handshake du moteur, environnement nettoyé,
+  aucun fallback Python externe dans une app distribuée ; erreur de réinstallation
+  lorsqu’un composant est absent ou incompatible.
+- Build nettoyé des chemins personnels et des chemins de recherche Xcode,
+  signature des composants natifs et des bundles imbriqués avant l’app.
+- Pipeline DMG avec lien Applications et présentation monochrome ; vérification
+  du contenu copié, signature et notarisation configurables par Trousseau.
+- Recette du package : ULog synthétique, dédoublonnage, détails hors ligne,
+  collecte GCS sur simulateur local, inspection des archives Python compressées
+  et des dépendances natives. Aucun log ni état de flotte n’est distribué.
+- Version ciblée : 0.5.2 (build 7), macOS 15 minimum, Apple Silicon. Cette version
+  ne livre pas les autres fonctionnalités du plan 0.6.0 ; le dépôt reste privé.
+- Package local signé Developer ID, accepté par Apple et tickets agrafés ;
+  lancement après copie/éjection, import, fiche, carte et export HTML testés
+  sous macOS 27. Voir la recette et ses limites dans `docs/DISTRIBUTION-VALIDATION.md`.
 
 ## 0.5.1 — 29 septembre 2026
 

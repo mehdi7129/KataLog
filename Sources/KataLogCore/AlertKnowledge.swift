@@ -13,7 +13,26 @@ public struct AlertExplanation: Sendable {
     public let limits: String
     public let provenance: String
     public let sources: [AlertSource]
-    public var isDocumented: Bool { id != "unknown" }
+    public var catalogueVersion: Int { 1 }
+    public var confidence: AlertConfidence {
+        if id == "unknown" { return .raw }
+        return id == "accelerometer-consistency" ? .documented : .interpretation
+    }
+    public var referenceFirmware: String? {
+        sources.isEmpty ? nil : "PX4 v1.14.0 — référence ; compatibilité constructeur non attestée"
+    }
+    public var isDocumented: Bool { confidence == .documented }
+}
+
+public enum AlertConfidence: String, Codable, Sendable {
+    case documented, interpretation, raw
+    public var label: String {
+        switch self {
+        case .documented: "Définition documentée"
+        case .interpretation: "Interprétation du texte"
+        case .raw: "Message source"
+        }
+    }
 }
 
 /// Explanations are tied to complete, observed messages. Classification alone is

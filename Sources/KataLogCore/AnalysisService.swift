@@ -12,40 +12,33 @@ public enum AnalysisError: LocalizedError {
     }
 }
 
-private final class ProcessControl: @unchecked Sendable {
-    private let lock = NSLock()
-    private var process: Process?
-    private var cancelled = false
-    func run(_ process: Process) throws {
-        lock.lock(); defer { lock.unlock() }
-        if cancelled { throw CancellationError() }
-        try process.run()
-        self.process = process
-    }
-    func check() throws {
-        lock.lock(); defer { lock.unlock() }
-        process = nil
-        if cancelled { throw CancellationError() }
-    }
-    func cancel() {
-        lock.lock(); defer { lock.unlock() }
-        cancelled = true
-        if let process, process.isRunning { process.terminate() }
-    }
-}
-
 public enum AnalysisService {
-    public static let parserVersion = "1.2.0"
+    public static let parserVersion = "1.4.0"
     public static func decode(_ data: Data) throws -> FleetSnapshot {
         let snapshot = try JSONDecoder().decode(FleetSnapshot.self, from: data)
         guard snapshot.schemaVersion == 1 else { throw AnalysisError.schema(snapshot.schemaVersion) }
         return snapshot
     }
 
-    public static func scan(folder: URL, database: URL, output: URL, progress: URL, engine: URL) async throws -> FleetSnapshot {
-        let control = ProcessControl()
+    public static func scan(folder: URL, database: URL, output: URL, progress: URL, engine: URL, archiveDestination: URL? = nil) async throws -> FleetSnapshot {
+        try await scan(folder: folder, database: database, output: output, progress: progress, engine: engine,
+                       archiveDestination: archiveDestination, runtimeConfiguration: .current)
+    }
+
+    public static func scanPaged(folder: URL, database: URL, output: URL, progress: URL, engine: URL, archiveDestination: URL? = nil) async throws -> FleetSnapshot {
+        try await scan(folder: folder, database: database, output: output, progress: progress, engine: engine,
+                       skipSnapshot: true, archiveDestination: archiveDestination, runtimeConfiguration: .current)
+    }
+
+    static func scan(folder: URL, database: URL, output: URL, progress: URL, engine: URL,
+                     skipSnapshot: Bool = false,
+                     archiveDestination: URL? = nil,
+                     runtimeConfiguration: EngineRuntimeResolver.Configuration) async throws -> FleetSnapshot {
+        guard archiveDestination?.isFileURL ?? true else { throw AnalysisError.engine("Choisissez un dossier local pour les archives.") }
+        let control = ProcessLifetime()
         return try await withTaskCancellationHandler {
             try await Task.detached(priority: .userInitiated) {
+                defer { control.cleanup() }
                 guard FileManager.default.fileExists(atPath: engine.path) else {
                     throw AnalysisError.unavailable("Le moteur d’analyse est absent de l’app : \(engine.path)")
                 }
@@ -54,9 +47,13 @@ public enum AnalysisService {
                 try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
                 defer { try? FileManager.default.removeItem(at: work) }
                 let stderr = work.appendingPathComponent("stderr.txt")
-                let python = try findPython(control: control, stderr: stderr)
-                let status = try execute(python, arguments: [engine.path, "scan", "--folder", folder.path,
-                    "--database", database.path, "--output", output.path, "--progress", progress.path], control: control, stderr: stderr)
+                let runtime = try EngineRuntimeResolver.resolve(configuration: runtimeConfiguration,
+                                                               launch: control.run, finished: control.finish)
+                let arguments = ["-B", engine.path, "scan", "--folder", folder.path,
+                    "--database", database.path, "--output", output.path, "--progress", progress.path]
+                    + (skipSnapshot ? ["--skip-snapshot"] : [])
+                    + (archiveDestination.map { ["--archive-destination", $0.path] } ?? [])
+                let status = try execute(runtime, arguments: arguments, control: control, stderr: stderr)
                 guard status == 0 else {
                     let detail = (try? String(contentsOf: stderr, encoding: .utf8)) ?? ""
                     throw AnalysisError.engine("L’analyse a échoué (code \(status)). \(String(detail.suffix(4000)))")
@@ -67,66 +64,104 @@ public enum AnalysisService {
     }
 
     public static func detail(logID: String, database: URL, engine: URL) async throws -> FlightLog {
-        let data = try await readData(command: ["detail", "--log-id", logID], database: database, engine: engine)
+        try await detail(logID: logID, database: database, engine: engine, runtimeConfiguration: .current)
+    }
+
+    public static func detail(logID: String, database: URL, engine: URL, readOnly: Bool) async throws -> FlightLog {
+        let command = ["detail", "--log-id", logID, "--database", database.path] + (readOnly ? ["--read-only"] : [])
+        let data = try await run(command, engine: engine)
+        let log = try JSONDecoder().decode(FlightLog.self, from: data)
+        guard log.id == logID else { throw AnalysisError.engine("Le détail reçu ne correspond pas au log demandé.") }
+        return log
+    }
+
+    static func detail(logID: String, database: URL, engine: URL,
+                       runtimeConfiguration: EngineRuntimeResolver.Configuration) async throws -> FlightLog {
+        let data = try await readData(command: ["detail", "--log-id", logID], database: database, engine: engine,
+                                      runtimeConfiguration: runtimeConfiguration)
         let log = try JSONDecoder().decode(FlightLog.self, from: data)
         guard log.id == logID else { throw AnalysisError.engine("Le détail reçu ne correspond pas au log demandé.") }
         return log
     }
 
     public static func snapshot(database: URL, engine: URL) async throws -> FleetSnapshot {
-        try decode(await readData(command: ["snapshot"], database: database, engine: engine))
+        try await snapshot(database: database, engine: engine, runtimeConfiguration: .current)
     }
 
-    private static func readData(command: [String], database: URL, engine: URL) async throws -> Data {
-        let control = ProcessControl()
+    public static func snapshot(database: URL, engine: URL, readOnly: Bool) async throws -> FleetSnapshot {
+        try decode(await run(["snapshot", "--database", database.path] + (readOnly ? ["--read-only"] : []), engine: engine,
+                             outputLimit: 512 * 1024 * 1024))
+    }
+
+    static func snapshot(database: URL, engine: URL,
+                         runtimeConfiguration: EngineRuntimeResolver.Configuration) async throws -> FleetSnapshot {
+        try decode(await readData(command: ["snapshot"], database: database, engine: engine,
+                                  runtimeConfiguration: runtimeConfiguration))
+    }
+
+    private static func readData(command: [String], database: URL, engine: URL,
+                                 runtimeConfiguration: EngineRuntimeResolver.Configuration) async throws -> Data {
+        try await run(command + ["--database", database.path], engine: engine, runtimeConfiguration: runtimeConfiguration)
+    }
+
+    /// Command results are bounded before decoding; temporary request files are
+    /// private and removed after completion or cancellation.
+    public static func run(_ command: [String], engine: URL, request: Data? = nil,
+                           outputLimit: Int = 16 * 1024 * 1024) async throws -> Data {
+        try await run(command, engine: engine, request: request, outputLimit: outputLimit, runtimeConfiguration: .current)
+    }
+
+    static func run(_ command: [String], engine: URL, request: Data? = nil,
+                    outputLimit: Int = 16 * 1024 * 1024,
+                    runtimeConfiguration: EngineRuntimeResolver.Configuration) async throws -> Data {
+        let control = ProcessLifetime()
         return try await withTaskCancellationHandler {
             try await Task.detached(priority: .userInitiated) {
+                defer { control.cleanup() }
                 let work = FileManager.default.temporaryDirectory.appendingPathComponent("katalog-read-\(UUID().uuidString)")
                 try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
                 defer { try? FileManager.default.removeItem(at: work) }
                 let errors = work.appendingPathComponent("stderr.txt"), output = work.appendingPathComponent("result.json")
-                let python = try findPython(control: control, stderr: errors)
-                let status = try execute(python, arguments: [engine.path] + command + ["--database", database.path, "--output", output.path], control: control, stderr: errors)
+                var arguments = command
+                if let request {
+                    let input = work.appendingPathComponent("request.json")
+                    try request.write(to: input, options: .atomic)
+                    arguments += ["--request", input.path]
+                }
+                guard FileManager.default.fileExists(atPath: engine.path) else {
+                    throw AnalysisError.unavailable("Le moteur d’analyse est absent de l’app.")
+                }
+                let runtime = try EngineRuntimeResolver.resolve(configuration: runtimeConfiguration,
+                                                               launch: control.run, finished: control.finish)
+                let status = try execute(runtime, arguments: ["-B", engine.path] + arguments + ["--output", output.path], control: control, stderr: errors)
                 guard status == 0 else {
                     let detail = (try? String(contentsOf: errors, encoding: .utf8)) ?? ""
                     throw AnalysisError.engine(String(detail.suffix(2000)))
                 }
+                let size = try output.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                guard size <= outputLimit else { throw AnalysisError.engine("La réponse du moteur dépasse la limite autorisée. Réduisez la sélection.") }
+                try control.checkCancellation()
                 return try Data(contentsOf: output)
             }.value
         } onCancel: { control.cancel() }
     }
 
-    private static func findPython(control: ProcessControl, stderr: URL) throws -> URL {
-        var candidates: [String] = []
-        if let custom = ProcessInfo.processInfo.environment["KATALOG_PYTHON"] { candidates.append(custom) }
-        if let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
-            candidates.append(support.appendingPathComponent("KataLog/python/bin/python3").path)
-        }
-        candidates += ["/opt/homebrew/opt/python@3.13/bin/python3.13", "/opt/homebrew/bin/python3.13", "/opt/homebrew/bin/python3", "/usr/local/bin/python3", "/usr/bin/python3"]
-        candidates += (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map { "\($0)/python3" }
-        for path in Array(NSOrderedSet(array: candidates)) as? [String] ?? candidates {
-            guard FileManager.default.isExecutableFile(atPath: path) else { continue }
-            let url = URL(fileURLWithPath: path)
-            if try execute(url, arguments: ["-c", "import pyulog, numpy"], control: control, stderr: stderr) == 0 { return url }
-        }
-        throw AnalysisError.unavailable("Le moteur de lecture PX4 n’est pas installé sur ce Mac. Suivez la section « Moteur Python » du README de KataLog (pyulog et numpy), puis relancez l’import.")
-    }
-
-    private static func execute(_ executable: URL, arguments: [String], control: ProcessControl, stderr: URL) throws -> Int32 {
+    private static func execute(_ runtime: EngineRuntimeResolver.Runtime, arguments: [String], control: ProcessLifetime, stderr: URL) throws -> Int32 {
         FileManager.default.createFile(atPath: stderr.path, contents: nil)
         let handle = try FileHandle(forWritingTo: stderr)
         defer { try? handle.close() }
         let process = Process()
-        process.executableURL = executable
+        process.executableURL = runtime.executableURL
         process.arguments = arguments
         process.standardOutput = FileHandle.nullDevice
         process.standardError = handle
-        var environment = ProcessInfo.processInfo.environment
-        environment["PYTHONDONTWRITEBYTECODE"] = "1"
-        process.environment = environment
+        let writerInput = try LibraryWriterLease.inheritedInput(for: arguments)
+        defer { try? writerInput?.close() }
+        process.standardInput = writerInput ?? FileHandle.nullDevice
+        process.environment = runtime.environment
         try control.run(process)
-        process.waitUntilExit()
-        try control.check()
+        ProcessLifetime.wait(for: process)
+        try control.finish()
         return process.terminationStatus
     }
 }

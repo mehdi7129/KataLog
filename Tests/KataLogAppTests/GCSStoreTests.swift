@@ -1,4 +1,5 @@
 import XCTest
+import Darwin
 import KataLogCore
 @testable import KataLog
 
@@ -6,6 +7,97 @@ import KataLogCore
 final class GCSStoreTests: XCTestCase {
     let first = "0102030405060708090A0B0C"
     let second = "1112131415161718191A1B1C"
+
+    private func planningStore(identities: [String]) throws -> (GCSStore, URL) {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("katalog-enqueue-proof-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        var state = GCSCollectionState(downloadDirectory: root.path)
+        state.host = "synthetic-gcs.local"; state.allowedUUIDs = Set(identities)
+        state.autoImport = false; state.reconnect = false
+        try JSONEncoder().encode(state).write(to: root.appendingPathComponent("gcs-settings.json"))
+        return (GCSStore(storageDirectory: root), root)
+    }
+
+    func testQueuePlannerKeepsOneJobPerSourceAcrossFiveHundredIdentities() async throws {
+        let identities = (1...500).map { String(format: "%024llX", UInt64($0)) }
+        let (store, root) = try planningStore(identities: identities)
+        let candidates = (0..<100).map { GCSLogFile(path: "/fs/microsd/log/2026-01-01/\($0).ulg", size: 1_024) }
+        var timings: [Double] = [], gaps: [Double] = []
+        let heartbeat = Task { @MainActor in
+            var previous = ProcessInfo.processInfo.systemUptime
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .milliseconds(5)) } catch { return }
+                let now = ProcessInfo.processInfo.systemUptime; gaps.append(now - previous); previous = now
+            }
+        }
+        defer { heartbeat.cancel() }
+        let start = ProcessInfo.processInfo.systemUptime
+        for uuid in identities {
+            let before = ProcessInfo.processInfo.systemUptime
+            let added = try await store.enqueue(candidates, uuid: uuid, host: "synthetic-gcs.local", destination: root.path)
+            timings.append(ProcessInfo.processInfo.systemUptime - before)
+            XCTAssertEqual(added, 100)
+        }
+        let constructionSeconds = ProcessInfo.processInfo.systemUptime - start
+        heartbeat.cancel(); await heartbeat.value
+        XCTAssertEqual(store.queue.count, 50_000)
+        XCTAssertEqual(Set(store.queue.map(\.id)).count, 50_000)
+        XCTAssertEqual(Set(store.queue.map { "\($0.droneUUID)|\($0.remotePath)|\($0.size)|\($0.destination)" }).count, 50_000)
+        for uuid in identities.suffix(10) {
+            let added = try await store.enqueue(candidates + candidates, uuid: uuid, host: "synthetic-gcs.local", destination: root.path)
+            XCTAssertEqual(added, 0, "Repeated inventories must not add duplicate pending jobs.")
+        }
+        XCTAssertEqual(store.queue.count, 50_000)
+        XCTAssertLessThan(gaps.max() ?? 0, 0.5, "Preparing jobs must continue to yield the UI actor.")
+        let retainedIDs = Set(store.queue.map(\.id))
+        // Measure persistence independently from actor preparation. The repository
+        // is thread-safe; this bulk proof does not claim that every UI write path
+        // has been moved off the actor or that a physical fleet was exercised.
+        let transfers = store.queue, database = root.appendingPathComponent("proof-queue.sqlite")
+        let persisted = try await Task.detached {
+            let before = ProcessInfo.processInfo.systemUptime
+            let repository = try GCSQueueRepository(url: database)
+            try repository.migrateLegacy([])
+            let writes = try repository.saveTransfers(transfers)
+            let unchangedWrites = try repository.saveTransfers(transfers)
+            return (writes, unchangedWrites, ProcessInfo.processInfo.systemUptime - before, try repository.retainedTransfers())
+        }.value
+        XCTAssertEqual(persisted.0, 50_000)
+        XCTAssertEqual(persisted.1, 0)
+        XCTAssertEqual(Set(persisted.3.map(\.id)), retainedIDs)
+        let bytes = try XCTUnwrap(try FileManager.default.attributesOfItem(atPath: database.path)[.size] as? NSNumber).int64Value
+        let settingsBytes = try Data(contentsOf: root.appendingPathComponent("gcs-settings.json")).count
+        var usage = rusage(); getrusage(RUSAGE_SELF, &usage)
+        if let artifacts = ProcessInfo.processInfo.environment["KATALOG_GCS_ARTIFACTS"] {
+            let directory = URL(fileURLWithPath: artifacts); try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let sorted = timings.sorted()
+            let proof: [String: Any] = ["identities": 500, "jobs": 50_000, "logsPerIdentity": 100,
+                "constructionSeconds": constructionSeconds, "enqueueP50Ms": sorted[sorted.count / 2] * 1_000,
+                "enqueueP95Ms": sorted[Int(Double(sorted.count - 1) * 0.95)] * 1_000,
+                "maximumActorHeartbeatGapMs": (gaps.max() ?? 0) * 1_000,
+                "bulkRepositorySeconds": persisted.2, "firstRepositoryWrites": persisted.0,
+                "unchangedRepositoryWrites": persisted.1, "databaseBytes": bytes,
+                "settingsBytes": settingsBytes, "runnerPeakRSSBytes": usage.ru_maxrss,
+                "physicalFleetQualified": false, "networkRequests": 0,
+                "scope": "Immutable enqueue preparation plus live actor commit; standalone bulk repository write, not a live GCS or overall startup benchmark."]
+            try JSONSerialization.data(withJSONObject: proof, options: [.prettyPrinted, .sortedKeys])
+                .write(to: directory.appendingPathComponent("gcs-enqueue-500x100.json"))
+        }
+    }
+
+    func testQueuePlannerCancellationAndStaleDestinationCannotPublishJobs() async throws {
+        let (store, root) = try planningStore(identities: [first])
+        let candidates = (0..<1_000).map { GCSLogFile(path: "/fs/microsd/log/2026-01-01/\($0).ulg", size: 64) }
+        let cancelled = Task { try await store.enqueue(candidates, uuid: first, host: "synthetic-gcs.local", destination: root.path) }
+        cancelled.cancel()
+        do { _ = try await cancelled.value; XCTFail("Cancelled preparation must not publish jobs.") } catch is CancellationError {} catch { XCTFail("Unexpected cancellation error: \(error)") }
+        XCTAssertTrue(store.queue.isEmpty)
+        let stale = Task { try await store.enqueue(candidates, uuid: first, host: "synthetic-gcs.local", destination: root.path) }
+        store.host = "replacement-gcs.local"
+        do { _ = try await stale.value; XCTFail("A stale GCS inventory must not publish jobs for a changed endpoint.") } catch { XCTAssertTrue(error.localizedDescription.contains("collecte a changé")) }
+        XCTAssertTrue(store.queue.isEmpty)
+    }
 
     func waitUntil(timeout: Double = 12, _ predicate: @escaping @MainActor () -> Bool) async throws {
         let deadline = Date().addingTimeInterval(timeout)
@@ -63,7 +155,9 @@ time.sleep(30)
     }
 
     func fixture(mode: String, snapshot: (() -> FleetSnapshot)? = nil,
-                 importer: ((URL) async throws -> FleetSnapshot)? = nil) throws -> (GCSStore, URL) {
+                 importer: ((URL) async throws -> FleetSnapshot)? = nil,
+                 initialState: GCSCollectionState? = nil, configure: Bool = true,
+                 stateBuilder: ((URL) -> GCSCollectionState)? = nil) throws -> (GCSStore, URL) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("katalog-store-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         try mode.write(to: root.appendingPathComponent("mode"), atomically: true, encoding: .utf8)
@@ -79,17 +173,24 @@ ids=['0102030405060708090A0B0C','1112131415161718191A1B1C']
 if cmd=='discover':
     emit('connection',connected=True)
     while True:
-        emit('drones',drones=[dict(uuid=u,time_usec=time.time()*1e6) for u in ids]);time.sleep(.15)
+        emit('drones',drones=[dict(uuid=u,time_usec=time.time()*1e6) for u in (ids[1:] if mode=='offline' else ids)]);time.sleep(.15)
 u=arg('--uuid')
 paths=['/fs/microsd/log/2026-09-01/a.ulg','/fs/microsd/log/2026-09-01/b.ulg']
 if cmd=='inventory':
+    if mode=='inventory-error' and u==ids[1]:
+        emit('error',message='simulated missing inventory',retryable=False);sys.exit(1)
     files=[]
     for p in paths:
         local=root/(u+pathlib.Path(p).name+'.cache')
         item=dict(path=p,size=64,isDownloaded=local.exists())
         if local.exists(): item.update(localPath=str(local),sha256=hashlib.sha256(local.read_bytes()).hexdigest())
         files.append(item)
-    emit('inventory',uuid=u,files=files)
+    if mode.startswith('paged'):
+        emit('inventory_started',uuid=u,inventoryID='fixture',totalFiles=len(files))
+        emit('inventory_page',uuid=u,inventoryID='fixture',pageIndex=1 if mode=='paged-invalid' else 0,files=files[:1])
+        emit('inventory_page',uuid=u,inventoryID='fixture',pageIndex=1,files=files[1:])
+        if mode!='paged-incomplete': emit('inventory_finished',uuid=u,inventoryID='fixture',totalFiles=len(files),pageCount=2)
+    else: emit('inventory',uuid=u,files=files)
 else:
     p=arg('--remote');key=u+pathlib.Path(p).name
     local=root/(key+'.cache')
@@ -100,20 +201,31 @@ else:
     fd=os.open(root/'trace.jsonl',os.O_WRONLY|os.O_CREAT|os.O_APPEND,0o600)
     os.write(fd,(json.dumps(dict(uuid=u,path=p,attempt=attempt,time=time.time(),host=arg('--host'),destination=arg('--destination')))+'\n').encode());os.close(fd)
     emit('transfer_started',uuid=u,path=p,timeoutSeconds=300)
-    emit('progress',uuid=u,path=p,bytes=16,total=64)
+    emit('progress',uuid=u,path=p,bytes=64 if mode=='phases' else 16,total=64,phase='drone')
     time.sleep(2 if mode=='stop' else .6)
     emit('transfer_finished',uuid=u,path=p)
+    emit('phase',uuid=u,path=p,bytes=0,total=64,phase='http')
+    emit('progress',uuid=u,path=p,bytes=8,total=64,phase='http')
+    if mode=='phases': time.sleep(1.5)
     if mode=='retry' and u==ids[0] and p==paths[0] and attempt==1:
         emit('error',message='simulated transient timeout',retryable=True);sys.exit(1)
     if mode=='permanent':
         emit('error',message='simulated invalid destination',retryable=False);sys.exit(1)
     local.write_bytes(key.encode().ljust(64,b'x'))
+    emit('progress',uuid=u,path=p,bytes=64,total=64,phase='http')
+    emit('phase',uuid=u,path=p,bytes=64,total=64,phase='verification')
     emit('downloaded',uuid=u,path=p,bytes=64,localPath=str(local),sha256=hashlib.sha256(local.read_bytes()).hexdigest())
 """#.write(to: script, atomically: true, encoding: .utf8)
+        if var initialState = initialState ?? stateBuilder?(root) {
+            initialState.downloadDirectory = root.path
+            try JSONEncoder().encode(initialState).write(to: root.appendingPathComponent("gcs-collection.json"))
+        }
         let store = GCSStore(storageDirectory: root, collector: script, snapshot: snapshot, importer: importer)
-        store.autoImport = false; store.host = "localhost"
-        store.setAllowed(uuid: first, allowed: true); store.setAllowed(uuid: second, allowed: true)
-        store.connect()
+        if configure {
+            store.autoImport = false; store.host = "localhost"
+            store.setAllowed(uuid: first, allowed: true); store.setAllowed(uuid: second, allowed: true)
+            store.connect()
+        }
         return (store, root)
     }
 
@@ -134,6 +246,265 @@ else:
         try await waitUntil { !store.isBusy && store.cachedFileCount == 4 }
         XCTAssertEqual(store.batchProgress.totalCount, 0)
         XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8), attempts)
+    }
+
+    func testFTPCompletionDoesNotFinishMacProgressDuringSlowHTTP() async throws {
+        let (store, root) = try fixture(mode: "phases")
+        defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        try await waitUntil { store.canCollectAll }
+        store.collectAll()
+        try await waitUntil { store.queue.filter { $0.phase == "http" && $0.phaseBytes == 8 }.count == 2 }
+        XCTAssertEqual(store.activeTransferCount, 2)
+        XCTAssertEqual(store.batchProgress.completedCount, 0)
+        XCTAssertLessThan(store.batchProgress.fraction, 1)
+        XCTAssertEqual(store.queue.filter(\.isActive).map(\.completedBytes), [8, 8])
+        XCTAssertFalse(store.batchStatusMessage.contains("terminée"))
+        try await waitUntil { !store.isBusy && store.queue.allSatisfy(\.isSuccessful) }
+        XCTAssertEqual(store.batchProgress.completedCount, 4)
+        XCTAssertEqual(store.batchProgress.fraction, 1)
+        XCTAssertTrue(store.batchStatusMessage.contains("Collecte terminée"))
+    }
+
+    func testPagedInventoriesCollectBothDronesAndKeepSettingsSmall() async throws {
+        let (store, root) = try fixture(mode: "paged")
+        defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        try await waitUntil { store.canCollectAll }
+        store.collectAll()
+        try await waitUntil { !store.isBusy && store.batchProgress.completedCount == 4 }
+        XCTAssertFalse(store.hasIncompleteInventory)
+        let settings = try JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: root.appendingPathComponent("gcs-settings.json")))
+        XCTAssertTrue(settings.queue.isEmpty)
+        XCTAssertEqual(settings.queueStorageVersion, 1)
+        let restored = GCSStore(storageDirectory: root)
+        XCTAssertEqual(restored.batchProgress.completedCount, 4)
+        XCTAssertEqual(restored.queue.count, 4)
+    }
+
+    func testInvalidAndIncompletePagesCannotBecomeSuccessfulInventories() async throws {
+        for mode in ["paged-invalid", "paged-incomplete"] {
+            let (store, root) = try fixture(mode: mode)
+            defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+            try await waitUntil { store.canCollectAll }
+            store.collectAll()
+            try await waitUntil { !store.isBusy && store.inventoryErrors.count == 2 }
+            XCTAssertTrue(store.queue.isEmpty)
+            XCTAssertTrue(store.completedInventoryUUIDs.isEmpty)
+            XCTAssertTrue(store.batchStatusMessage.hasPrefix("Collecte partielle"))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("trace.jsonl").path))
+        }
+    }
+
+    func testLegacyMigrationPreservesJSONAndAllJobsWhileSettingsStaySmall() async throws {
+        var legacy = GCSCollectionState(downloadDirectory: "/private/tmp")
+        legacy.autoImport = false
+        var job = GCSTransfer(droneUUID: first, remotePath: "/fs/microsd/log/2026-09-01/a.ulg", size: 64, host: "localhost", destination: "/private/tmp")
+        job.state = "complete"; job.completedBytes = 64
+        legacy.queue = [job]
+        let (store, root) = try fixture(mode: "normal", initialState: legacy)
+        defer { store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        let original = try Data(contentsOf: root.appendingPathComponent("gcs-collection.json"))
+        try await waitUntil { store.isConnected }
+        XCTAssertEqual(store.batchProgress.completedCount, 1)
+        XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("gcs-collection.json")), original)
+        let settings = try JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: root.appendingPathComponent("gcs-settings.json")))
+        XCTAssertTrue(settings.queue.isEmpty)
+        XCTAssertEqual(settings.queueStorageVersion, 1)
+        XCTAssertEqual(GCSStore(storageDirectory: root).queue.first?.id, job.id)
+    }
+
+    func testReadOnlyLibraryNeverStartsCollectionOrWritesGCSState() async throws {
+        var initial = GCSCollectionState(downloadDirectory: "/private/tmp")
+        initial.host = "localhost"; initial.allowedUUIDs = [first]; initial.autoImport = false
+        let (store, root) = try fixture(mode: "normal", initialState: initial, configure: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let writer = LibraryStore(storageDirectory: root)
+        let reader = LibraryStore(storageDirectory: root)
+        XCTAssertFalse(writer.isReadOnly)
+        XCTAssertTrue(reader.isReadOnly)
+        let original = try Data(contentsOf: root.appendingPathComponent("gcs-collection.json"))
+        store.attach(library: reader)
+        store.connect(); store.collectAll(); store.retryFailed()
+        store.setAllowed(uuid: second, allowed: true)
+        store.autoImport = true
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(store.isReadOnly)
+        XCTAssertFalse(store.isConnected)
+        XCTAssertFalse(store.isConnecting)
+        XCTAssertFalse(store.allowedUUIDs.contains(second))
+        XCTAssertFalse(store.autoImport)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("gcs-queue.sqlite").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("gcs-settings.json").path))
+        XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("gcs-collection.json")), original)
+        withExtendedLifetime(writer) {}
+    }
+
+    func testMissingSQLiteAfterMigrationBlocksCollectionAndPreservesSettings() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("katalog-missing-queue-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        var settings = GCSCollectionState(downloadDirectory: root.path)
+        settings.queueStorageVersion = 1; settings.host = "localhost"
+        let original = try JSONEncoder().encode(settings)
+        try original.write(to: root.appendingPathComponent("gcs-settings.json"))
+        let store = GCSStore(storageDirectory: root)
+        store.setAllowed(uuid: first, allowed: true)
+        XCTAssertTrue(store.allowedUUIDs.isEmpty)
+        XCTAssertTrue(store.errorMessage?.contains("SQLite") == true)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("gcs-queue.sqlite").path))
+        XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("gcs-settings.json")), original)
+    }
+
+    func testMaintenanceFlushPersistsCurrentSettingsBeforeSnapshotWithoutStartingDiscovery() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("katalog-gcs-maintenance-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let library = LibraryStore(storageDirectory: root.appendingPathComponent("library"))
+        let store = GCSStore(storageDirectory: root)
+        store.attach(library: library)
+        store.host = "saved-for-backup.local"
+        try library.willMaintainLibrary()
+        let saved = try JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: root.appendingPathComponent("gcs-settings.json")))
+        XCTAssertEqual(saved.host, "saved-for-backup.local")
+        XCTAssertTrue(saved.queue.isEmpty)
+        XCTAssertEqual(saved.queueStorageVersion, 1)
+        XCTAssertFalse(store.isConnected)
+        XCTAssertFalse(store.isConnecting)
+        XCTAssertFalse(library.hasExternalActivity())
+    }
+
+    func testRestoreReopensQueueAndSettingsWithoutAutoReconnectionOrPendingRestart() async throws {
+        let (store, root) = try fixture(mode: "normal")
+        defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        try await waitUntil { store.isConnected }
+        try store.preparePersistedStorageForRestore()
+        let destination = root.appendingPathComponent("restored-destination")
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        var active = GCSTransfer(droneUUID: first, remotePath: "/fs/microsd/log/restore/a.ulg", size: 64,
+                                 host: "restored.local", destination: destination.path)
+        active.state = "downloading"; active.batchID = "restored-batch"; active.completedBytes = 16
+        active.remoteBusyUntil = Date().addingTimeInterval(90)
+        var pending = GCSTransfer(droneUUID: first, remotePath: "/fs/microsd/log/restore/b.ulg", size: 64,
+                                  host: "restored.local", destination: destination.path)
+        pending.batchID = "restored-batch"
+        do {
+            let repository = try GCSQueueRepository(url: root.appendingPathComponent("gcs-queue.sqlite"))
+            try repository.saveTransfers([active, pending])
+        }
+        var settings = GCSCollectionState(downloadDirectory: destination.path)
+        settings.host = "restored.local"; settings.reconnect = true; settings.autoImport = false
+        settings.queueStorageVersion = 1; settings.allowedUUIDs = [first]; settings.currentBatchID = "restored-batch"
+        try JSONEncoder().encode(settings).write(to: root.appendingPathComponent("gcs-settings.json"))
+        try store.reloadPersistedStateAfterRestore()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(store.host, "restored.local")
+        XCTAssertEqual(store.downloadDirectory.path, destination.path)
+        XCTAssertEqual(store.queue.count, 2)
+        XCTAssertTrue(store.queue.allSatisfy { $0.state == "interrupted" })
+        XCTAssertNotNil(store.queue.first { $0.id == active.id }?.remoteBusyUntil)
+        XCTAssertTrue(store.isQueuePaused)
+        XCTAssertFalse(store.isConnected)
+        XCTAssertFalse(store.isConnecting)
+        XCTAssertEqual(store.activeTransferCount, 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("trace.jsonl").path))
+        let persisted = try JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: root.appendingPathComponent("gcs-settings.json")))
+        XCTAssertFalse(persisted.reconnect)
+        XCTAssertTrue(persisted.queuePaused == true)
+    }
+
+    func testFailedRestoreStateNeverAuthorizesTheOldQueueOrOverwritesRestoredFiles() async throws {
+        for mode in ["malformed-settings", "missing-queue", "future-version"] {
+            let (store, root) = try fixture(mode: "normal", configure: false, stateBuilder: { root in
+                var state = GCSCollectionState(downloadDirectory: root.path)
+                state.host = "old.local"; state.allowedUUIDs = [self.first]; state.autoImport = false
+                state.queue = [GCSTransfer(droneUUID: self.first, remotePath: "/fs/microsd/log/old/a.ulg", size: 64,
+                                           host: "old.local", destination: root.path)]
+                return state
+            })
+            defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+            XCTAssertEqual(store.queue.count, 1)
+            let settingsURL = root.appendingPathComponent("gcs-settings.json")
+            var state = GCSCollectionState(downloadDirectory: root.path)
+            state.host = "restored.local"; state.autoImport = false
+            if mode == "missing-queue" { state.queueStorageVersion = 1 }
+            if mode == "future-version" { state.schemaVersion = 99 }
+            let contents = mode == "malformed-settings" ? Data("{broken".utf8) : try JSONEncoder().encode(state)
+            try contents.write(to: settingsURL)
+            XCTAssertThrowsError(try store.reloadPersistedStateAfterRestore())
+            XCTAssertTrue(store.queue.isEmpty)
+            XCTAssertTrue(store.isQueuePaused)
+            XCTAssertTrue(store.errorMessage?.contains("restaurée ne peut pas être lue") == true)
+            store.resumeQueue(); store.retryFailed(); store.connect(); store.collectAll()
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertTrue(store.isQueuePaused)
+            XCTAssertFalse(store.isConnected); XCTAssertFalse(store.isConnecting)
+            XCTAssertEqual(store.activeTransferCount, 0)
+            XCTAssertEqual(try Data(contentsOf: settingsURL), contents)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("trace.jsonl").path))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("gcs-queue.sqlite").path))
+        }
+    }
+
+    func testFailedInventoryNeverClaimsUpToDateEvenWhenOtherDroneIsCached() async throws {
+        let (store, root) = try fixture(mode: "normal")
+        defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        try await waitUntil { store.canCollectAll }
+        store.collectAll()
+        try await waitUntil { !store.isBusy && store.queue.count == 4 && store.queue.allSatisfy(\.isSuccessful) }
+        try "inventory-error".write(to: root.appendingPathComponent("mode"), atomically: true, encoding: .utf8)
+        store.collectAll()
+        try await waitUntil { !store.isBusy && store.inventoryErrors.count == 1 }
+        XCTAssertEqual(store.batchProgress.totalCount, 0)
+        XCTAssertEqual(store.cachedFileCount, 2)
+        XCTAssertTrue(store.hasIncompleteInventory)
+        XCTAssertEqual(store.completedInventoryUUIDs, [first])
+        XCTAssertTrue(store.batchStatusMessage.hasPrefix("Collecte partielle"))
+        let restored = GCSStore(storageDirectory: root)
+        XCTAssertEqual(restored.inventoryErrors.count, 1)
+        XCTAssertTrue(restored.hasIncompleteInventory)
+        XCTAssertTrue(restored.batchStatusMessage.hasPrefix("Collecte partielle"))
+        try "normal".write(to: root.appendingPathComponent("mode"), atomically: true, encoding: .utf8)
+        store.collectAll()
+        try await waitUntil { !store.isBusy && !store.hasIncompleteInventory && store.cachedFileCount == 4 }
+        XCTAssertTrue(store.batchStatusMessage.hasPrefix("À jour"))
+    }
+
+    func testFailedInventoryKeepsSuccessfulCopiesPartialUntilMissingDroneIsRead() async throws {
+        let (store, root) = try fixture(mode: "inventory-error")
+        defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        try await waitUntil { store.canCollectAll }
+        store.collectAll()
+        try await waitUntil { !store.isBusy && store.queue.count == 2 && store.queue.allSatisfy(\.isSuccessful) }
+        XCTAssertEqual(store.batchProgress.completedCount, 2)
+        XCTAssertEqual(store.expectedInventoryUUIDs.count, 2)
+        XCTAssertEqual(store.completedInventoryUUIDs.count, 1)
+        XCTAssertTrue(store.batchStatusMessage.hasPrefix("Collecte partielle"))
+    }
+
+    func testOfflinePendingJobDoesNotBlockNewVisibleDroneOrLoseOriginalWork() async throws {
+        var state = GCSCollectionState(downloadDirectory: "/private/tmp")
+        state.allowedUUIDs = [first, second]; state.autoImport = false
+        var waiting = GCSTransfer(droneUUID: first, remotePath: "/fs/microsd/log/2026-09-01/offline.ulg", size: 64,
+                                  host: "localhost", destination: "/private/tmp")
+        waiting.state = "interrupted"
+        state.queue = [waiting]; state.expectedInventoryUUIDs = [first]; state.completedInventoryUUIDs = [first]
+        let (store, root) = try fixture(mode: "offline", initialState: state)
+        defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        try await waitUntil { store.canCollectAll }
+        store.retryFailed()
+        XCTAssertTrue(store.queue.first?.isPending == true)
+        XCTAssertTrue(store.canCollectAll)
+        store.collectAll()
+        try await waitUntil { !store.isBusy && store.queue.filter(\.isSuccessful).count == 2 }
+        XCTAssertEqual(store.queue.first?.id, waiting.id)
+        XCTAssertTrue(store.queue.first?.isPending == true)
+        XCTAssertEqual(store.queue.first?.attemptCount, 0)
+        let before = try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8)
+        XCTAssertEqual(before.split(separator: "\n").count, 2)
+        store.collectAll()
+        try await waitUntil { !store.isBusy && store.cachedFileCount >= 2 }
+        XCTAssertEqual(store.cachedFileCount, 2, "Repeated inventories in one pending batch must not double-count cached files.")
+        XCTAssertEqual(store.queue.count, 3)
+        XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8), before)
     }
 
     func testStopCancelsActiveAndQueuedWorkAndPersistsWithoutAutoRestart() async throws {
@@ -197,16 +568,15 @@ else:
     }
 
     func testMissingLegacyJobDirectoryFailsBeforeCollectorAndKeepsOriginalDestination() async throws {
-        let (previous, root) = try fixture(mode: "normal")
-        previous.disconnect()
+        let (store, root) = try fixture(mode: "normal", configure: false, stateBuilder: { root in
+            var job = GCSTransfer(droneUUID: self.first, remotePath: "/fs/microsd/log/2026-09-01/a.ulg", size: 64,
+                                  host: "localhost", destination: root.appendingPathComponent("volume-disconnected/logs").path)
+            job.state = "interrupted"
+            var state = GCSCollectionState(downloadDirectory: root.path)
+            state.host = "localhost"; state.allowedUUIDs = [self.first]; state.autoImport = false; state.queue = [job]
+            return state
+        })
         let missing = root.appendingPathComponent("volume-disconnected/logs")
-        var job = GCSTransfer(droneUUID: first, remotePath: "/fs/microsd/log/2026-09-01/a.ulg", size: 64,
-                              host: "localhost", destination: missing.path)
-        job.state = "interrupted"
-        var state = GCSCollectionState(downloadDirectory: root.path)
-        state.host = "localhost"; state.allowedUUIDs = [first]; state.autoImport = false; state.queue = [job]
-        try JSONEncoder().encode(state).write(to: root.appendingPathComponent("gcs-collection.json"))
-        let store = GCSStore(storageDirectory: root, collector: root.appendingPathComponent("collector.py"))
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         store.connect()
         try await waitUntil { store.canCollectAll }
@@ -235,19 +605,18 @@ else:
     }
 
     func testRetryRetargetsLegacyQueueToVisibleAuthorizedDroneOnNewHost() async throws {
-        let (previous, root) = try fixture(mode: "normal")
-        previous.disconnect()
-        var known = GCSTransfer(droneUUID: first, remotePath: "/fs/microsd/log/2026-09-01/a.ulg", size: 64,
+        let (store, root) = try fixture(mode: "normal", configure: false, stateBuilder: { root in
+        var known = GCSTransfer(droneUUID: self.first, remotePath: "/fs/microsd/log/2026-09-01/a.ulg", size: 64,
                                 host: "192.0.2.10", destination: root.path)
         known.state = "interrupted"
-        var unknown = GCSTransfer(droneUUID: second, remotePath: known.remotePath, size: 64,
+        var unknown = GCSTransfer(droneUUID: self.second, remotePath: known.remotePath, size: 64,
                                   host: "192.0.2.10", destination: root.path)
         unknown.state = "interrupted"
         var state = GCSCollectionState(downloadDirectory: root.path)
-        state.host = "198.51.100.10"; state.allowedUUIDs = [first]
+        state.host = "198.51.100.10"; state.allowedUUIDs = [self.first]
         state.autoImport = false; state.queue = [known, unknown]
-        try JSONEncoder().encode(state).write(to: root.appendingPathComponent("gcs-collection.json"))
-        let store = GCSStore(storageDirectory: root, collector: root.appendingPathComponent("collector.py"))
+        return state
+        })
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         store.connect()
         try await waitUntil { store.canCollectAll }
@@ -271,12 +640,16 @@ else:
         var imports = 0
         var importRoot: URL?
         var files: [GCSTransfer] = []
-        let (store, root) = try fixture(mode: "normal", snapshot: { library }, importer: { folder in
+        let (store, root) = try fixture(mode: "normal", snapshot: { library }, importer: { collectedFile in
             imports += 1
-            XCTAssertEqual((folder.path as NSString).standardizingPath,
+            XCTAssertEqual((collectedFile.deletingLastPathComponent().path as NSString).standardizingPath,
                            importRoot.map { ($0.path as NSString).standardizingPath })
-            // The analyzer consumes a folder; all four cached sources become current.
-            library.logs = try files.map { try self.log(hash: XCTUnwrap($0.sha256), parserVersion: AnalysisService.parserVersion) }
+            let job = try XCTUnwrap(files.first { $0.localPath == collectedFile.path })
+            XCTAssertTrue(FileManager.default.fileExists(atPath: collectedFile.path))
+            // Each import consumes the completed file only; valid siblings stay untouched.
+            let hash = try XCTUnwrap(job.sha256)
+            library.logs.removeAll { $0.id == hash }
+            library.logs.append(try self.log(hash: hash, parserVersion: AnalysisService.parserVersion))
             return library
         })
         importRoot = root
@@ -296,7 +669,7 @@ else:
         try await waitUntil { !store.isBusy && store.batchProgress.completedCount == 3 }
         XCTAssertEqual(store.cachedFileCount, 4)
         XCTAssertEqual(store.batchProgress.totalCount, 3)
-        XCTAssertGreaterThan(imports, 0)
+        XCTAssertEqual(imports, 3)
         XCTAssertEqual(library.logs.count, 4)
         XCTAssertTrue(library.logs.allSatisfy { $0.status == "ok" && $0.metadata["parserVersion"] == AnalysisService.parserVersion })
         XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8), before,
@@ -306,6 +679,26 @@ else:
         try await waitUntil { !store.isBusy && store.cachedFileCount == 4 }
         XCTAssertEqual(store.batchProgress.totalCount, 0)
         XCTAssertEqual(imports, importCount)
+    }
+
+    func testStaleParserReturnedByImportCannotBecomeCompleteOrTriggerFTPAgain() async throws {
+        var downloaded: [GCSTransfer] = []
+        let (store, root) = try fixture(mode: "normal", importer: { file in
+            let job = try XCTUnwrap(downloaded.first { $0.localPath == file.path })
+            var snapshot = FleetSnapshot.empty
+            snapshot.logs = [try self.log(hash: XCTUnwrap(job.sha256), parserVersion: "1.0.0")]
+            return snapshot
+        })
+        defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        try await waitUntil { store.canCollectAll }
+        store.collectAll()
+        try await waitUntil { store.queue.count == 4 && store.queue.allSatisfy(\.isSuccessful) && !store.isBusy }
+        downloaded = store.queue
+        let before = try Data(contentsOf: root.appendingPathComponent("trace.jsonl"))
+        store.autoImport = true; store.collectAll()
+        try await waitUntil { !store.isBusy && store.batchProgress.failedCount == 4 }
+        XCTAssertTrue(store.queue.allSatisfy { $0.state == "failed" && $0.attemptCount == 1 && $0.localPath != nil })
+        XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("trace.jsonl")), before)
     }
 
     private func log(hash: String, status: String = "ok", parserVersion: String) throws -> FlightLog {

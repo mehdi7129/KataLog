@@ -8,9 +8,11 @@ let package = Package(
         .executable(name: "KataLog", targets: ["KataLog"]),
         .executable(name: "katalog-cli", targets: ["KataLogCLI"])
     ],
+    dependencies: [.package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0")],
     targets: [
         .target(name: "KataLogCore"),
-        .executableTarget(name: "KataLog", dependencies: ["KataLogCore"], resources: [.copy("Resources")]),
+        .executableTarget(name: "KataLog", dependencies: ["KataLogCore", .product(name: "Sparkle", package: "Sparkle")], resources: [.copy("Resources")],
+                          swiftSettings: [.unsafeFlags(["-parse-as-library"])]),
         .executableTarget(name: "KataLogCLI", dependencies: ["KataLogCore"]),
         .testTarget(name: "KataLogCoreTests", dependencies: ["KataLogCore"]),
         .testTarget(name: "KataLogAppTests", dependencies: ["KataLog"])

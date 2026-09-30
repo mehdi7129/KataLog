@@ -6,11 +6,12 @@ public struct FleetSnapshot: Codable, Sendable {
     public var sourceFolders: [String]
     public var importStats: ImportStats
     public var logs: [FlightLog]
+    public var archiveResult: JSONValue? = nil
     public static let empty = FleetSnapshot(schemaVersion: 1, generatedAt: "", sourceFolders: [], importStats: .empty, logs: [])
     public var validLogs: [FlightLog] { logs.filter { $0.status != "error" } }
     public var totalDurationSeconds: Double { validLogs.reduce(0) { $0 + $1.durationSeconds } }
-    public var alertLogCount: Int { validLogs.filter { $0.messages.contains(where: \.isAlert) || $0.failsafeObserved }.count }
-    public var failsafeLogCount: Int { validLogs.filter(\.failsafeObserved).count }
+    public var alertLogCount: Int { validLogs.filter(\.hasAlerts).count }
+    public var failsafeLogCount: Int { validLogs.filter { $0.failsafeObserved && ($0.selectionIncludesFailsafe ?? true) }.count }
     public var alertGroups: [AlertGroup] {
         let occurrences = logs.flatMap { log in log.messages.map { MessageOccurrence(log: log, message: $0) } }
         return Dictionary(grouping: occurrences, by: { $0.message.groupKey }).map { key, values in
@@ -35,6 +36,11 @@ public struct ImportStats: Codable, Sendable {
     public var duplicates: Int
     public var failed: Int
     public var reanalyzed: Int? = nil
+    public var archiveRequested: Int? = nil
+    public var archiveCompleted: Int? = nil
+    public var archiveReused: Int? = nil
+    public var archiveFailed: Int? = nil
+    public var archiveSkipped: Int? = nil
     public static let empty = ImportStats(discovered: 0, imported: 0, unchanged: 0, duplicates: 0, failed: 0)
 }
 
@@ -59,6 +65,10 @@ public struct FlightLog: Codable, Identifiable, Sendable {
     public var sizeBytes: Int64
     public var durationSeconds: Double
     public var flightSeconds: Double?
+    public var flightObservedSeconds: Double? = nil
+    public var flightCoverageSeconds: Double? = nil
+    public var flightCoverageFraction: Double? = nil
+    public var sourceAvailability: [SourceAvailability]? = nil
     public var status: String
     public var issues: [String]
     public var metadata: [String: String]
@@ -73,7 +83,38 @@ public struct FlightLog: Codable, Identifiable, Sendable {
     public var parameters: [String: String]? = nil
     public var parameterChanges: [ParameterChange]? = nil
     public var events: [PX4Event]? = nil
-    public var hasAlerts: Bool { messages.contains(where: \.isAlert) || failsafeObserved }
+    public var eventDictionary: JSONValue? = nil
+    public var eventCoverage: [JSONValue]? = nil
+    public var metadataDetails: JSONValue? = nil
+    public var telemetryCatalogue: [TelemetryField]? = nil
+    public var parameterDetails: JSONValue? = nil
+    public var dropouts: [JSONValue]? = nil
+    public var batteryDetails: JSONValue? = nil
+    public var gnssDetails: JSONValue? = nil
+    public var analysisRevision: JSONValue? = nil
+    public var summaryMessageCount: Int? = nil
+    public var summaryAlertMessageCount: Int? = nil
+    public var summaryHasAlerts: Bool? = nil
+    public var selectionIncludesFailsafe: Bool? = nil
+    public var hasAlerts: Bool { (summaryHasAlerts ?? messages.contains(where: \.isAlert)) || (failsafeObserved && (selectionIncludesFailsafe ?? true)) }
+}
+
+public struct SourceAvailability: Codable, Identifiable, Sendable {
+    public var path: String
+    public var state: String
+    public var checkedAt: String
+    public var detail: String?
+    public var id: String { path }
+    public var label: String {
+        switch state {
+        case "present": "Source vérifiée"
+        case "missing": "Source absente"
+        case "offline": "Volume hors ligne"
+        case "inaccessible": "Source inaccessible"
+        case "modified": "Contenu modifié"
+        default: "Disponibilité non vérifiée"
+        }
+    }
 }
 
 public struct LogMessage: Codable, Identifiable, Sendable {
@@ -87,8 +128,14 @@ public struct LogMessage: Codable, Identifiable, Sendable {
     public var title: String
     public var alertFlag: Bool?
     public var position: TrackPoint? = nil
+    public var isMasked: Bool? = nil
+    public var source: String? = nil
+    public var tag: Int? = nil
+    public var rawTimestamp: JSONValue? = nil
+    public var rawLogLevel: JSONValue? = nil
+    public var sourceIndex: Int? = nil
     enum CodingKeys: String, CodingKey {
-        case id, timestampSeconds, level, text, family, sourceFamily, groupKey, title, position
+        case id, timestampSeconds, level, text, family, sourceFamily, groupKey, title, position, isMasked, source, tag, rawTimestamp, rawLogLevel, sourceIndex
         case alertFlag = "isAlert"
     }
     /// Same whitespace normalization as the importer; independent of automatic family rules.
@@ -129,6 +176,40 @@ public struct TelemetrySeries: Codable, Identifiable, Sendable {
     public var source: String
     public var originalSampleCount: Int
     public var points: [TelemetryPoint]
+    public var topic: String? = nil
+    public var field: String? = nil
+    public var instance: Int? = nil
+    public var type: String? = nil
+    public var rawUnit: String? = nil
+    public var unitSource: String? = nil
+    public var unitStatus: String? = nil
+    public var scale: Double? = nil
+    public var sourceConversion: String? = nil
+    public var interpolation: String? = nil
+    public var strategy: String? = nil
+    public var pointBudget: Int? = nil
+    public var gapSeconds: Double? = nil
+    public var windowFrom: Double? = nil
+    public var windowTo: Double? = nil
+    public var windowSampleCount: Int? = nil
+    public var validSampleCount: Int? = nil
+    public var rejectedSampleCount: Int? = nil
+    public var outsideWindowSampleCount: Int? = nil
+    public var displayedPointCount: Int? = nil
+    public var segmentCount: Int? = nil
+    public var displayedSegmentCount: Int? = nil
+    public var omittedSegmentCount: Int? = nil
+    public var omittedSegmentSampleCount: Int? = nil
+    public var omittedTransitionCount: Int? = nil
+    public var omittedExtremaCount: Int? = nil
+    public var timeReversalCount: Int? = nil
+    public var longGapCount: Int? = nil
+    public var nonfiniteValueCount: Int? = nil
+    public var invalidTimestampCount: Int? = nil
+    public var precisionRejectedCount: Int? = nil
+    public var sentinelRejectedCount: Int? = nil
+    public var completeWindow: Bool? = nil
+    public var coverage: JSONValue? = nil
     public var id: String { key }
 }
 
@@ -157,12 +238,60 @@ public struct ParameterChange: Codable, Identifiable, Sendable {
 
 public struct PX4Event: Codable, Identifiable, Sendable {
     public var id: String
-    public var eventID: Int
-    public var timeSeconds: Double
+    public var eventID: JSONValue
+    public var timeSeconds: Double?
     public var level: String
     public var message: String?
     public var argumentsHex: String
     public var definitionSource: String?
+    public var topic: String? = nil
+    public var instance: Int? = nil
+    public var sourceIndex: Int? = nil
+    public var rawTimestamp: JSONValue? = nil
+    public var sequence: Int? = nil
+    public var logLevels: Int? = nil
+    public var internalLevel: Int? = nil
+    public var externalLevel: Int? = nil
+    public var internalLevelName: String? = nil
+    public var externalLevelName: String? = nil
+    public var translationStatus: String? = nil
+    public var description: String? = nil
+    public var argumentValues: [JSONValue]? = nil
+    public var rawArguments: JSONValue? = nil
+    public var invalidReason: String? = nil
+    public var eventName: String? = nil
+    public var group: String? = nil
+    public var namespace: String? = nil
+    public var reference: String? = nil
+}
+
+public struct TelemetryField: Codable, Identifiable, Sendable {
+    public var key: String
+    public var topic: String
+    public var instance: Int
+    public var field: String
+    public var type: String
+    public var sampleCount: Int
+    public var numeric: Bool
+    public var extractable: Bool
+    public var rawUnit: String
+    public var unit: String
+    public var scale: Double
+    public var unitSource: String?
+    public var unitStatus: String
+    public var sentinelPolicy: String?
+    public var interpolation: String
+    public var id: String { key }
+}
+
+public struct TelemetryRecipe: Codable, Sendable {
+    public var schemaVersion: Int
+    public var recipe: String
+    public var instance: Int
+    public var series: [TelemetrySeries]
+    public var missingFields: [String]
+    public var pointBudget: Int
+    public var displayedPointCount: Int
 }
 
 public struct LogMetric: Codable, Identifiable, Sendable {

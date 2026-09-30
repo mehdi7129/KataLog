@@ -50,6 +50,8 @@ PRIVATE_FILENAMES = {
     ".ds_store", "annotations.json", "settings.json", "preferences.json",
     "library.json", "snapshot.json", "fleet-snapshot.json", "manifest.json",
     "collection-queue.json", "queue.json", "credentials.json", "secrets.json",
+    "views.json", "import-options.json", "gcs-settings.json", "gcs-collection.json",
+    "fleet.json", "progress.json", ".archive-journal.json", ".restore-journal.json",
     "id_rsa", "id_ed25519", "known_hosts", "authorized_keys",
 }
 USER_PATH = re.compile(b"/" + b"Users/" + rb"([^/\s\x00\"'`<>]+)")

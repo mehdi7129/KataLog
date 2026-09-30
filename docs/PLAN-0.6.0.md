@@ -1,9 +1,45 @@
+> **Exécution en cours :** suivre [IMPLEMENTATION-0.6.0.md](IMPLEMENTATION-0.6.0.md), les [contrats](CONTRACTS-0.6.md) et les états du [backlog](BACKLOG-0.6.0.md). Les descriptions et gates ci-dessous sont le plan de référence, pas une annonce de release.
+
 # KataLog 0.6.0 — plan de développement
 
-**Statut : proposition de développement, 29 septembre 2026.**
-Référence : release **0.5.1 (6)**, parseur **1.2.0**.
+**Statut : proposition actualisée le 30 septembre 2026, après audit du code.**
+Référence locale : **0.5.2 (7)**, parseur **1.2.0**, macOS 27.
+Le plan initial partait de 0.5.1 (6) ; le socle de distribution a été livré depuis.
 Ce document prépare la prochaine version ; ses fonctionnalités et ses objectifs
 de performance ne sont pas encore livrés ni validés.
+
+Lire aussi l'[audit vérifié](AUDIT-2026-09-30.md) et le
+[backlog exécutable](BACKLOG-0.6.0.md), avec tâches, dépendances et critères de fin.
+Les résultats actuels sont **87 tests Python + 79 Swift + 9 JavaScript réussis**.
+L'utilisateur a installé l'app et confirme son fonctionnement sur macOS 27.
+
+## Stabilisation préalable : 0.5.3 proposée
+
+L'audit a relevé des incohérences de présentation et d'identité que les suites
+actuelles ne couvrent pas. Les corriger avant les migrations et nouvelles analyses :
+
+- C01 : même identité canonique entre résumé, fiche, numéro manuel et export.
+- C03/C12 : phases de collecte explicites ; aucun verdict complet si un inventaire échoue.
+- C04/C05/C06/C07 : comptes HTML filtrés, famille devenue vide, registre/périmètre,
+  définition commune des familles et failsafes.
+- C09/C11 : récepteur GNSS et couverture de la durée de vol visibles.
+- C02/C08 : disponibilité minimale des sources et export occupé dès le correctif ;
+  services complets de stockage/progression/annulation en L2/L4.
+- C10 : dernière analyse en cache conservée dans le correctif, même sans source
+  réanalysable. Ce prérequis bloque toute évolution ultérieure du parseur/cache.
+
+La version 0.5.3 est un lot proposé, pas une release créée. Ajouter une régression
+pour chaque cas, puis vérifier le package installé. La correction d'un filtre
+existant n'autorise pas l'intégration d'une nouvelle interface sans maquette approuvée.
+
+## Avancement du socle de distribution
+
+La version locale 0.5.2 (7) livre le moteur autonome et le DMG sans livrer les
+autres lots 0.6.0. Helper ARM64 : CPython 3.13.15, NumPy 2.5.3, pyulog 1.2.4,
+versions/hashes/licences embarqués ; résolveur commun import/collecte avec handshake.
+Les tests du code et du package restent distincts de la recette sur Mac vierge.
+Mac du poste : macOS 27 ; minima Mach-O vérifiés pour macOS 15. Une recette
+exécutée sur macOS 15 reste requise avant de déclarer cette version qualifiée.
 
 ## 1. Objectif de la version
 
@@ -38,8 +74,9 @@ une condition de livraison : les événements non traduits restent exploitables.
 
 - Import SHA256, SQLite, collecte GCS, numéros manuels, familles personnalisées,
   carte Apple Maps et rapport HTML interactif existent déjà.
-- La release 0.5.1 est signée Developer ID et notarisée. Python, `pyulog` et
-  `numpy` restent externes. Aucun updater n'est intégré.
+- La distribution locale 0.5.2 est signée Developer ID et notarisée ; Python,
+  `pyulog` et `numpy` sont embarqués. La 0.5.1 historique utilisait un moteur
+  externe. Aucun updater n'est intégré dans ces deux versions.
 - Les résumés, messages et aperçus GPS sont encore chargés globalement.
   SQLite stocke principalement des résumés JSON ; les détails sont déjà chargés
   à la demande et mis en cache.
@@ -52,8 +89,11 @@ une condition de livraison : les événements non traduits restent exploitables.
   10 000 messages. Il ne mesure pas plusieurs années de logs ni la mémoire SwiftUI.
 - Les événements binaires du corpus de recette sont encore seulement comptés.
   Les topics disponibles varient ; leur présence n'est pas supposée pour chaque drone.
-- La publication 0.5.1 consigne **68 tests Python, 64 Swift et 9 JavaScript**.
-  Ces résultats constituent la référence de non-régression, pas une validation 0.6.
+- L'audit du 30 septembre exécute **87 tests Python, 79 Swift et 9 JavaScript**
+  avec succès. La publication historique 0.5.1 consignait 68/64/9 tests.
+  Aucun de ces résultats ne constitue une validation des fonctionnalités 0.6.
+- Le dépôt neuf reste privé ; les changements de distribution 0.5.2 sont encore
+  dans le working tree. Figer leur commit avant la prochaine livraison.
 
 Sources locales : [contrat](IMPORT-CONTRACT.md), [recettes](UI-VALIDATION.md),
 [collecteur](GCS-COLLECTION.md), [release](RELEASING.md).
@@ -89,6 +129,9 @@ Les nouveaux écrans feront l'objet de maquettes avant leur intégration, confor
 - **Vue d'ensemble** : barre de périmètre commune, compteurs, activité et profil
   des alertes. Les graphiques sélectionnent une période ou une famille et
   affichent le nombre de logs concernés, avec accès aux valeurs détaillées.
+  L'ensemble et l'ordre des axes radar choisis restent identiques sous filtre,
+  avec valeurs zéro conservées ; un changement d'axes est annoncé. Le top des
+  familles fréquentes est un classement distinct du radar.
 - **Historique / Drones** : résultats paginés, sélection multiple, numéro manuel,
   dernier log, état des sources et couverture. Les drones sans log restent dans
   le registre de flotte ; ils ne reçoivent pas une statistique de fiabilité fictive.
@@ -108,7 +151,8 @@ Les nouveaux écrans feront l'objet de maquettes avant leur intégration, confor
 
 Créer un `SelectionScope` partagé : identités de contrôleur, période, traitement
 des dates inconnues, familles, niveaux/alertes, recherche, état d'analyse et
-masquages. Les numéros sont des libellés, les UUID restent les clés.
+masquages. Les numéros sont des libellés ; les identités canoniques restent les
+clés (UUID lorsqu'il est disponible, fallback source sinon).
 
 Les filtres de messages retiennent les logs qui possèdent une occurrence
 correspondante. Un failsafe sans message contribue au compteur seulement lorsqu'un
@@ -139,12 +183,20 @@ Les tailles indiquent la complexité, pas une durée calendaire. L1, L2 et
 l'extraction L5 peuvent avancer séparément après L0 ; L3/L4 forment le chemin
 principal. Les fichiers partagés `Models.swift`, `LibraryStore` et les contrats
 sont intégrés dans un ordre explicite pour éviter des modifications concurrentes.
+Les lots se chevauchent : le socle SQL L3 précède les vues L4, mais la carte et
+le banc UI final L3 utilisent ensuite le scope Core L4. La matrice des rapports
+est spécifiée avant L5/L6 ; les sections événements/courbes sont qualifiées lors
+de leur intégration. Les portes du backlog portent sur ces fonctionnalités,
+pas sur la fermeture artificiellement séquentielle de tous les tickets d'un lot.
 
 ### L0 — Référence reproductible et contrats
 
 - [ ] Séparer version de base SQLite, version du JSON public et version de calcul.
   `SCHEMA_VERSION` sert actuellement à la base et au JSON : ne pas les faire
   évoluer implicitement ensemble.
+- [ ] Versionner aussi le protocole de service. Toute réponse paginée porte
+  request ID, révision, empreinte du périmètre et curseur opaque ; une réponse
+  tardive pour un ancien filtre n'est pas appliquée à l'écran courant.
 - [ ] Définir les contrats `SelectionScope`, agrégats/pages, manifeste de sauvegarde,
   événements bruts, catalogue de séries et réponse d'extraction.
 - [ ] Conserver les commandes `scan`, `snapshot`, `detail` et l'export complet
@@ -161,21 +213,26 @@ remplace pas la recette privée ni les essais GCS.
 
 ### L1 — Installation autonome
 
-- [ ] Prototyper un helper ARM64 embarquant Python, `pyulog`, `numpy` et les scripts,
-  avec versions épinglées, empreintes et notices de licences. Candidat : paquet
-  PyInstaller `onedir`, à retenir seulement après essai dans une app signée.
-- [ ] Ajouter un `EngineRuntimeResolver` commun à `AnalysisService` et
-  `GCSProcessService`. Aujourd'hui leurs recherches de Python diffèrent.
-- [ ] Utiliser le helper embarqué en release ; conserver un override de moteur
+- [x] Helper ARM64 embarquant Python, `pyulog`, `numpy` et les scripts,
+  versions épinglées, empreintes et licences. Retenu : PyInstaller `onedir`
+  structuré en bundle macOS imbriqué, composants signés avec Developer ID.
+- [x] Résolveur `EngineRuntimeResolver` commun à `AnalysisService` et
+  `GCSProcessService`, avec environnement des processus nettoyé.
+- [x] Utiliser le helper embarqué en release ; conserver un override de moteur
   explicite pour le développement, avec handshake de version du protocole.
-- [ ] Signer les composants natifs imbriqués puis l'app ; produire un DMG
+- [x] Signer les composants natifs imbriqués puis l'app ; produire un DMG
   contenant **KataLog.app** et un lien **Applications**, avec présentation claire
   pour glisser-déposer. Aucun script Terminal n'est requis pour l'utilisateur.
-- [ ] Notariser le DMG et agrafer les tickets appropriés ; réauditer les fichiers
+- [x] Notariser le DMG et agrafer les tickets appropriés ; réauditer les fichiers
   montés et tester l'app copiée depuis le DMG. Mesurer taille et démarrage du moteur.
+  Recette locale : macOS 27, DMG 15,86 Mo, 8 contrôles de distribution réussis.
+  Voir [la validation 0.5.2](DISTRIBUTION-VALIDATION.md) et ses limites.
 - [ ] Tester téléchargement → montage → glisser dans Applications → éjection →
   lancement, puis remplacement d'une ancienne app après fermeture. Bibliothèque,
   numéros et dossier de collecte restent conservés hors du bundle.
+  Le parcours local et l'installation utilisateur sont déjà réussis sur macOS 27 ;
+  restent la provenance téléchargée/quarantinée, le Mac vierge/macOS 15 et la
+  recette de remplacement de la prochaine build.
 
 **Sortie :** app réellement téléchargée et quarantinée, sur macOS 15 et sur
 la version du poste de recette Apple Silicon, sans Python, Homebrew, `gh`, Xcode
@@ -193,6 +250,9 @@ pipeline de packaging et tests du moteur.
   ou **Sauvegarde complète avec ULog** ; afficher les sources absentes et la taille.
 - [ ] Arrêter les écritures locales pendant la capture commune des fichiers de
   configuration ; ne pas copier seulement SQLite en ignorant son journal WAL.
+- [ ] Coordonner aussi les instances de l'app : verrou interprocess avec propriétaire
+  identifiable, seconde instance en lecture seule ou refus lisible. Tester ancien
+  et nouveau bundle ouverts ensemble, sans supprimer une app automatiquement.
 - [ ] Restaurer dans un staging, vérifier formats et empreintes, prévisualiser
   les résultats puis basculer ; conserver la bibliothèque précédente.
 - [ ] Réassocier les archives au dossier choisi sur le Mac cible, avec SHA
@@ -205,6 +265,12 @@ pipeline de packaging et tests du moteur.
   provenance et réutiliser la copie finale GCS vérifiée lorsqu'elle existe.
 - [ ] Afficher l'état des sources ; permettre de retrouver un fichier déplacé
   par son SHA. Un chemin d'origine est une provenance, pas une preuve actuelle.
+- [ ] Distinguer source présente vérifiée, absente, inaccessible, volume hors ligne
+  et contenu modifié, avec date de contrôle. Conserver la dernière analyse en cache
+  et sa version si une réanalyse est impossible ; ne pas la supprimer à l'upgrade.
+- [ ] Borner les archives à restaurer : chemins relatifs contrôlés, liens refusés,
+  taille décompressée/empreintes validées. La prévisualisation distingue sources
+  incluses, référencées, manquantes et jobs interrompus.
 
 **Sortie :** restauration sur une bibliothèque vide et dans un autre emplacement
 avec mêmes IDs, messages, numéros, familles et SHA. Annulation, disque plein ou sauvegarde corrompue ne
@@ -216,7 +282,7 @@ d'annotations/GCS et écran Stockage.
 
 ### L3 — Bibliothèque adaptée au grand historique
 
-- [ ] Migration transactionnelle depuis la base 0.5.1, après sauvegarde vérifiée ;
+- [ ] Migration transactionnelle depuis les bases 0.5.1/0.5.2/0.5.3, après sauvegarde vérifiée ;
   reprise explicite et refus lisible d'un format futur inconnu.
 - [ ] Ajouter des projections indexées logs/messages/date/identité/famille/niveau,
   et un index de recherche adapté aux requêtes réellement utilisées. Les textes
@@ -230,6 +296,9 @@ d'annotations/GCS et écran Stockage.
   invalidation/version de projection à chaque édition.
 - [ ] Conserver un seul chemin d'écriture vers la base ; gérer les lectures
   pendant import sans maintenir une transaction de lecture indéfinie.
+- [ ] Inclure file/historique de collecte dans le travail de capacité : jobs
+  indexés et paginés, inventaires progressifs, pages bornées. Le protocole GCS
+  et ses essais sont détaillés au §12 ; conserver la limite 2 UUID × 1 fichier.
 
 **Sortie :** migration sans perte ; aucune omission ou répétition entre pages,
 y compris dates identiques/inconnues. Recherche, familles manuelles et radar
@@ -251,6 +320,9 @@ les budgets retenus en L0.
 - [ ] Garder l'export JSON complet compatible ; ajouter séparément un export
   de sélection identifié comme tel. Une sélection de messages ne prétend jamais
   constituer toutes les données du fichier ULog.
+- [ ] Donner aux familles textuelles et aux états failsafe des définitions communes
+  dans app/HTML/JSON. Comptages par occurrence et par log unique sont distincts ;
+  toutes les cellules HTML sont recalculées après un filtre, pas seulement le total.
 - [ ] Produire les données de rapport par lecture séquentielle, indépendante
   de la pagination visible. Fichier temporaire et publication finale atomique.
 - [ ] Capturer une base temporaire cohérente via backup SQLite et les versions
@@ -260,6 +332,10 @@ les budgets retenus en L0.
 - [ ] Conserver le HTML autonome, ses filtres, les thèmes et l'impression.
   Pour un rapport très volumineux, proposer une synthèse avec données complètes
   jointes plutôt qu'un document interactif tronqué ou un navigateur bloqué.
+- [ ] Prévisualiser synthèse flotte / sélection / fiche détaillée, sections et
+  taille ; annoncer les paramètres/topics/événements/séries inclus ou indisponibles.
+  Ajouter un preset optionnel de partage avec aperçu des champs masqués, sans
+  promettre que tout texte libre est automatiquement dépersonnalisé.
 
 **Sortie :** mêmes comptes pour le même périmètre dans app/HTML/JSON de sélection.
 Contrôleurs homonymes, INFO classé alerte, failsafe sans message, absence de date,
@@ -294,6 +370,9 @@ ou une édition d'annotations produit une version cohérente datée, sans omettr
   notifications ressemblantes. Appliquer ces règles à la sélection et aux exports.
 - [ ] Étendre les explications aux observations réellement rencontrées et
   documentables, avec source/version, vérifications suggérées et limites.
+- [ ] Distinguer Documentée / Interprétation / Inconnue, applicabilité firmware,
+  type de message, tags et valeur brute. Un titre ressemblant ne prouve pas un
+  incident ; l'explication reste séparée des faits enregistrés.
 - [ ] Dans **Données et provenance**, exposer les métadonnées supplémentaires,
   boot console, compteurs de performance et informations batterie enregistrés
   lorsqu'ils existent : cellules, cycles, serial, erreurs d'interface et état
@@ -332,6 +411,9 @@ fiche/inspecteur et `AlertKnowledge`.
   unité/conversion, nombres original/valide/rejeté/affiché, stratégie
   d'échantillonnage et traitement des lacunes. Le relevé affiché se distingue
   explicitement d'un export des échantillons originaux.
+- [ ] Préserver les intervalles de dropouts, transitions de modes/états et
+  couverture landed ; rendre lisibles la durée observée et son dénominateur.
+  L'âge RTCM est proposé uniquement lorsqu'un champ adéquat est enregistré.
 
 **Sortie :** conversions, NaN, récepteurs multiples, temps invalides, pics courts,
 excès de segments, lacunes et topics absents testés. Sur les fixtures et fenêtres
@@ -363,7 +445,10 @@ Le dépôt public et les releases n'exigent aucune connexion GitHub dans l'app.
 - [ ] La découverte GCS peut être arrêtée puis reconnectée au relancement ; elle
   ne bloque pas indéfiniment l'installation comme un transfert actif.
 - [ ] Tester depuis un compte utilisateur sans `gh` et sans connexion GitHub.
-  Le **premier passage depuis 0.5.1 reste manuel**, car elle n'a pas d'updater.
+  Le **premier passage depuis 0.5.1/0.5.2 et tout build sans updater reste manuel**.
+- [ ] Épingler une version Sparkle qualifiée ; tester aussi signature de feed/notes
+  lorsque prise en charge, builds croissants, absence de downgrade silencieux et
+  distinction entre feed de staging et release. Aucune clé privée dans Git.
 
 **Sortie :** recherche de version, notes, téléchargement et relancement depuis
 l'app, données conservées, signatures incorrectes refusées et récupération après
@@ -386,6 +471,14 @@ publique décrite dans [PUBLICATION.md](PUBLICATION.md).
 - [ ] Préparer README, contrats, CHANGELOG, preuves de migration et notices runtime.
   Auditer les sources et l’historique publiable. Construire, signer, notariser,
   agrafer et vérifier le DMG téléchargé de GitHub ainsi que l’archive d’update.
+- [ ] Choisir la licence du projet avant ouverture publique ; conserver licences
+  et inventaire des dépendances. Ajouter contribution, signalement de bugs et
+  consignes pour ne jamais joindre des logs/identifiants privés à une issue publique.
+- [ ] Ajouter About et export local de diagnostic borné : versions app/build,
+  moteur/parseur/schéma, étapes et erreurs. Les chemins, UUID et coordonnées sont
+  exclus par défaut de l'export de support ; aucune télémétrie envoyée implicitement.
+- [ ] Figer le commit de livraison et enregistrer source/build/runtime/parseur/
+  schémas/hashes dans un manifeste ; le tag correspond au bundle réellement testé.
 - [ ] Publier `v0.6.0` uniquement après les critères de sortie ; pas de réutilisation
   du tag 0.5.1. Le numéro de build et celui du parseur sont fixés lors de la livraison.
 
@@ -395,7 +488,7 @@ publique décrite dans [PUBLICATION.md](PUBLICATION.md).
 flowchart TD
     A[L0 Contrats et corpus] --> B[L1 Moteur autonome]
     A --> C[L2 Sauvegarde et archives]
-    C --> D[L3 Index et pagination]
+    C --> D[L3 Socle index et pagination]
     D --> E[L4 Filtres et rapports]
     A --> F[L5 Événements]
     F --> G[L6 Courbes et curseur]
@@ -458,7 +551,7 @@ une synthèse et un export complet joint ; aucun message n'est perdu sans indica
 
 | Parcours | Résultat attendu |
 |---|---|
-| 0.5.1 → 0.6.0 | Même bibliothèque, numéros, classements, dossier de collecte et historique de file |
+| 0.5.1/0.5.2/0.5.3 → 0.6.0 | Même bibliothèque, numéros, classements, dossier de collecte et historique de file |
 | Migration interrompue | Ancienne base préservée ou migration reprenable, état explicite |
 | Import/réimport SD | Bons comptes, aucun doublon, originaux inchangés |
 | Archive puis retrait SD | Détail et réanalyse depuis copie vérifiée |
@@ -520,7 +613,8 @@ sans drone allumé.
   métadonnées d'événements et lien au firmware ; le dictionnaire utilisé doit
   être identifié avant traduction.
 - [PyInstaller — architectures et signature macOS](https://pyinstaller.org/en/stable/feature-notes.html) :
-  candidat pour le helper autonome ; l'intégration et le bundle final restent à éprouver.
+  approche retenue pour le helper autonome ; bundle validé localement sur macOS 27.
+  La qualification sur macOS 15 et Mac vierge reste à réaliser.
 - [Sparkle — documentation](https://sparkle-project.org/documentation/),
   [headers HTTP](https://sparkle-project.org/documentation/api-reference/Classes/SPUUpdater.html)
   et [delegate](https://sparkle-project.org/documentation/api-reference/Protocols/SPUUpdaterDelegate.html) :
@@ -532,5 +626,98 @@ sans drone allumé.
   et [notarisation](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution) :
   composants imbriqués, bundle final et chaîne de distribution.
 
-Références consultées pour ce plan ; les versions des outils seront épinglées
-lors des prototypes L1/L7. La version installée reste 0.5.1.
+Références consultées pour ce plan ; les versions des outils sont épinglées en L1
+et le seront pour L7. La référence installée vérifiée est **0.5.2 (7)**.
+
+## 12. Collecte : protocoles, capacité et arrêt
+
+Ce travail complète L0/L3/L4 ; il conserve les protections existantes du
+[contrat GCS](GCS-COLLECTION.md), sans ajouter de commande de vol/configuration.
+
+### États et progression
+
+- Versionner les événements : session/job/UUID, phase, octets de cette phase,
+  total connu/inconnu, tentative, erreur typée et état terminal.
+- Phases distinctes : inventaire → drone vers GCS → GCS vers Mac → vérification
+  → import optionnel. Une phase terminée ne termine pas le job.
+- Une barre globale a une règle annoncée ; pour un total encore inconnu,
+  afficher le recensement puis un total stabilisé. Ne pas compter les octets
+  de deux copies comme une seule mesure locale. Validation cache et logs déjà
+  présents sont visibles, mais ne prétendent pas être des nouveaux téléchargements.
+- Un batch est complet uniquement lorsque ses inventaires attendus sont couverts
+  et ses jobs terminés/vérifiés. Distinguer À jour, Terminé, Partiel, Arrêté et
+  Erreurs ; un drone non recensé reste explicitement inconnu.
+
+### File durable et flux bornés
+
+- Schéma proposé : jobs/batches, états durables, destination figée par job,
+  clé de déduplication UUID/source distante/destination, SHA final et provenance.
+- Séparer queue active et historique paginé ; pas de réécriture intégrale de
+  tout l'historique à chaque progression. Les changements d'état sont atomiques.
+- Recenser progressivement avec pages bornées en octets et en lignes ; permettre
+  le premier transfert sans attendre tous les inventaires quand le protocole le
+  permet. Si la GCS n'offre pas de pages, découper le relais local et annoncer sa limite.
+- Préserver un pending hors ligne sans interdire la collecte de nouveaux drones
+  visibles. Maquetter Ajouter à la session / mettre en attente avant intégration.
+- Les appareils ou métadonnées invalides sont isolés ; le contrat numérique est
+  identique en Python/Swift. Ne pas arrondir silencieusement un état invalide.
+
+### Annulation et erreurs
+
+- Pause laisse finir les jobs actifs ; arrêt annule les processus locaux, conserve
+  les fichiers finaux vérifiés et indique la limite d'arrêt FTP distant.
+- Ajouter deadline/délai de grâce puis terminaison forcée ciblée du helper si
+  nécessaire ; fermer ses pipes et attendre sa sortie. Un test isolé simule un
+  helper ignorant SIGTERM ; aucun processus réel sans rapport n'est terminé.
+- Trois retries transitoires restent bornés. Une erreur d'import d'un fichier
+  final vérifié ne déclenche pas un nouveau téléchargement FTP.
+- Pas de reprise à l'octet, d'arrêt distant garanti, d'empreinte distante ni
+  de slots supplémentaires promis sans capacité correspondante de la GCS.
+
+**Recette :** cache complet/partiel, inventaire échoué sur un drone, déconnexion,
+nouveau drone pendant pending, redémarrage, destination inaccessible, import désactivé,
+HTTP lent/échoué après FTP fini, helper bloqué, arrêt pendant chaque phase et
+deux transferts simultanés sur UUID distincts. Mesurer latence du premier transfert,
+RSS/activité MainActor, nombre d'écritures, volumes et débit ; simulateur puis matériel.
+
+## 13. Maquettes, validation et organisation
+
+### Livrables visuels avant nouvelle UI
+
+| Maquette | États à présenter | Contrat à valider |
+|---|---|---|
+| Périmètre et historique | 0/1/500 drones, recherche vide, dates inconnues, multi-sélection | Reset, pages, dates et filtres communs |
+| Profil/inspecteur alertes | 1/2/plus de 8 familles, famille reclassée/masquée, événement inconnu | Fréquence, axes stables, drill-down, facts vs explication |
+| Fiche temporelle | Multi-GNSS, topic absent, source absente, lacune, données réduites | Temps commun, unités, récepteur, budget/couverture |
+| Stockage | SD retirée, disque plein, archive partielle, restauration | Copie optionnelle, taille, vérification, bibliothèque précédente conservée |
+| Collecte | Inventaire inconnu, erreur partielle, deux phases, pending hors ligne | Total honnête, arrêt, ajout de drones, logs déjà présents |
+| Export | Synthèse/sélection/fiche, grand volume, annulation, partage | Périmètre et données incluses, taille/limites, pas de troncature discrète |
+| Réglages/About/update | Clair/sombre/système, offline, update différée | Versions, diagnostic local, redémarrage coordonné |
+
+Conserver `DESIGN.md` et le style approuvé. Livrer les maquettes clair/sombre
+à largeur usuelle et petite fenêtre ; ne pas transformer un concept visuel en
+fonctionnalité annoncée comme livrée.
+
+### Vagues de développement
+
+1. **Stabilisation et contrats initiaux** : C01–C12 selon périmètre préalable,
+   définitions L0 nécessaires, régressions et recette installée.
+2. **Fondations** : L0, backup/coordination L2, compléments de qualification L1 ;
+   prototype extraction L5 et updater L7 possibles sur données de staging.
+3. **Historique** : migration/index L3, file GCS durable, puis scope/vues/export L4.
+4. **Analyse** : intégration L5, courbes/temps L6 ; maquettes approuvées avant leurs vues.
+5. **Livraison** : updater intégré, budgets mesurés, accessibilité/GCS/distribution L8.
+
+Chaque tâche du backlog a une responsabilité de module, une dépendance et un test
+de sortie. Les contrats et modèles partagés ont un intégrateur désigné ; branches
+et commits distincts pour éviter les modifications concurrentes de `Models.swift`
+ou `LibraryStore`. Pas de calendrier affirmé avant mesure du travail de migration.
+
+### Définition de terminé
+
+- Régression du défaut ou recette du nouveau contrat reproductible et réussie.
+- Données source/annotations conservées ; erreurs, annulation et états vides traités.
+- Parité de périmètre/comptes app, requêtes et export ; budgets vérifiés si applicables.
+- UI approuvée puis testée en clair/sombre, clavier et taille prévue.
+- Documentation actualisée, preuves sans données personnelles et commit identifié.
+- Blocages matériels/dictionnaires déclarés ; aucune case cochée sur une simple présence de modèle.

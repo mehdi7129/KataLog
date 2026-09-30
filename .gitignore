@@ -35,6 +35,12 @@
 library.json
 annotations.json
 gcs-collection.json
+gcs-settings.json
+views.json
+import-options.json
+progress.json
+.archive-journal.json
+.restore-journal.json
 snapshot.json
 settings.json
 preferences.json

@@ -36,6 +36,7 @@ MAX_LOG_BYTES = 8 * 1024 * 1024 * 1024
 MAX_FILES = 100_000
 MAX_DIRECTORIES = 4096
 MAX_DEPTH = 8
+MAX_INVENTORY_FRAME_BYTES = 256 * 1024
 MQTT_TOPICS = (
     "send_mqtt_drone_status_list", "send_mqtt_ftp_list", "ftp_list_dir",
     "download_path", "send_mqtt_ftp_end_session", "send_mqtt_ftp_transfer_status",
@@ -374,7 +375,7 @@ def list_directory(host, port, identity, path, timeout=20):
     raise CollectionError("Aucun listing reçu pour %s." % path, retryable=True)
 
 
-def inventory(host, port, identity, destination=None):
+def inventory(host, port, identity, destination=None, report=None):
     if destination is not None:
         validate_destination(destination)
     pending, visited, discovered, result = [LOG_ROOT], set(), {LOG_ROOT}, []
@@ -388,6 +389,8 @@ def inventory(host, port, identity, destination=None):
         visited.add(path)
         directories, files = list_directory(host, port, identity, path)
         result.extend(files)
+        if report is not None:
+            report("inventory", len(result), None)
         if len(result) > MAX_FILES:
             raise CollectionError("Plus de 100 000 logs pour ce drone.")
         for directory in directories:
@@ -400,14 +403,46 @@ def inventory(host, port, identity, destination=None):
                 pending.append(directory)
     result.sort(key=lambda item: item["path"])
     if destination is not None:
-        for item in result:
+        last_report = 0
+        for index, item in enumerate(result):
             target = local_target(destination, identity, item["path"], create=False)
             record = cache_record(target, {"uuid": identity, "path": item["path"], "size": item["size"]})
             item["isDownloaded"] = record is not None
             if record is not None:
                 item["localPath"] = str(target)
                 item["sha256"] = record["sha256"]
+            if report is not None and (index + 1 == len(result) or time.monotonic() - last_report >= 1):
+                report("cache", index + 1, len(result))
+                last_report = time.monotonic()
     return result
+
+
+def emit_inventory_pages(identity, files):
+    """Bound every JSONL frame; the UI accepts both these pages and legacy inventory."""
+    inventory_id = uuid_module.uuid4().hex
+    emit("inventory_started", uuid=identity, inventoryID=inventory_id, totalFiles=len(files))
+    page, page_index = [], 0
+    def payload(items):
+        return {"event": "inventory_page", "uuid": identity, "inventoryID": inventory_id,
+                "pageIndex": page_index, "files": items}
+    def frame_overhead():
+        return len(json.dumps(payload([]), ensure_ascii=False, allow_nan=False).encode("utf-8")) + 1
+    page_bytes = frame_overhead()
+    for item in files:
+        item_bytes = len(json.dumps(item, ensure_ascii=False, allow_nan=False).encode("utf-8"))
+        if page and (len(page) >= 256 or page_bytes + 2 + item_bytes > MAX_INVENTORY_FRAME_BYTES):
+            emit("inventory_page", uuid=identity, inventoryID=inventory_id, pageIndex=page_index, files=page)
+            page_index += 1
+            page = []
+            page_bytes = frame_overhead()
+        if page_bytes + item_bytes > MAX_INVENTORY_FRAME_BYTES:
+            raise CollectionError("Une entrée d’inventaire dépasse la limite du protocole local.")
+        page_bytes += item_bytes + (2 if page else 0)
+        page.append(item)
+    if page:
+        emit("inventory_page", uuid=identity, inventoryID=inventory_id, pageIndex=page_index, files=page)
+        page_index += 1
+    emit("inventory_finished", uuid=identity, inventoryID=inventory_id, totalFiles=len(files), pageCount=page_index)
 
 
 def verify_remote_size(host, port, identity, remote, expected):
@@ -649,8 +684,10 @@ def download(host, port, http_port, identity, remote, expected, destination):
                             last_progress = transferred
             if not complete:
                 raise CollectionError("Le transfert drone → GCS n’a pas été confirmé.", retryable=True)
+        emit("phase", uuid=identity, path=remote, phase="http", bytes=0, total=expected)
         digest = copy_http(host, http_port, staging, part, expected, lambda transferred:
                            emit("progress", uuid=identity, path=remote, bytes=transferred, total=expected, phase="http"))
+        emit("phase", uuid=identity, path=remote, phase="verification", bytes=expected, total=expected)
         # An active file can grow after the first check. Never import that copy.
         verify_remote_size(host, port, identity, remote, expected)
         record = {"source": source, "sha256": digest, "staging": staging,
@@ -753,7 +790,10 @@ def main(argv=None):
         else:
             identity = valid_uuid(args.uuid)
             if args.command == "inventory":
-                emit("inventory", uuid=identity, files=inventory(host, port, identity, args.destination))
+                files = inventory(host, port, identity, args.destination,
+                                  report=lambda phase, completed, total: emit("inventory_progress", uuid=identity,
+                                                                            phase=phase, completedFiles=completed, totalFiles=total))
+                emit_inventory_pages(identity, files)
             else:
                 if args.remote is None or args.size is None or not args.destination:
                     raise CollectionError("Le téléchargement exige --remote, --size et --destination.")

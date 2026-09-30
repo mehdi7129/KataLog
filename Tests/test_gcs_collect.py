@@ -316,6 +316,11 @@ class SimulatorTests(unittest.TestCase):
             self.assertEqual([event["event"] for event in transfer_events], ["transfer_started", "transfer_finished"])
             self.assertEqual(transfer_events[0]["timeoutSeconds"], 300)
             self.assertEqual(transfer_events[1]["retCode"], 0)
+            phases = [event["phase"] for event in events if event["event"] == "phase"]
+            self.assertEqual(phases, ["http", "verification"])
+            http_start = next(event for event in events if event["event"] == "phase" and event["phase"] == "http")
+            self.assertEqual(http_start["bytes"], 0)
+            self.assertEqual(http_start["total"], len(BODY))
             self.assertEqual(target.relative_to(Path(directory).resolve()).as_posix(), UUID + "/2026-09-01/12_00_00.ulg")
             self.assertEqual(sim.http_requests, ["/downloadFile/" + UUID + "_12_00_00.ulg"])
             before = len(sim.requests)
@@ -596,6 +601,65 @@ class SimulatorTests(unittest.TestCase):
                 gcs.discover("127.0.0.1", sim.port)
         terminals = [event for event in events if event["event"] == "transfer_end"]
         self.assertEqual(terminals, [{"event": "transfer_end", "uuid": UUID, "path": STAGING, "retCode": 0}])
+
+
+class InventoryPaginationTests(unittest.TestCase):
+    def capture(self, files):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            gcs.emit_inventory_pages(UUID, files)
+        lines = output.getvalue().splitlines(keepends=True)
+        return lines, [json.loads(line) for line in lines]
+
+    def test_empty_inventory_has_explicit_start_and_finish(self):
+        lines, events = self.capture([])
+        self.assertEqual([event['event'] for event in events], ['inventory_started', 'inventory_finished'])
+        self.assertEqual(events[-1]['totalFiles'], 0)
+        self.assertEqual(events[-1]['pageCount'], 0)
+        self.assertEqual(events[0]['inventoryID'], events[-1]['inventoryID'])
+
+    def test_large_unicode_inventory_exceeds_old_monolithic_limit_but_frames_stay_bounded(self):
+        files = [dict(path=f'{gcs.LOG_ROOT}/2026-09-01/{index:06d}_é.ulg', size=64,
+                      localPath='/private/tmp/' + 'é' * 100, isDownloaded=True, sha256='a' * 64)
+                 for index in range(20_000)]
+        self.assertGreater(len(json.dumps(files, ensure_ascii=False).encode('utf8')), 4 * 1024 * 1024)
+        lines, events = self.capture(files)
+        self.assertTrue(all(len(line.encode('utf8')) <= gcs.MAX_INVENTORY_FRAME_BYTES for line in lines))
+        pages = [event for event in events if event['event'] == 'inventory_page']
+        self.assertEqual([event['pageIndex'] for event in pages], list(range(len(pages))))
+        self.assertTrue(all(0 < len(page['files']) <= 256 for page in pages))
+        self.assertEqual([item for page in pages for item in page['files']], files)
+        self.assertEqual(events[-1]['totalFiles'], len(files))
+        self.assertEqual(events[-1]['pageCount'], len(pages))
+        self.assertEqual(len({event['inventoryID'] for event in events}), 1)
+
+    def test_single_oversized_inventory_entry_fails_without_success_terminal(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), self.assertRaises(gcs.CollectionError):
+            gcs.emit_inventory_pages(UUID, [dict(path='é' * gcs.MAX_INVENTORY_FRAME_BYTES, size=64)])
+        events = [json.loads(line) for line in output.getvalue().splitlines()]
+        self.assertFalse(any(event['event'] == 'inventory_finished' for event in events))
+
+    def test_page_byte_limit_applies_before_item_count_limit(self):
+        files = [dict(path=f'{gcs.LOG_ROOT}/{index}.ulg', size=64, localPath='/private/tmp/' + 'é' * 2_000)
+                 for index in range(180)]
+        lines, events = self.capture(files)
+        pages = [event for event in events if event['event'] == 'inventory_page']
+        self.assertGreater(len(pages), 1)
+        self.assertTrue(all(len(page['files']) < 256 for page in pages))
+        self.assertTrue(all(len(line.encode('utf8')) <= gcs.MAX_INVENTORY_FRAME_BYTES for line in lines))
+        self.assertEqual(sum(len(page['files']) for page in pages), len(files))
+
+    def test_inventory_reports_cache_coverage_without_creating_destination_files(self):
+        with tempfile.TemporaryDirectory() as folder:
+            reports = []
+            with patch.object(gcs, 'list_directory', return_value=([], [dict(path=REMOTE, size=len(BODY))])):
+                files = gcs.inventory('gcs.local', 1999, UUID, folder,
+                                      report=lambda phase, count, total: reports.append((phase, count, total)))
+            self.assertFalse(files[0]['isDownloaded'])
+            self.assertIn(('inventory', 1, None), reports)
+            self.assertIn(('cache', 1, 1), reports)
+            self.assertEqual(list(Path(folder).iterdir()), [])
 
 
 if __name__ == "__main__":

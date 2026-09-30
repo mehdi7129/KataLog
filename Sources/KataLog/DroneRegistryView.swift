@@ -39,8 +39,8 @@ struct DroneRegistryView: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Identités de vos drones").font(.title3.weight(.semibold))
-                    Text("Numérotation locale · chaque contrôleur conserve son historique distinct").font(.caption).foregroundStyle(.secondary)
+                    Text("Registre de toute la flotte").font(.title3.weight(.semibold))
+                    Text("Toutes les identités, y compris sans log · le filtre drone concerne l’historique ci-dessous").font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 TextField("Numéro, nom ou UUID", text: $search).textFieldStyle(.roundedBorder).frame(width: 240)
@@ -51,7 +51,7 @@ struct DroneRegistryView: View {
                     .accessibilityIdentifier("annotations.error")
             }
             if entries.isEmpty {
-                Text("Aucune identité à afficher. Importez des logs ou ajoutez un drone à votre flotte depuis Collecte GCS.")
+                Text(search.isEmpty ? "Aucune identité à afficher. Importez des logs ou ajoutez un drone à votre flotte depuis Collecte GCS." : "Aucune identité ne correspond à cette recherche. Effacez la recherche pour retrouver la flotte.")
                     .font(.callout).foregroundStyle(.secondary).padding(.vertical, 30)
             }
             LazyVStack(spacing: 0) {

@@ -95,6 +95,7 @@ struct FlightTrackMap: View {
     @State private var alertFamily: String?
     @State private var alertLevel = "Tous"
     @State private var selectedAlertID: String?
+    @State private var mapRefreshID = UUID()
     private var selectedAlert: PositionedFlightAlert? { filteredAlerts.first { $0.id == selectedAlertID } }
     private var style: FlightUIStyle { FlightUIStyle(colorScheme) }
     private var displayedLogs: [FlightLog] { FlightMapGeometry.displayedLogs(logs) }
@@ -138,6 +139,7 @@ struct FlightTrackMap: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     nativeMap
+                        .id(mapRefreshID)
                         .overlay(alignment: .topLeading) {
                             if mappedLogs.count < logs.count {
                                 Text("\(logs.count - mappedLogs.count) logs sans trajectoire")
@@ -169,6 +171,10 @@ struct FlightTrackMap: View {
                 .pickerStyle(.segmented).frame(width: 175)
                 .accessibilityIdentifier("map.style")
                 Spacer()
+                Button { mapRefreshID = UUID() } label: { Label("Recharger le fond", systemImage: "arrow.clockwise") }
+                    .buttonStyle(.bordered).controlSize(.small).disabled(segments.isEmpty)
+                    .help("Si le fond reste vide, vérifiez votre connexion. Les fichiers ULog ne sont pas relus.")
+                    .accessibilityIdentifier("map.reloadBackground")
                 Button(action: fitTracks) { Label("Cadrer", systemImage: "arrow.up.left.and.arrow.down.right") }
                     .buttonStyle(.bordered).controlSize(.small).disabled(segments.isEmpty)
                     .accessibilityIdentifier("map.fit")
@@ -283,7 +289,7 @@ struct FlightTrackMap: View {
                 Text("Source : \(track.source) · \(track.points.count) / \(track.originalPointCount) points conservés. Les interruptions sont séparées.")
                     .font(.system(size: 10)).foregroundStyle(style.secondary)
             }
-            Label("Fond de carte Apple chargé via le réseau. Les logs restent dans la bibliothèque locale.", systemImage: "network")
+            Label("Le fond Apple dépend du réseau et de son cache. Un fond vide ne signifie pas une absence de GPS ; les coordonnées des logs restent locales.", systemImage: "network")
                 .font(.system(size: 10)).foregroundStyle(style.secondary)
         }
     }

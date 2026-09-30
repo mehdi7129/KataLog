@@ -2,6 +2,24 @@ import XCTest
 @testable import KataLogCore
 
 final class GCSModelsTests: XCTestCase {
+    func testTransportPhasesCountOnlyHTTPBytesInGlobalProgress() throws {
+        var item = GCSTransfer(droneUUID: "0102030405060708090A0B0C", remotePath: "/fs/microsd/log/log.ulg", size: 64,
+                               host: "localhost", destination: "/private/tmp")
+        item.state = "downloading"
+        item.receiveProgress(phase: "drone", bytes: 64, total: 64)
+        XCTAssertEqual(item.phaseProgress, 1)
+        XCTAssertEqual(item.completedBytes, 0)
+        XCTAssertEqual(GCSBatchProgress(transfers: [item]).fraction, 0)
+        item.receiveProgress(phase: "http", bytes: 8, total: 64)
+        XCTAssertEqual(item.phaseProgress, 0.125)
+        XCTAssertEqual(item.completedBytes, 8)
+        XCTAssertEqual(GCSBatchProgress(transfers: [item]).fraction, 0.125)
+        let restored = try JSONDecoder().decode(GCSTransfer.self, from: JSONEncoder().encode(item))
+        XCTAssertEqual(restored.phase, "http")
+        XCTAssertEqual(restored.phaseBytes, 8)
+        XCTAssertEqual(restored.phaseTotal, 64)
+    }
+
     func testOnlyFullUnicastIdentitiesAreAccepted() {
         XCTAssertTrue(GCSIdentity.isValid("0102030405060708090A0B0C"))
         for invalid in ["", "0", String(repeating: "0", count: 24), String(repeating: "F", count: 24), "../123", "0102030405060708090A0B0Cx"] {
@@ -19,6 +37,17 @@ final class GCSModelsTests: XCTestCase {
         XCTAssertTrue(drone.isOnline)
         drone.lastSeen = Date().addingTimeInterval(-11)
         XCTAssertFalse(drone.isOnline)
+    }
+
+    func testFractionalGCSStatusDoesNotDropDroneAndUnknownFieldsStayUnknown() throws {
+        let data = Data(#"{"event":"drones","drones":[{"uuid":"0102030405060708090A0B0C","arming_state":1.5,"fw_major":3.5,"fw_minor":7,"fw_patch":2,"time_usec":-1},{"uuid":"1112131415161718191A1B1C","arming_state":1.0,"fw_major":3.0,"fw_minor":7.0,"fw_patch":2.0}]}"#.utf8)
+        let drones = try XCTUnwrap(JSONDecoder().decode(GCSCollectorEvent.self, from: data).drones)
+        XCTAssertEqual(drones.count, 2)
+        XCTAssertNil(drones[0].armed)
+        XCTAssertNil(drones[0].timeUsec)
+        XCTAssertEqual(drones[0].firmware, "Non communiqué")
+        XCTAssertEqual(drones[1].armed, false)
+        XCTAssertEqual(drones[1].firmware, "3.7.2")
     }
 
     func testInterruptedQueueCannotSilentlyResumeOnLaunch() throws {

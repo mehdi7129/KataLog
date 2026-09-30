@@ -10,8 +10,8 @@ const script = source.match(/static\s+let\s+script\s*=\s*#"""([\s\S]*?)"""#/);
 assert.ok(script, 'ReportInteraction.swift must expose its static script for browser-free contract tests');
 const context = { module: { exports: {} }, console };
 vm.runInNewContext(script[1], context, { timeout: 1000, filename: 'report-interaction.js' });
-const { selectLogs, statistics, familyCounts, dailyCounts, dayKey } = context.module.exports;
-for (const [name, fn] of Object.entries({ selectLogs, statistics, familyCounts, dailyCounts, dayKey })) {
+const { selectLogs, statistics, familyCounts, dailyCounts, dayKey, groupCounts, pageWindow } = context.module.exports;
+for (const [name, fn] of Object.entries({ selectLogs, statistics, familyCounts, dailyCounts, dayKey, groupCounts })) {
   assert.equal(typeof fn, 'function', `${name} is part of the pure report contract`);
 }
 
@@ -143,4 +143,50 @@ test('empty selection has finite zero totals and empty charts', () => {
   }
   assert.deepEqual(plain(familyCounts(selected)), []);
   assert.deepEqual(plain(dailyCounts(selected)), []);
+});
+
+test('a captured text selection never restores unrelated failsafes when HTML filters reset', () => {
+  const logs = [log('captured', {failsafeObserved:true, selectionIncludesFailsafe:false,
+    messages:[message(0,{level:'INFO',isAlert:false})]})];
+  const selected = selectLogs(logs,filters());
+  assert.equal(statistics(selected).failsafeLogCount,0);
+  assert.equal(statistics(selected).alertLogCount,0);
+  assert.equal(statistics(selected).messageCount,1);
+});
+
+test('occurrence counts per log and group follow the same filtered messages, including normalized space variants', () => {
+  const logs = [log('one', {messages:[message(0,{text:'GPS error',title:'GPS error',groupKey:'gps'}),message(1,{text:'GPS  error',title:'GPS error',groupKey:'gps'})]}),
+                log('two', {messages:[message(0,{text:'GPS error',title:'GPS error',groupKey:'gps'})]})];
+  const all=groupCounts(selectLogs(logs,filters())).get('gps');
+  assert.equal(all.messages,3); assert.equal(all.logs.size,2); assert.equal(all.byLog.get('one'),2);
+  const selected=selectLogs(logs,filters({query:'GPS  error'}));
+  const filtered=groupCounts(selected).get('gps');
+  assert.equal(filtered.messages,statistics(selected).messageCount);
+  assert.equal(filtered.messages,1); assert.equal(filtered.logs.size,1); assert.equal(filtered.byLog.get('one'),1);
+  assert.equal(filtered.byLog.has('two'),false);
+  assert.equal(groupCounts(selectLogs(logs,filters())).get('gps').byLog.get('one'),2);
+});
+
+test('detail pagination visits every selected occurrence without changing global totals or source strings', () => {
+  const attack='</script><img src=x onerror=alert(1)> éè 漢字\u2028\u2029';
+  const messages=Array.from({length:251},(_,i)=>message(i,{text:i===150?attack:`record ${i}`}));
+  const logs=[log('large',{messages})];
+  const selected=selectLogs(logs,filters());
+  const visited=[];
+  for(let i=0;i<3;i++)visited.push(...pageWindow(selected[0].messages,i).items.map(m=>m.index));
+  assert.deepEqual(plain(visited),Array.from({length:251},(_,i)=>i));
+  assert.equal(statistics(selected).messageCount,251);
+  assert.equal(groupCounts(selected).get('wifi').messages,251);
+  assert.equal(messages[150].text,attack);
+  assert.equal(pageWindow(selected[0].messages,1).items[50].text,attack);
+});
+
+test('detail pages clamp after a filter shrinks the selection and retain explicit total and range', () => {
+  const input=Array.from({length:251},(_,i)=>i);
+  assert.deepEqual(plain(pageWindow(input,2)),{items:input.slice(200),index:2,start:200,end:251,total:251,hasPrevious:true,hasNext:false});
+  const filtered=input.filter(x=>x<3);
+  assert.deepEqual(plain(pageWindow(filtered,2)),{items:[0,1,2],index:0,start:0,end:3,total:3,hasPrevious:false,hasNext:false});
+  assert.equal(pageWindow(input,-3).index,0);
+  assert.equal(pageWindow(input,Infinity).index,0);
+  assert.deepEqual(plain(pageWindow([],8).items),[]);
 });

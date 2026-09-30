@@ -31,11 +31,12 @@ public struct GCSDrone: Decodable, Identifiable, Sendable {
         battery = rawBattery.flatMap { $0.isFinite && (0...1).contains($0) ? $0 : nil }
         let signal = try c.decodeIfPresent(Double.self, forKey: .rssi)
         rssi = signal.flatMap { $0.isFinite && (-150...0).contains($0) ? Int($0) : nil }
-        if let state = try c.decodeIfPresent(Int.self, forKey: .arming) {
+        if let state = try c.decodeIfPresent(Double.self, forKey: .arming) {
             armed = state == 2 ? true : (state == 1 ? false : nil)
         } else { armed = nil }
-        timeUsec = try c.decodeIfPresent(Double.self, forKey: .timeUsec)
-        let parts = [try c.decodeIfPresent(Int.self, forKey: .major), try c.decodeIfPresent(Int.self, forKey: .minor), try c.decodeIfPresent(Int.self, forKey: .patch)]
+        timeUsec = try c.decodeIfPresent(Double.self, forKey: .timeUsec).flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
+        let rawParts = [try c.decodeIfPresent(Double.self, forKey: .major), try c.decodeIfPresent(Double.self, forKey: .minor), try c.decodeIfPresent(Double.self, forKey: .patch)]
+        let parts = rawParts.map { $0.flatMap { $0.isFinite && (0...65_535).contains($0) && $0.rounded() == $0 ? Int($0) : nil } }
         firmware = parts.allSatisfy { $0 != nil } ? parts.compactMap { $0 }.map(String.init).joined(separator: ".") : "Non communiqué"
         lastSeen = Date()
     }
@@ -83,11 +84,29 @@ public struct GCSTransfer: Codable, Identifiable, Sendable {
     public var attempts: Int?
     public var nextRetryAt: Date?
     public var remoteBusyUntil: Date?
+    /// Phase bytes describe one transport; completedBytes only counts the copy received on this Mac.
+    public var phase: String?
+    public var phaseBytes: Int64?
+    public var phaseTotal: Int64?
     public var attemptCount: Int { get { attempts ?? 0 } set { attempts = newValue } }
     public var isPending: Bool { ["queued", "retrying"].contains(state) }
     public var isActive: Bool { ["downloading", "importing"].contains(state) }
     public var isSuccessful: Bool { ["downloaded", "complete"].contains(state) }
     public var progress: Double { size > 0 ? min(1, max(0, Double(completedBytes) / Double(size))) : 0 }
+    public var phaseProgress: Double? {
+        guard let total = phaseTotal, total > 0, let bytes = phaseBytes else { return nil }
+        return min(1, max(0, Double(bytes) / Double(total)))
+    }
+    public mutating func receiveProgress(phase incomingPhase: String?, bytes: Int64, total: Int64?) {
+        // Legacy collectors reported a single transport. New collectors always identify it.
+        let incoming = incomingPhase ?? "http"
+        guard ["drone", "http"].contains(incoming) else { return }
+        if phase != incoming { phaseBytes = 0 }
+        phase = incoming
+        phaseTotal = max(0, total ?? size)
+        phaseBytes = min(phaseTotal ?? size, max(phaseBytes ?? 0, max(0, bytes)))
+        if incoming == "http" { completedBytes = min(max(0, size), max(completedBytes, max(0, bytes))) }
+    }
     public var filename: String { (remotePath as NSString).lastPathComponent }
     public init(droneUUID: String, remotePath: String, size: Int64, host: String, destination: String) {
         self.droneUUID = droneUUID; self.remotePath = remotePath; self.size = size
@@ -121,6 +140,12 @@ public struct GCSCollectorEvent: Decodable, Sendable {
     public let cached: Bool?
     public let retryable: Bool?
     public let timeoutSeconds: Double?
+    public let phase: String?
+    public let inventoryID: String?
+    public let pageIndex: Int?
+    public let totalFiles: Int?
+    public let completedFiles: Int?
+    public let pageCount: Int?
 }
 
 public struct GCSCollectionState: Codable, Sendable {
@@ -135,6 +160,11 @@ public struct GCSCollectionState: Codable, Sendable {
     public var cachedFileCount: Int?
     public var queuePaused: Bool?
     public var inventoryBusyUntil: [String: Date]?
+    public var expectedInventoryUUIDs: Set<String>?
+    public var completedInventoryUUIDs: Set<String>?
+    public var inventoryFailures: [String: String]?
+    public var cachedFileIdentities: Set<String>?
+    public var queueStorageVersion: Int?
     public init(downloadDirectory: String) { self.downloadDirectory = downloadDirectory }
 }
 
@@ -150,6 +180,13 @@ public struct GCSBatchProgress: Sendable {
     public let activeCount: Int
     public let pendingCount: Int
     public let stoppedCount: Int
+    public init(totalCount: Int, completedCount: Int, failedCount: Int, activeCount: Int, pendingCount: Int, stoppedCount: Int, totalBytes: Int64, completedBytes: Int64) {
+        self.totalCount = max(0, totalCount); self.completedCount = max(0, completedCount)
+        self.failedCount = max(0, failedCount); self.activeCount = max(0, activeCount)
+        self.pendingCount = max(0, pendingCount); self.stoppedCount = max(0, stoppedCount)
+        self.totalBytes = max(0, totalBytes); self.completedBytes = min(self.totalBytes, max(0, completedBytes))
+        fraction = self.totalBytes > 0 ? Double(self.completedBytes) / Double(self.totalBytes) : 0
+    }
     public init(transfers: [GCSTransfer]) {
         totalCount = transfers.count
         completedCount = transfers.filter(\.isSuccessful).count

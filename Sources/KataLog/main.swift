@@ -4,11 +4,17 @@ import KataLogCore
 
 @main
 struct KataLogApp: App {
-    @StateObject private var library = LibraryStore()
+    @NSApplicationDelegateAdaptor(KataLogApplicationDelegate.self) private var applicationDelegate
+    @StateObject private var library = LibraryStore(pagedNavigation: AppPreviewConfiguration().showReviewUI)
     @StateObject private var gcs = GCSStore()
 
     var body: some Scene {
-        WindowGroup("KataLog") { WorkspaceView(store: library, gcs: gcs) }
+        WindowGroup("KataLog") {
+            Group { if AppPreviewConfiguration().showReviewUI {
+                Workspace06View(library: library, gcs: gcs)
+            } else { WorkspaceView(store: library, gcs: gcs) } }
+                .onAppear { applicationDelegate.library = library; applicationDelegate.gcs = gcs }
+        }
             .defaultSize(width: 1440, height: 980)
     }
 }
@@ -80,8 +86,8 @@ private struct WorkspaceView: View {
     private var validLogs: [FlightLog] { logs.filter { $0.status != "error" } }
     private var groups: [AlertGroup] {
         guard droneFilter != "Tous" else { return allGroups }
+        let selectedLogIDs = Set(logs.map(\.id))
         return allGroups.compactMap { group in
-            let selectedLogIDs = Set(logs.map(\.id))
             let occurrences = group.occurrences.filter { selectedLogIDs.contains($0.logID) }
             return occurrences.isEmpty ? nil : AlertGroup(id: group.id, occurrences: occurrences)
         }
@@ -105,7 +111,6 @@ private struct WorkspaceView: View {
             for message in log.messages where message.isAlert {
                 affected[message.family, default: []].insert(log.id)
             }
-            if log.failsafeObserved { affected["Navigation", default: []].insert(log.id) }
         }
         return affected
     }
@@ -501,7 +506,7 @@ private struct WorkspaceView: View {
         Surface(palette: palette) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    cardTitle("Profil des alertes")
+                    cardTitle("Profil des alertes texte")
                     Spacer()
                     Text("0 — \(max(validLogs.count, 1)) logs")
                         .font(.system(size: 10, design: .monospaced)).foregroundStyle(palette.secondary)
@@ -712,7 +717,10 @@ private struct WorkspaceView: View {
             .frame(maxWidth: 380)
             Picker("Famille", selection: $familyFilter) {
                 Text("Toutes").tag(String?.none)
-                ForEach(Set(groups.map(\.family)).sorted(), id: \.self) { Text($0).tag(Optional($0)) }
+                ForEach(Set(groups.map(\.family)).union(familyFilter.map { [$0] } ?? []).sorted(), id: \.self) { family in
+                    Text(groups.contains { $0.family == family } ? family : "\(family) · aucun résultat")
+                        .tag(Optional(family))
+                }
             }.pickerStyle(.menu).frame(maxWidth: 220).accessibilityIdentifier("alerts.family")
             filterMenu("Niveau", selection: $severityFilter, values: ["Tous", "Alertes"] + Set(groups.map(\.level)).sorted { LogMessage.rank($0) > LogMessage.rank($1) })
             Spacer(minLength: 0)
@@ -909,7 +917,11 @@ private struct WorkspaceView: View {
             DroneRegistryView(library: store, gcs: gcs, annotations: store.annotations) { log in
                 droneFilter = log.annotationKey; page = .overview
             }
-            if !logs.isEmpty { historyCard }
+            if !logs.isEmpty {
+                Text(droneFilter == "Tous" ? "Historique de toutes les identités" : "Historique du drone sélectionné")
+                    .font(.caption).foregroundStyle(palette.secondary)
+                historyCard
+            }
         }
     }
 
@@ -928,9 +940,9 @@ private struct WorkspaceView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     VStack(alignment: .leading, spacing: 12) {
-                        Button(action: store.exportHTML) { Label("Exporter le rapport HTML", systemImage: "doc.richtext") }
+                        Button(action: store.exportHTML) { Label(store.isExporting ? "Export en cours…" : "Exporter le rapport HTML", systemImage: "doc.richtext") }.disabled(store.isExporting)
                             .buttonStyle(.borderedProminent)
-                        Button(action: store.exportJSON) { Label("Exporter les données JSON", systemImage: "curlybraces") }
+                        Button(action: store.exportJSON) { Label("Exporter les données JSON", systemImage: "curlybraces") }.disabled(store.isExporting)
                             .buttonStyle(.bordered)
                         Text("Sources, métriques disponibles, chronologie\net messages horodatés.")
                             .font(.system(size: 10)).lineSpacing(4).foregroundStyle(palette.secondary)

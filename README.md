@@ -1,33 +1,83 @@
 # KataLog — bibliothèque locale de logs PX4
 
-Base de développement **0.5.1 (build 6)**, native macOS / SwiftUI : interface bento monochrome,
+Version installée de référence **0.5.2 (build 7)**, native macOS / SwiftUI : interface bento monochrome,
 thèmes clair et sombre, carte Apple Maps, fiche de log, collecte GCS,
 import réel avec `pyulog` et cache SQLite. Les données
 affichées proviennent des imports ; aucun exemple figé n’alimente l’interface.
 
-La prochaine grande mise à jour est préparée dans le
-[plan de développement 0.6.0](docs/PLAN-0.6.0.md) : historique de flotte,
-analyses avec courbes, sauvegardes et installation autonome. Ce périmètre est
-planifié ; la première distribution publique sera reconstruite depuis ces sources.
+Les sources **0.6.0 en préparation** implémentent l’index paginé, les sauvegardes,
+la restauration, la file GCS durable, les événements PX4 et les courbes à la demande.
+Les nouveaux écrans sont accessibles dans **KataLog Preview**, ou en développement avec
+`KATALOG_UI_PREVIEW=1`, jusqu’à leur validation visuelle. Sparkle 2.10.0 est
+embarqué mais son feed reste désactivé. L’app installée 0.5.2 n’est pas remplacée.
+Voir le [suivi d’implémentation et ses limites](docs/IMPLEMENTATION-0.6.0.md),
+les [contrats](docs/CONTRACTS-0.6.md), la [matrice de validation](docs/VALIDATION-0.6.0.md) et le [plan de développement](docs/PLAN-0.6.0.md).
 
-## Utilisation
+Le package de review **0.6.0 (8)** contient **KataLog Preview.app** : il peut
+coexister avec KataLog et utilise `~/Library/Application Support/KataLogPreview-0.6/`.
+Il ouvre directement les nouveaux écrans, sans Terminal. Les données de l’app
+installée sont conservées ; la bibliothèque de la Preview commence vide.
+Importer en mode **Référencer** analyse les fichiers existants sans les copier.
+Ce package local n’est pas une release et son updater reste désactivé.
+
+L'[audit du 30 septembre](docs/AUDIT-2026-09-30.md) et le
+[backlog exécutable](docs/BACKLOG-0.6.0.md) détaillent les corrections préalables,
+les données restant à exploiter et les critères de sortie de chaque lot.
+
+## Essayer la Preview 0.6.0
+
+1. Ouvrir son DMG, glisser **KataLog Preview.app** dans Applications, éjecter,
+   puis lancer la Preview. Elle dispose de sa propre bibliothèque vide.
+2. Importer un dossier en choisissant **Référencer les fichiers** ou **Copier
+   vers mes archives**. Le second mode vérifie taille et SHA-256 avant l’analyse ;
+   son dossier est conservé au redémarrage. Attendre le bilan avant de retirer la carte SD.
+3. Dans **Historique**, choisir le périmètre : drones, période, recherche,
+   familles et niveaux. Les agrégats portent sur tout ce périmètre ; les listes
+   sont paginées à 200 entrées. Les vues enregistrées conservent les filtres.
+4. Dans **Alertes**, personnaliser les familles, les axes du profil et les
+   masquages réversibles. **Événements PX4** conserve les événements bruts et
+   annonce les dictionnaires manquants ; la traduction exige celui du firmware exact.
+5. Ouvrir une fiche pour consulter **Courbes et chronologie**, **Événements PX4**
+   et **Révisions**. Les quatre courbes partagent 2 048 points ; leurs lacunes et
+   réductions sont annoncées. Une ancienne analyse reste consultable sans sa source.
+6. **Stockage** propose sauvegarde analyses/réglages ou complète, restauration
+   vérifiée, réassociation des sources par SHA et récupération des caches nettoyés.
+7. **Rapports** permet de vérifier le périmètre et les exclusions avant export.
+   Les données intégrales sont conservées même si un HTML de plus de 10 Mio
+   doit être remplacé par une synthèse et un manifeste.
+
+La collecte utilise une file SQLite durable et importe exactement les fichiers
+reçus, sans créer automatiquement une seconde archive. Les drones autorisés
+restent dans le registre, même sans log. La comparaison des paramètres conserve
+les valeurs et types ; elle n’attribue pas une cause de panne.
+Le parseur courant est **1.4.0**, avec projection SQLite **6**. Les anciennes
+analyses sont conservées et leur recalcul est explicite.
+
+## Utilisation de la version installée 0.5.2
 
 ### Installer une release
 
-**La première distribution publique est en préparation.** Ce dépôt contient les
-sources nettoyées ; aucune archive de l'ancienne release privée n'y est transférée.
-La cible **0.6.0** se téléchargera en **DMG signé et notarisé** : ouvrir le DMG,
-glisser **KataLog dans Applications**, éjecter puis lancer. Aucun App Store,
-Terminal, Homebrew ou Python séparé ne sera nécessaire.
+**Le dépôt reste privé tant que la publication publique n’est pas décidée.**
+Le package local **0.5.2** est un **DMG** avec **KataLog.app** et un lien
+**Applications** : ouvrir le DMG, glisser KataLog dans Applications, éjecter,
+puis lancer l’app. Le moteur ARM64 est embarqué ; aucun App Store, Terminal,
+Homebrew ni Python séparé n’est requis pour utiliser l’app.
 
-Les futures archives seront proposées sur la
+**Compatibilité : Mac Apple Silicon, macOS 15 minimum, recette locale sur macOS 27.**
+Les minima des composants natifs sont contrôlés au packaging. L’exécution sur
+macOS 15 demande une recette sur cette version ; le test macOS 27 ne la remplace pas.
+La [recette 0.5.2](docs/DISTRIBUTION-VALIDATION.md) consigne les tests réalisés et
+les limites de qualification.
+
+Les archives publiées seront proposées sur la
 [page Releases](https://github.com/mehdi7129/KataLog/releases).
-Pour construire la base actuelle depuis les sources, voir
-[Construire et tester](#construire-et-tester) ; son moteur Python est encore externe.
+Les ZIP de l’ancienne 0.5.1 restent dans une archive privée distincte et ne sont
+pas réutilisés dans cette distribution. Pour compiler depuis les sources, voir
+[Construire et tester](#construire-et-tester).
 
 ### Mettre à jour une app déjà installée
 
-La base 0.5.1 n'a pas d'updater. Son premier passage à une version avec Sparkle
+Les versions 0.5.1 et 0.5.2 n’ont pas d’updater. Son premier passage à une version avec Sparkle
 sera manuel : terminer/arrêter les imports et la collecte, quitter KataLog,
 remplacer l'app depuis le nouveau DMG, puis la rouvrir.
 
@@ -56,10 +106,11 @@ restent dans une archive distincte et ne sont pas distribuées ici.
   déduit d’un CSV et deux UUID portant le même numéro ne sont jamais fusionnés.
 - Les noms apparaissent dans l’historique, les filtres, la carte, la collecte et les
   exports. Le nom source et l’identité d’origine restent consultables.
-- L’inspecteur d’un groupe et la fiche expliquent les quatre messages documentés
-  du corpus : lecture SMBus, perte Wi-Fi, température LED et incohérence des
-  accéléromètres. Les sources PX4 et les interprétations constructeur sont
-  distinguées ; les messages inconnus restent affichés sans diagnostic inventé.
+- L’inspecteur d’un groupe et la fiche proposent quatre explications ciblées :
+  lecture SMBus, perte Wi-Fi, température LED et incohérence des accéléromètres.
+  Wi-Fi/LED incluent des interprétations sans définition constructeur vérifiée.
+  La provenance et l'applicabilité des explications doivent encore être affinées ;
+  les messages inconnus restent affichés sans diagnostic inventé.
 - **Classer…** permet d’attribuer une famille existante ou nouvelle à un texte et
   un niveau, dans les logs présents et futurs. **Rétablir la détection** retire
   l’annotation. Le texte original est conservé.
@@ -171,7 +222,7 @@ Un fichier existant sans preuve valide est conservé et signalé pour examen.
 Protocole validé : **GCS Drotek 3.7.2**, MQTT 1999 et HTTP 8080, deux IOSTAR3
 firmware 4.1.5. Voir le [contrat et la recette](docs/GCS-COLLECTION.md).
 
-## Fonctions disponibles
+## Fonctions de la version installée 0.5.2
 
 - Scan récursif `.ulg` / `.ULG`, progression et annulation.
 - Identification par `sys_uuid`, noms issus du log ou de `data/name.txt` ;
@@ -210,31 +261,44 @@ reconnu comme le même drone physique.
 
 ## Validation
 
-La référence 0.5.1 a exécuté 68 tests Python, 64 Swift et 9 JavaScript. Les
-observations détaillées issues des logs privés sont conservées hors Git.
-Les fixtures publiques sont synthétiques ; certains tests de recette nécessitent
-un corpus privé explicite. Voir [UI-VALIDATION.md](docs/UI-VALIDATION.md).
+L’audit de référence 0.5.2 avait exécuté **175 tests** et l’installation utilisateur
+fonctionne sur macOS 27. Les corrections et nouvelles suites 0.6 sont consignées
+dans le [suivi d’implémentation](docs/IMPLEMENTATION-0.6.0.md), avec la version
+testée et les limites de chaque preuve. Le benchmark synthétique porte sur
+50 000 logs, 5 millions de messages et 500 identités ; ce n’est pas le parsing
+de 50 000 ULogs ni une qualification de 500 drones physiques.
+Les fixtures publiques sont synthétiques. Le test des neuf logs du corpus réel
+annonce explicitement son absence dans le gate public ; ses résultats privés
+restent hors Git. Le gate natif
+refuse tout test ignoré. Voir [UI-VALIDATION.md](docs/UI-VALIDATION.md).
 
 ## Confidentialité et distribution publique
 
 Le projet prépare un dépôt public. Les logs, CSV de stock, identifiants réels,
 coordonnées, bibliothèques, réglages locaux et preuves opérationnelles n'en font
-pas partie. Les anciens commits et assets restent privés tant que leur nettoyage
-n'est pas terminé ; voir [la préparation publique](docs/PUBLICATION.md).
+pas partie. Les anciens commits et assets restent dans une archive privée distincte ; voir [la préparation publique](docs/PUBLICATION.md).
 
-La cible **0.6.0** est un **DMG signé et notarisé**, à ouvrir pour glisser
+La distribution autonome **0.5.2** utilise un **DMG signé et notarisé**, à ouvrir pour glisser
 **KataLog dans Applications**, sans App Store ni installation séparée de Python.
 Le moteur de la base 0.5.1 reste externe ; son ancien ZIP est conservé séparément en privé.
 
-## Limites actuelles
+## Limites de la version installée 0.5.2
 
+Les corrections et fonctions 0.6 ci-dessus sont disponibles dans la Preview ;
+ce bilan décrit l’installation 0.5.2 existante.
+
+- Sans `sys_uuid`, l'identité de remplacement peut différer entre résumé et fiche
+  (C01 dans l'audit) : le numéro manuel peut ne plus apparaître dans la fiche et
+  ses exports. L'export flotte conserve l'identité du résumé. Corrigé dans la Preview 0.6.
 - Les événements binaires PX4 (`event`) sont comptés mais restent non décodés sans
   dictionnaire du firmware. Tous les messages texte disponibles sont conservés ;
   absence de texte ne signifie pas absence d’alerte.
 - Les familles suivent des règles textuelles. Un groupe de textes identiques
   n’est pas un nombre d’incidents, et une alerte n’est pas une panne confirmée.
-- Le temps en vol repose sur `landed=false`, dans la portion enregistrée ; une
-  couverture insuffisante ou incohérente donne une durée inconnue.
+- Le temps en vol repose sur `landed=false`, dans la portion enregistrée, sans
+  extrapoler les extrémités. La qualification des lacunes/couvertures insuffisantes
+  reste à améliorer, notamment pour les logs courts (C11 dans l'audit).
+  La Preview 0.6 qualifie cette couverture et conserve les durées inconnues.
 - Les dates GPS sont UTC ; les dates issues des chemins restent sans fuseau.
 - L’inspecteur affiche les 100 premières occurrences ; les exports les contiennent
   toutes. Les filtres de l’interface ne réduisent pas l’export.
@@ -244,12 +308,12 @@ Le moteur de la base 0.5.1 reste externe ; son ancien ZIP est conservé séparé
 - Le cache de fiche conserve GPS, paramètres et topics, mais pas toutes les séries
   de télémétrie ni les événements binaires bruts. Les graphiques temporels de
   télémétrie, vues enregistrées, filtres de période dans l’app et choix d’un
-  sous-ensemble de la flotte avant export restent à réaliser. Le rapport HTML
+  sous-ensemble de la flotte avant export sont désormais disponibles dans la Preview 0.6. Le rapport HTML
   permet déjà de filtrer localement les données exportées et leur impression.
 - Tous les résumés, messages et aperçus du snapshot sont encore chargés en mémoire ;
   seuls les détails sont demandés par log. Pagination et benchmark d’un historique
   représentatif restent nécessaires avant de qualifier 500 drones.
-- Le runtime Python n’est pas encore embarqué dans l’app.
+- Le moteur distribué est embarqué dans l’app ; la compilation des sources nécessite toujours les outils de développement.
 - La collecte est limitée à 2 UUID simultanés et au protocole GCS testé. La recette
   réelle 0.3 confirme ce parallélisme sur deux drones ; une collecte complète de
   500 drones et les réessais après perte réseau réelle restent à qualifier.
@@ -261,19 +325,21 @@ Le moteur de la base 0.5.1 reste externe ; son ancien ZIP est conservé séparé
   300 à 3 600 secondes ne garantit pas un arrêt distant. La reprise recommence
   le fichier ou vérifie son cache, sans reprise à un offset réseau.
 
-## Moteur Python
+## Moteur Python pour le développement
 
-Pour une première installation sur un autre Mac disposant de Python 3,
-créer l’environnement local ci-dessous. Ces commandes ne nécessitent pas de
-cloner le dépôt :
+Pour exécuter les sources avec SwiftPM ou Xcode, créer un environnement de
+développement avec Python 3.13, depuis la racine du dépôt. Ces commandes ne sont pas utiles pour l’app
+installée depuis le DMG :
 
 ```sh
 python3 -m venv "$HOME/Library/Application Support/KataLog/python"
-"$HOME/Library/Application Support/KataLog/python/bin/python3" -m pip install 'numpy>=1.26,<3' 'pyulog>=1.2,<2'
+"$HOME/Library/Application Support/KataLog/python/bin/python3" -m pip install --only-binary=:all: --require-hashes -r requirements-runtime.txt
 ```
 
-Cet environnement est détecté par l’app. `KATALOG_PYTHON` peut désigner un autre
-exécutable pour les tests/CLI. `KATALOG_LIBRARY_DIR` isole la bibliothèque pour un
+Cet environnement est détecté en développement. `KATALOG_PYTHON` peut désigner
+un autre exécutable pour les tests/CLI exécutés depuis les sources. Dans le bundle
+distribué, le moteur embarqué est prioritaire et son absence bloque le lancement
+des analyses avec une erreur de réinstallation ; aucun fallback externe n’a lieu. `KATALOG_LIBRARY_DIR` isole la bibliothèque pour un
 lancement configuré depuis Xcode.
 
 ## Construire et tester
@@ -285,8 +351,13 @@ le dépôt fournit le code, les tests et la documentation ; ajouter ses propres 
 pour utiliser l’app.
 
 Prérequis : macOS 15+, Xcode / Swift 6. Node.js est utilisé uniquement pour les
-tests des interactions du rapport HTML. `bash tools/build-app.sh` construit en Release
-dans `/private/tmp`, crée `dist/KataLog.zip` et vérifie la signature après extraction.
+tests des interactions du rapport HTML. Python et l’accès réseau servent au build,
+pour télécharger les entrées épinglées du moteur et les vérifier par SHA-256.
+`bash tools/build-app.sh` construit en Release dans `/private/tmp`, embarque le
+helper et crée le ZIP versionné ainsi que `dist/KataLog.zip`.
+`bash tools/build-dmg.sh` produit ensuite le DMG depuis la copie locale vérifiée.
+Le moteur est CPython 3.13.15, NumPy 2.5.3 et pyulog 1.2.4 ; les licences
+sont dans son bundle. Voir [la procédure de distribution](docs/RELEASING.md).
 La signature locale est ad hoc par défaut. Avec un certificat Developer ID
 disponible dans le trousseau, on peut produire un bundle signé avec hardened
 runtime et timestamp :
@@ -324,12 +395,11 @@ faire échouer la signature. `KataLog.xcodeproj` se régénère avec `xcodegen g
 ```sh
 CLANG_MODULE_CACHE_PATH=/private/tmp/katalog-clang-cache \
 XDG_CACHE_HOME=/private/tmp/katalog-xdg-cache \
-swift test --disable-sandbox --scratch-path /private/tmp/katalog-validation-build
+python3 tools/run-swift-tests.py -- --disable-sandbox --scratch-path /private/tmp/katalog-validation-build
 
 node --test Tests/test_report_interaction.cjs
 
-"$HOME/Library/Application Support/KataLog/python/bin/python3" \
-  -m unittest discover -s Tests -v
+python3 tools/run-python-tests.py
 
 swift run --disable-sandbox katalog-cli \
   --folder /chemin/vers/logs --database reports/library.sqlite \
@@ -344,7 +414,9 @@ et ne modifient pas les originaux. Pour la CLI, choisir son propre dossier sourc
 ## Conception et références
 
 [Direction visuelle](DESIGN.md) ·
-[Contrat d’import](docs/IMPORT-CONTRACT.md) · [Audit 0.4 et suite](docs/AUDIT-2026-09-29.md).
+[Contrat d’import](docs/IMPORT-CONTRACT.md) · [Audit actuel](docs/AUDIT-2026-09-30.md) ·
+[Plan 0.6.0](docs/PLAN-0.6.0.md) · [Backlog](docs/BACKLOG-0.6.0.md) ·
+[Audit historique 0.4](docs/AUDIT-2026-09-29.md).
 Les anciennes maquettes basées sur des logs privés sont conservées localement.
 Les exemples visuels publics doivent utiliser exclusivement des données synthétiques.
 

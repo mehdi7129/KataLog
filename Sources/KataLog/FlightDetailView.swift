@@ -70,7 +70,7 @@ struct FlightDetailView: View {
             tabBar
         }
         .foregroundStyle(style.primary).background(style.background)
-        .frame(minWidth: 1040, idealWidth: 1180, maxWidth: 1400, minHeight: 720, idealHeight: 870, maxHeight: 1100)
+        .frame(minWidth: 840, idealWidth: 1180, maxWidth: 1400, minHeight: 540, idealHeight: 870, maxHeight: 1100)
         .sheet(item: $editingIdentity) { target in DroneNumberEditor(target: target, store: store.annotations) }
         .onChange(of: store.selectedFlight?.id) { _, _ in
             tab = .overview; selectedMessageID = nil
@@ -122,7 +122,7 @@ struct FlightDetailView: View {
                 .menuStyle(.borderlessButton).fixedSize()
                 .padding(.horizontal, 13).padding(.vertical, 10)
                 .background(style.raised, in: RoundedRectangle(cornerRadius: 8))
-                .disabled(isExporting || store.isLoadingFlight)
+                .disabled(isExporting || store.isExporting || store.isLoadingFlight)
                 .accessibilityIdentifier("flight.export")
             }
         }
@@ -186,7 +186,7 @@ struct FlightDetailView: View {
                 Divider().frame(height: 36)
                 summaryValue(symbol: "exclamationmark.triangle", value: "\(log.messages.filter(\.isAlert).count)", label: "Messages d’alerte", color: style.amber)
                 Divider().frame(height: 36)
-                summaryValue(symbol: "antenna.radiowaves.left.and.right", value: log.metrics.first { $0.key == "gps.rtk_fixed" }.map { "\(formatted($0.value)) %" } ?? "—", label: "Temps GNSS en RTK fixé")
+                summaryValue(symbol: "antenna.radiowaves.left.and.right", value: log.primaryGNSSCoverage.map { "\(formatted($0.fixedPercent)) %" } ?? "—", label: log.primaryGNSSCoverage.map { "RTK fixé · GNSS \($0.instance) · \($0.observedSeconds.map(FlightUIFormat.duration) ?? "durée inconnue") observés" } ?? "RTK · données indisponibles")
                 Divider().frame(height: 36)
                 summaryValue(symbol: "battery.50percent", value: log.metrics.first { $0.key == "battery.remaining_min" }.map { "\(formatted($0.value)) %" } ?? "—", label: "Charge minimum observée")
             }
@@ -226,6 +226,10 @@ struct FlightDetailView: View {
                                 .font(.system(size: 10)).foregroundStyle(style.secondary)
                         }
                         Text(selected.text).font(.system(size: 12, design: .monospaced)).textSelection(.enabled)
+                        if let source = selected.source {
+                            Text("Source : \(source == "ULog:logging_tagged" ? "message avec tag" : "message textuel")\(selected.tag.map { " · tag " + String($0) } ?? "")")
+                                .font(.caption).foregroundStyle(style.secondary)
+                        }
                         MessageClassificationControl(message: selected, store: store.annotations, families: log.messages.map(\.family))
                         AlertExplanationView(message: selected)
                     }
@@ -235,7 +239,9 @@ struct FlightDetailView: View {
                 FlightPanel {
                     VStack(alignment: .leading, spacing: 12) {
                         sectionTitle("Contexte de l’enregistrement")
-                        detailLine("Temps déclaré en vol", log.flightSeconds.map(FlightUIFormat.duration) ?? "Non calculable")
+                        detailLine("Temps en vol qualifié", log.flightSeconds.map(FlightUIFormat.duration) ?? "Couverture insuffisante ou indisponible")
+                        if let observed = log.flightObservedSeconds { detailLine("Vol observé, sans extrapolation", FlightUIFormat.duration(observed)) }
+                        if let fraction = log.flightCoverageFraction { detailLine("Couverture du détecteur", "\(formatted(fraction * 100)) % de l’enregistrement") }
                         detailLine("Failsafe observé", log.failsafeObserved ? "Oui" : "Non repéré")
                         detailLine("Lecture du fichier", log.status == "ok" ? "Réussie" : log.status == "partial" ? "Partielle" : "En erreur")
                         Text("La durée enregistrée inclut le temps au sol. Une alerte enregistrée ne confirme pas à elle seule une panne.")
@@ -501,6 +507,16 @@ struct FlightDetailView: View {
             FlightPanel {
                 VStack(alignment: .leading, spacing: 14) {
                     sectionTitle("Couverture et limites")
+                    if log.metadata["detailCacheStatus"] == "previous" {
+                        Label("Dernière analyse conservée · parseur \(log.metadata["detailParserVersion"] ?? "inconnu"). Source nécessaire pour actualiser.", systemImage: "clock.arrow.circlepath").font(.callout).foregroundStyle(style.amber)
+                    }
+                    ForEach(log.sourceAvailability ?? []) { source in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(source.label).font(.callout.weight(.medium))
+                            Text(source.path).font(.caption).foregroundStyle(style.secondary).textSelection(.enabled)
+                            if let detail = source.detail { Text(detail).font(.caption).foregroundStyle(style.secondary) }
+                        }
+                    }
                     if log.issues.isEmpty && log.coverage.isEmpty {
                         Text("Aucune limite technique remontée. Ce résultat ne constitue pas un diagnostic matériel.")
                             .font(.system(size: 12)).foregroundStyle(style.secondary)
@@ -544,6 +560,7 @@ struct FlightDetailView: View {
             FlightPanel {
                 VStack(alignment: .leading, spacing: 14) {
                     sectionTitle("Métadonnées")
+                    RecordedMetadataView(log: log)
                     ForEach(log.metadata.keys.sorted(), id: \.self) { key in
                         HStack(alignment: .top, spacing: 22) {
                             Text(key).frame(width: 190, alignment: .leading).foregroundStyle(style.secondary)
@@ -598,6 +615,7 @@ struct FlightDetailView: View {
         }
     }
     private func export(_ log: FlightLog, html: Bool) {
+        guard !isExporting, !store.isExporting else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [html ? .html : .json]
         panel.nameFieldStringValue = "KataLog-\((log.fileName as NSString).deletingPathExtension).\(html ? "html" : "json")"
@@ -611,10 +629,7 @@ struct FlightDetailView: View {
         Task {
             defer { isExporting = false }
             do {
-                try await Task.detached(priority: .userInitiated) {
-                    if html { try ReportRenderer.html(snapshot).write(to: url, atomically: true, encoding: .utf8) }
-                    else { try ReportRenderer.json(snapshot).write(to: url, options: .atomic) }
-                }.value
+                try await store.export(to: url, html: html, selection: snapshot)
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             } catch { exportError = "Échec de l’export : \(error.localizedDescription)" }
         }

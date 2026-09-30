@@ -24,6 +24,11 @@ struct AlertExplanationView: View {
             }.font(.system(size: 12, weight: .medium))
             Text(explanation.provenance).font(.system(size: 10)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            Text("\(explanation.confidence.label) · catalogue \(explanation.catalogueVersion)")
+                .font(.caption2).foregroundStyle(.secondary)
+            if let firmware = explanation.referenceFirmware {
+                Text(firmware).font(.caption2).foregroundStyle(.secondary)
+            }
             ForEach(explanation.sources, id: \.url) { source in
                 Link(destination: source.url) {
                     Label(source.title, systemImage: "arrow.up.right").font(.system(size: 11))

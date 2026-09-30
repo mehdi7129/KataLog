@@ -1,55 +1,49 @@
 import Foundation
 
-private final class GCSProcessControl: @unchecked Sendable {
-    private let lock = NSLock()
-    private var process: Process?
-    private var cancelled = false
-    func start(_ process: Process) throws {
-        lock.lock(); defer { lock.unlock() }
-        if cancelled { throw CancellationError() }
-        try process.run(); self.process = process
-    }
-    func cancel() {
-        lock.lock(); defer { lock.unlock() }
-        cancelled = true
-        if let process, process.isRunning { process.terminate() }
-    }
-    func finish() throws {
-        lock.lock(); defer { lock.unlock() }
-        process = nil
-        if cancelled { throw CancellationError() }
-    }
-}
-
 public enum GCSProcessService {
-    public static func events(script: URL, arguments: [String]) -> AsyncThrowingStream<GCSCollectorEvent, Error> {
-        let control = GCSProcessControl()
+    public static func events(script: URL, arguments: [String], writerLibrary: URL? = nil) -> AsyncThrowingStream<GCSCollectorEvent, Error> {
+        events(script: script, arguments: arguments, writerLibrary: writerLibrary, runtimeConfiguration: .current)
+    }
+
+    static func events(script: URL, arguments: [String], writerLibrary: URL? = nil,
+                       runtimeConfiguration: EngineRuntimeResolver.Configuration) -> AsyncThrowingStream<GCSCollectorEvent, Error> {
+        let control = ProcessLifetime()
         return AsyncThrowingStream { continuation in
             let task = Task.detached(priority: .userInitiated) {
+                defer { control.cleanup() }
                 let errors = FileManager.default.temporaryDirectory.appendingPathComponent("katalog-gcs-\(UUID().uuidString).stderr")
                 defer { try? FileManager.default.removeItem(at: errors) }
                 do {
                     guard FileManager.default.fileExists(atPath: script.path) else { throw AnalysisError.unavailable("Le collecteur GCS est absent de l’app.") }
-                    let python = try pythonExecutable()
+                    let runtime = try EngineRuntimeResolver.resolve(configuration: runtimeConfiguration,
+                                                                   launch: control.run, finished: control.finish)
                     FileManager.default.createFile(atPath: errors.path, contents: nil)
                     let err = try FileHandle(forWritingTo: errors)
                     defer { try? err.close() }
                     let pipe = Pipe(), process = Process()
-                    process.executableURL = python
+                    defer { try? pipe.fileHandleForReading.close(); try? pipe.fileHandleForWriting.close() }
+                    process.executableURL = runtime.executableURL
                     process.arguments = ["-u", "-B", script.path] + arguments
+                    process.environment = runtime.environment
                     process.standardOutput = pipe; process.standardError = err
-                    process.standardInput = FileHandle.nullDevice
-                    try control.start(process)
+                    // A bounded transfer/inventory can finish after a parent
+                    // crash. Retain only this app's exact writable lease until
+                    // that helper exits. Discovery has no library writer input.
+                    let writerInput = try writerLibrary.flatMap {
+                        try LibraryWriterLease.inheritedInput(for: ["--library", $0.path])
+                    }
+                    defer { try? writerInput?.close() }
+                    process.standardInput = writerInput ?? FileHandle.nullDevice
+                    try control.run(process)
                     var buffer = Data()
                     var reportedError: String?
                     do {
                         while true {
-                            // read(upToCount:) can wait for the requested byte count on a pipe.
-                            // Discovery is a long-lived stream: consume each available chunk now.
-                            let chunk = pipe.fileHandleForReading.availableData
-                            if chunk.isEmpty { break }
+                            // Polling keeps discovery responsive and cancellation bounded.
+                            guard let chunk = try control.readChunk(from: pipe.fileHandleForReading) else { break }
                             buffer.append(chunk)
                             while let newline = buffer.firstIndex(of: 10) {
+                                guard newline <= 4 * 1024 * 1024 else { throw AnalysisError.engine("Réponse GCS trop volumineuse.") }
                                 let line = Data(buffer[..<newline])
                                 buffer.removeSubrange(...newline)
                                 if !line.isEmpty {
@@ -61,8 +55,12 @@ public enum GCSProcessService {
                             guard buffer.count <= 4 * 1024 * 1024 else { throw AnalysisError.engine("Réponse GCS trop volumineuse.") }
                         }
                         if !buffer.isEmpty { continuation.yield(try JSONDecoder().decode(GCSCollectorEvent.self, from: buffer)) }
-                    } catch { control.cancel(); throw error }
-                    process.waitUntilExit()
+                    } catch {
+                        control.cancel()
+                        ProcessLifetime.wait(for: process)
+                        throw error
+                    }
+                    ProcessLifetime.wait(for: process)
                     try control.finish()
                     guard process.terminationStatus == 0 else {
                         let detail = (try? String(contentsOf: errors, encoding: .utf8)) ?? ""
@@ -73,14 +71,5 @@ public enum GCSProcessService {
             }
             continuation.onTermination = { @Sendable _ in control.cancel(); task.cancel() }
         }
-    }
-
-    private static func pythonExecutable() throws -> URL {
-        let candidates = [ProcessInfo.processInfo.environment["KATALOG_PYTHON"],
-            "/opt/homebrew/opt/python@3.13/bin/python3.13", "/opt/homebrew/bin/python3", "/usr/local/bin/python3", "/usr/bin/python3"].compactMap { $0 }
-        guard let path = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
-            throw AnalysisError.unavailable("Python 3 est requis pour la collecte GCS sur ce Mac.")
-        }
-        return URL(fileURLWithPath: path)
     }
 }

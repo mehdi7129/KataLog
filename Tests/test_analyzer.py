@@ -22,6 +22,7 @@ from unittest.mock import patch
 
 import numpy as np
 from pyulog import ULog
+from fixture_ulog import synthetic_ulog
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "Sources/KataLog/Resources/analyzer.py"
@@ -43,6 +44,14 @@ class ImportTests(unittest.TestCase):
         self.database = self.work / "library.sqlite"
         self.output = self.work / "report.json"
         self.progress = self.work / "progress.json"
+        self.fixture_files = list(REAL_FILES)
+        if not self.fixture_files:
+            fixtures = self.work / 'public-fixtures'
+            fixtures.mkdir()
+            for index, name in enumerate((None, 'Synthetic public controller')):
+                path = fixtures / ('fixture-%d.ulg' % index)
+                path.write_bytes(synthetic_ulog(drone_name=name))
+                self.fixture_files.append(path)
 
     def scan(self, source=None):
         return analyzer.scan(source or self.source, self.database, self.output, self.progress)
@@ -52,11 +61,9 @@ class ImportTests(unittest.TestCase):
             self.skipTest("Set KATALOG_PRIVATE_FIXTURES to the external reference corpus")
 
     def copy(self, filename="test.ulg", source=None):
-        if source is None:
-            self.require_private_corpus()
         destination = self.source / filename
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source or REAL_FILES[0], destination)
+        shutil.copyfile(source or self.fixture_files[0], destination)
         return destination
 
     def test_real_nine_logs_exact_results_and_source_unchanged(self):
@@ -89,7 +96,7 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(len(missing), 1)
         self.assertEqual(missing[0]["metadata"]["gcsIdentityStatus"], "unavailable")
         self.assertNotIn("dance_status", missing[0]["topics"])
-        self.assertTrue(all(log["metadata"]["parserVersion"] == "1.2.0" for log in logs))
+        self.assertTrue(all(log["metadata"]["parserVersion"] == analyzer.PARSER_VERSION for log in logs))
         for log in logs:
             self.assertEqual(log["dateSource"], "gps")
             self.assertTrue(log["date"].endswith("Z"))
@@ -187,9 +194,9 @@ class ImportTests(unittest.TestCase):
         self.assertTrue(any("Source originale indisponible" in text for text in old["coverage"]))
 
     def test_permission_error_isolated_and_retry_removes_transient_error(self):
-        self.require_private_corpus(minimum=2)
+        self.assertGreaterEqual(len(self.fixture_files), 2)
         self.copy("one.ulg")
-        path = self.copy("two.ulg", REAL_FILES[1])
+        path = self.copy("two.ulg", self.fixture_files[1])
         original_digest = analyzer.digest_file
         def digest(candidate):
             if candidate.resolve() == path.resolve():
@@ -238,9 +245,9 @@ class ImportTests(unittest.TestCase):
         self.copy("old.ulg")
         first = self.scan()
         self.assertEqual(first["logs"][0]["droneName"], "Drone non identifié")
-        self.copy("recent.ulg", REAL_FILES[-1])
+        self.copy("recent.ulg", self.fixture_files[-1])
         result = self.scan()
-        expected_name = analyzer.clean_name(ULog(str(REAL_FILES[-1])).msg_info_dict.get("drone_name"))
+        expected_name = analyzer.clean_name(ULog(str(self.fixture_files[-1])).msg_info_dict.get("drone_name"))
         self.assertTrue(expected_name)
         self.assertEqual({log["droneName"] for log in result["logs"]}, {expected_name})
 
@@ -265,9 +272,19 @@ class ImportTests(unittest.TestCase):
             self.assertEqual(json.loads(self.output.read_text())["schemaVersion"], 1)
         self.assertEqual(list(self.work.glob(".report.json.*")), [])
 
+    def test_exact_ulg_file_scan_does_not_rescan_siblings(self):
+        selected = self.copy('one.ULG')
+        self.copy('ignored-two.ulg', self.fixture_files[-1])
+        result = analyzer.scan(selected, self.database)
+        self.assertEqual(result['importStats']['discovered'], 1)
+        self.assertEqual(len(result['logs']), 1)
+        self.assertEqual(result['logs'][0]['sourcePaths'], [str(selected.resolve())])
+        folder = self.scan()
+        self.assertEqual(folder['importStats']['discovered'], 2)
+        self.assertEqual(len(folder['logs']), 2)
+
     def test_500_duplicate_paths_parse_only_once(self):
-        self.require_private_corpus()
-        original = self.copy("card-000/session.ulg", min(REAL_FILES, key=lambda path: path.stat().st_size))
+        original = self.copy("card-000/session.ulg", min(self.fixture_files, key=lambda path: path.stat().st_size))
         for index in range(1, 500):
             destination = self.source / f"card-{index:03}/session.ulg"
             destination.parent.mkdir()
@@ -341,6 +358,40 @@ class MetricTests(unittest.TestCase):
         incomplete = self.dataset("vehicle_land_detected", timestamp=[0, 1e6, 200e6], landed=[0, 0, 1])
         analyzer.flight_duration(log, [incomplete], 0, 200)
         self.assertIsNone(log["flightSeconds"])
+
+    def test_short_flight_duration_requires_actual_coverage_not_absolute_tolerance(self):
+        log = self.empty()
+        sparse = self.dataset("vehicle_land_detected", timestamp=[.5e6, .6e6], landed=[0, 0])
+        analyzer.flight_duration(log, [sparse], 0, 1.5)
+        self.assertIsNone(log["flightSeconds"])
+        self.assertAlmostEqual(log["flightObservedSeconds"], .1)
+        self.assertAlmostEqual(log["flightCoverageSeconds"], .1)
+        self.assertAlmostEqual(log["flightCoverageFraction"], .1 / 1.5, places=6)
+        self.assertTrue(any("6.7 %" in value for value in log["coverage"]))
+
+    def test_complete_short_log_reports_duration_and_coverage(self):
+        log = self.empty()
+        complete = self.dataset("vehicle_land_detected", timestamp=[0, .5e6, 1e6, 1.5e6], landed=[1, 0, 0, 1])
+        analyzer.flight_duration(log, [complete], 0, 1.5)
+        self.assertEqual(log["flightSeconds"], 1)
+        self.assertEqual(log["flightObservedSeconds"], 1)
+        self.assertEqual(log["flightCoverageSeconds"], 1.5)
+        self.assertEqual(log["flightCoverageFraction"], 1)
+
+    def test_unknown_flight_samples_do_not_become_zero_observed_flight(self):
+        log = self.empty()
+        invalid = self.dataset("vehicle_land_detected", timestamp=[0, 1e6], landed=[2, 2])
+        analyzer.flight_duration(log, [invalid], 0, 1)
+        self.assertIsNone(log["flightSeconds"])
+        self.assertIsNone(log["flightObservedSeconds"])
+        self.assertEqual(log["flightCoverageSeconds"], 0)
+        self.assertEqual(log["flightCoverageFraction"], 0)
+
+    def test_no_land_topic_keeps_all_coverage_values_unknown(self):
+        log = self.empty()
+        analyzer.flight_duration(log, [], 0, 1)
+        for key in ("flightSeconds", "flightObservedSeconds", "flightCoverageSeconds", "flightCoverageFraction"):
+            self.assertIsNone(log[key])
 
     def test_exact_levels_relative_times_and_alarm_info(self):
         for number, level in enumerate(analyzer.LEVELS):

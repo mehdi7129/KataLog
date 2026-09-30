@@ -105,6 +105,24 @@ class PublicationGuardTests(unittest.TestCase):
                 self.assertEqual(guard.main(["--path", str(root), "--blocklist", str(blocklist)]), 2)
             self.assertNotIn("synthetic-sensitive-value", output.getvalue())
 
+    def test_runtime_state_is_ignored_and_forced_git_add_is_still_blocked(self):
+        # Even an empty local config is private. Test both the repository's
+        # ignore rules and the guard after someone explicitly bypasses them.
+        names = ["annotations.json", "settings.json", "views.json", "fleet.json",
+                 "gcs-settings.json", "gcs-collection.json", "import-options.json",
+                 "progress.json", ".archive-journal.json", ".restore-journal.json"]
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            (root / ".gitignore").write_bytes((MODULE_PATH.parents[1] / ".gitignore").read_bytes())
+            for name in names:
+                (root / name).write_text("{}")
+            self.assertEqual(guard.git_files(root, True), [Path(".gitignore")])
+            subprocess.run(["git", "-C", str(root), "add", "-f", "--", *names], check=True)
+            findings = guard.scan(root, guard.git_files(root, True), ())
+            self.assertEqual({item.path for item in findings}, set(names))
+            self.assertEqual({item.category for item in findings}, {"etat-local-ou-secret"})
+
     def test_control_characters_in_names_are_escaped(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

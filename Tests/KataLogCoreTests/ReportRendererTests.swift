@@ -74,6 +74,21 @@ final class ReportRendererTests: XCTestCase {
         XCTAssertTrue(html.contains("kataLOG") || html.contains("KataLog"))
     }
 
+    func testTypedRecordedDetailsRemainVisibleAndHostileTextEscaped() throws {
+        var flight = log("typed", messages: [])
+        flight.batteryDetails = .object(["serial": .string("demo-pack-serial"), "unknown": .null])
+        flight.parameterDetails = .object(["value": .unsigned(UInt64.max), "name": .string("<img src=x onerror=alert(1)>")])
+        flight.dropouts = [.object(["durationMilliseconds": 5, "timing": .string("last_data_timestamp")])]
+        let html = ReportRenderer.html(snapshot([flight]))
+        XCTAssertTrue(html.contains("Batteries par instance"))
+        XCTAssertTrue(html.contains("18446744073709551615"))
+        XCTAssertTrue(html.contains("Interruptions de journalisation"))
+        XCTAssertFalse(html.contains("<img src=x onerror=alert(1)>"))
+        let decoded = try AnalysisService.decode(ReportRenderer.json(snapshot([flight])))
+        XCTAssertEqual(decoded.logs.first?.parameterDetails?["value"], .unsigned(UInt64.max))
+        XCTAssertEqual(decoded.logs.first?.batteryDetails?["unknown"], .null)
+    }
+
     func testReportPeriodExcludesUnknownAndImpossibleDates() {
         var unknown = log("unknown", messages: [])
         unknown.date = "Date inconnue"
@@ -84,6 +99,99 @@ final class ReportRendererTests: XCTestCase {
         XCTAssertTrue(html.contains("<p>2026-09-29</p>"))
         XCTAssertFalse(html.contains("2026-02-30 →"))
         XCTAssertTrue(ReportRenderer.html(snapshot([unknown, impossible])).contains("Période non renseignée"))
+    }
+
+    func testDetailedReportIncludesParametersChangesAndTopicInstancesWithEscapedValues() throws {
+        var flight = log("detail", messages: [])
+        flight.parameters = ["PARAM_<unsafe>": "éè <value>&"]
+        flight.parameterChanges = [ParameterChange(timeSeconds: 1.25, name: "PARAM_<unsafe>", value: "new <value>")]
+        flight.topicDetails = [TopicDetail(name: "sensor_gps", instance: 1, sampleCount: 4, fields: ["eph", "fix_type"], fieldUnits: ["eph": "m"])]
+        let manifest = ReportScopeManifest.describing(snapshot([flight]), mode: .flight)
+        let html = ReportRenderer.html(snapshot([flight]), manifest: manifest)
+        XCTAssertTrue(html.contains("Paramètres initiaux · 1"))
+        XCTAssertTrue(html.contains("Changements de paramètres · 1"))
+        XCTAssertTrue(html.contains("PARAM_&lt;unsafe&gt;"))
+        XCTAssertFalse(html.contains("PARAM_<unsafe>"))
+        XCTAssertTrue(html.contains("new &lt;value&gt;"))
+        XCTAssertTrue(html.contains("sensor_gps"))
+        XCTAssertTrue(html.contains("eph · m"))
+        XCTAssertTrue(html.contains("fix_type · unité non renseignée"))
+        XCTAssertEqual(manifest.completeness, .partial)
+        XCTAssertTrue(manifest.availableSections.contains("parameters"))
+        XCTAssertTrue(manifest.unavailableSections.contains("telemetry"))
+    }
+
+    func testScopeManifestIsVersionedAndSafelyEmbeddedWithoutChangingSnapshotJSON() throws {
+        let snapshot = snapshot([log("manifest", messages: [message("m")])])
+        var manifest = ReportScopeManifest.describing(snapshot, mode: .selection,
+                                                     scopeDescription: "Batterie </script><img src=x> éè", revision: "revision-7", includesMaskedMessages: false)
+        manifest.generatedAt = "2030-02-01T12:00:00Z"
+        let html = ReportRenderer.html(snapshot, manifest: manifest)
+        let payload = try payload(in: html)
+        let exported = try XCTUnwrap(payload["manifest"] as? [String: Any])
+        XCTAssertEqual(exported["schemaVersion"] as? Int, 1)
+        XCTAssertEqual(exported["mode"] as? String, "selection")
+        XCTAssertEqual(exported["scopeDescription"] as? String, manifest.scopeDescription)
+        XCTAssertEqual(exported["revision"] as? String, "revision-7")
+        XCTAssertEqual(exported["includesMaskedMessages"] as? Bool, false)
+        XCTAssertTrue(html.contains("Tout le périmètre exporté"))
+        XCTAssertFalse(html.contains("Toute la bibliothèque"))
+        XCTAssertTrue(html.contains("Exporté le 2030-02-01T12:00:00Z"))
+        XCTAssertFalse(html.contains("<img src=x>"))
+        XCTAssertTrue(html.contains("Les messages masqués sont exclus"))
+        XCTAssertEqual(try AnalysisService.decode(ReportRenderer.json(snapshot)).schemaVersion, 1)
+    }
+
+    func testMeasuredHTMLBudgetDoesNotSilentlyDiscardAnyRecord() throws {
+        let input = snapshot([log("one", messages: [message("m1"), message("m2")])])
+        let document = ReportRenderer.document(input, byteBudget: 1)
+        XCTAssertTrue(document.exceedsBudget)
+        XCTAssertEqual(document.byteCount, document.html.utf8.count)
+        XCTAssertEqual(document.byteBudget, 1)
+        let logs = try XCTUnwrap(try payload(in: document.html)["logs"] as? [[String: Any]])
+        XCTAssertEqual((logs.first?["messages"] as? [[String: Any]])?.count, 2)
+        XCTAssertTrue(document.html.contains("métadonnées"))
+    }
+
+    func testFailsafeOnlyLogIsCountedWithoutCreatingATextualFamilyOrMessage() {
+        var flight = log("failsafe", messages: [])
+        flight.failsafeObserved = true
+        let html = ReportRenderer.html(snapshot([flight]))
+        XCTAssertTrue(html.contains("0 messages d’alerte · 1 log avec failsafe"))
+        XCTAssertTrue(html.contains("PROFIL DES ALERTES TEXTUELLES"))
+        XCTAssertFalse(html.contains("class=\"family-row\""))
+        XCTAssertFalse(html.contains("class=\"message-row\""))
+    }
+
+    func testMalformedRawEventIDAndNullTimestampRemainSafeAndPreserved() throws {
+        var flight = log("event-malformed", messages: [])
+        flight.events = [PX4Event(id: "event:0:0", eventID: .string("raw </script><img src=x> éè"),
+                                 timeSeconds: nil, level: "UNKNOWN", message: nil,
+                                 argumentsHex: "00ff", definitionSource: nil,
+                                 rawTimestamp: .object(["encoding": .string("nonfinite"), "value": .string("nan")]),
+                                 translationStatus: "invalid")]
+        let html = ReportRenderer.html(snapshot([flight]))
+        XCTAssertTrue(html.contains("<td>—</td>"))
+        XCTAssertTrue(html.contains("raw &lt;/script&gt;&lt;img src=x&gt; éè"))
+        XCTAssertFalse(html.contains("<img src=x>"))
+        let decoded = try AnalysisService.decode(ReportRenderer.json(snapshot([flight])))
+        XCTAssertEqual(decoded.logs[0].events?[0].eventID, flight.events?[0].eventID)
+        XCTAssertNil(decoded.logs[0].events?[0].timeSeconds)
+    }
+
+    func testLazyTableFallbackUsesValidFlowWrappersAndPreservesTimeAndManualFamily() throws {
+        var source = message("manual")
+        source.sourceFamily = "Détectée <capteur>"
+        let html = ReportRenderer.html(snapshot([log("lazy", messages: [source])]))
+        XCTAssertTrue(html.contains("<noscript class=\"message-fallback\"><div class=\"table-wrap\"><table"))
+        XCTAssertTrue(html.contains("<noscript class=\"occurrence-fallback\"><div class=\"table-wrap\"><table"))
+        XCTAssertFalse(html.contains("<tbody><noscript"))
+        XCTAssertTrue(html.contains("lazy-message-table"))
+        let records = try XCTUnwrap(try payload(in: html)["logs"] as? [[String: Any]])
+        let messages = try XCTUnwrap(records.first?["messages"] as? [[String: Any]])
+        XCTAssertEqual(messages.first?["timeSeconds"] as? Double, -0.25)
+        XCTAssertEqual(messages.first?["sourceFamily"] as? String, source.sourceFamily)
+        XCTAssertTrue(html.contains("Détectée &lt;capteur&gt;"))
     }
 
     private func rawPayload(in html: String) throws -> String {

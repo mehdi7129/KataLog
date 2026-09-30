@@ -20,6 +20,10 @@ final class AlertKnowledgeTests: XCTestCase {
         XCTAssertTrue(imu.limits.contains("80 %"))
         XCTAssertEqual(imu.sources.count, 1)
         XCTAssertTrue(AlertKnowledge.explanation(forText: "[wifi_broadcom] Wifi link lost").sources.isEmpty)
+        XCTAssertEqual(imu.confidence, .documented)
+        XCTAssertEqual(AlertKnowledge.explanation(forText: "[batt_smbus] SMBus read error: -1").confidence, .interpretation)
+        XCTAssertFalse(AlertKnowledge.explanation(forText: "[wifi_broadcom] Wifi link lost").isDocumented)
+        XCTAssertEqual(AlertKnowledge.explanation(forText: "inconnu").confidence, .raw)
     }
 
     func testPartialSimilarOrNegatedMessagesAreNotDiagnosed() {
