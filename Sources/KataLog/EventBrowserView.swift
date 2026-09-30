@@ -52,8 +52,8 @@ struct EventBrowserView: View {
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("Événements PX4").font(.title2.weight(.semibold))
-                        Text("Occurrences binaires · niveau interne par défaut · données en cache").font(.caption).foregroundStyle(.secondary)
+                        Text("Occurrences binaires").font(.system(size: 16, weight: .semibold))
+                        Text("Niveau interne par défaut · données en cache").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Button("Associer un dictionnaire…") { chooseDictionary() }

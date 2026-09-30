@@ -2,8 +2,7 @@ import AppKit
 import SwiftUI
 import KataLogCore
 
-/// Native preview of the proposed 0.6 flows. Activation is explicit; installed
-/// copies retain their current workspace until the design has been approved.
+/// Paged library workflows in the original monochrome bento workspace.
 struct Workspace06View: View {
     @ObservedObject var library: LibraryStore
     @ObservedObject var gcs: GCSStore
@@ -11,10 +10,11 @@ struct Workspace06View: View {
     @StateObject private var storage: LibraryStorageStore
     @StateObject private var updates = UpdateStore()
     @StateObject private var reportPreview = ReportPreviewStore()
-    @State private var page: Page = .history
+    @State private var page: Page = .overview
     @State private var showingFlight = false
     @State private var showingScope = false
     @State private var showingSources = false
+    @State private var showingSavedViews = false
     @State private var identity: DroneIdentityTarget?
     @State private var viewName = ""
     @State private var localError: String?
@@ -22,6 +22,7 @@ struct Workspace06View: View {
     @State private var groupCursors: [String?] = [nil]
     @State private var registryCursors: [String?] = [nil]
     @State private var selectedGroup: LibraryGroup?
+    @State private var pendingOverviewGroup: LibraryGroup?
     @State private var registrySearch = ""
     @State private var reportMode = ReportScopeManifest.Mode.selection
     @State private var reportFormat = ReportExportOptions.Format.html
@@ -43,11 +44,13 @@ struct Workspace06View: View {
     private enum FocusControl: Hashable { case importFolder, scope, refresh, historyLog(String), mask(Bool), diagnostic, restore }
 
     enum Page: String, CaseIterable, Identifiable {
+        case overview = "Vue d’ensemble"
         case history = "Historique", alerts = "Alertes", events = "Événements PX4", map = "Carte", drones = "Drones"
         case collection = "Collecte GCS", storage = "Stockage", reports = "Rapports", settings = "Réglages"
         var id: String { rawValue }
         var symbol: String {
             switch self {
+            case .overview: "square.grid.2x2"
             case .history: "clock.arrow.circlepath"
             case .alerts: "waveform.path.ecg"
             case .events: "list.bullet.rectangle.portrait"
@@ -60,16 +63,15 @@ struct Workspace06View: View {
             }
         }
     }
-    init(library: LibraryStore, gcs: GCSStore, initialPage: Page = .history) {
+    init(library: LibraryStore, gcs: GCSStore, initialPage: Page = .overview) {
         self.library = library; self.gcs = gcs; views = library.views
         _page = State(initialValue: initialPage)
         _storage = StateObject(wrappedValue: LibraryStorageStore(library: library))
     }
     private var totals: LibraryTotals? { library.historyPage?.totals }
-    private var background: Color { Color(nsColor: .windowBackgroundColor) }
-    private var theme: ColorScheme? {
-        switch views.state.theme { case "dark": .dark; case "light": .light; default: nil }
-    }
+    private var theme: ColorScheme? { WorkspaceAppearance.colorScheme(for: views.state.theme) }
+    private var palette: Palette { Palette(dark: (theme ?? scheme) == .dark) }
+    private var themeSelection: Binding<String> { Binding(get: { WorkspaceAppearance.selection(for: views.state.theme) }, set: { value in edit { try views.setTheme(value) } }) }
     private var busy: Bool { library.isImporting || library.isMaintainingLibrary || library.isQuerying || library.isLoading || library.isLoadingFlight }
     private var mutationBusy: Bool { busy || gcs.isBusy }
     private var reportOptions: ReportExportOptions {
@@ -85,59 +87,49 @@ struct Workspace06View: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            VStack(alignment: .leading, spacing: 20) {
-                Label("kataLOG", systemImage: "square.stack.3d.up.fill")
-                    .font(.system(size: 25, weight: .bold)).tracking(-1).foregroundStyle(sidebarForeground)
-                Text("Les traces de votre flotte.").font(.caption).foregroundStyle(sidebarForeground.opacity(0.65))
-                if AppPreviewConfiguration().reviewBuild {
-                    Text("Preview 0.6 · bibliothèque séparée")
-                        .font(.caption2).foregroundStyle(sidebarForeground.opacity(0.75))
-                        .help("Cette version utilise sa propre bibliothèque et conserve les données de l’app installée.")
+        HStack(spacing: 0) {
+            sidebar
+            VStack(spacing: 0) {
+                topBar
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        if page != .collection { header }
+                        notices
+                        if [.overview, .history, .alerts, .events, .map].contains(page), views.state.activeScope != SelectionScope() || !views.state.maskedMessageKeys.isEmpty { scopeBar }
+                        switch page {
+                        case .overview: overview
+                        case .history: history
+                        case .alerts: alertProfile; alerts
+                        case .events: EventBrowserView(library: library)
+                        case .map: map
+                        case .drones: registry
+                        case .collection: GCSCollectionView(store: gcs, library: library, dark: palette.dark)
+                        case .storage: storagePage
+                        case .reports: reportPage
+                        case .settings: settings
+                        }
+                        Text("Les alertes décrivent des observations enregistrées. Elles ne prouvent pas à elles seules une panne matérielle.")
+                            .font(.system(size: 10)).foregroundStyle(palette.secondary)
+                    }.padding(30).frame(maxWidth: 1550, alignment: .leading).frame(maxWidth: .infinity)
                 }
-                List { ForEach(Page.allCases) { item in
-                    Button { page = item } label: {
-                        HStack(spacing: 10) { Image(systemName: item.symbol).foregroundStyle(sidebarForeground).frame(width: 20); Text(item.rawValue).foregroundStyle(sidebarForeground) }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
-                    }.buttonStyle(.plain).listRowBackground(page == item ? Color.primary.opacity(0.08) : Color.clear)
-                } }.listStyle(.sidebar)
-                VStack(alignment: .leading, spacing: 6) {
-                    Button { showingSources = true } label: {
-                        Label("Bibliothèque locale", systemImage: "internaldrive")
-                    }.buttonStyle(.plain).help(LibraryHelp.sources).accessibilityIdentifier("library.sources")
-                    if library.isReadOnly { Label("Lecture seule", systemImage: "lock") }
-                    Text("Vos fichiers restent sur votre Mac.").foregroundStyle(.secondary)
-                }.font(.caption).foregroundStyle(sidebarForeground)
-            }.padding(18).navigationSplitViewColumnWidth(min: 205, ideal: 225, max: 260)
-        } detail: {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    header
-                    notices
-                    if [.history, .alerts, .events, .map].contains(page) { scopeBar }
-                    switch page {
-                    case .history: history
-                    case .alerts: alertProfile; alerts
-                    case .events: EventBrowserView(library: library)
-                    case .map: map
-                    case .drones: registry
-                    case .collection: GCSCollectionView(store: gcs, library: library, dark: scheme == .dark)
-                    case .storage: storagePage
-                    case .reports: reportPage
-                    case .settings: settings
-                    }
-                    Text("Les alertes décrivent des observations enregistrées. Elles ne prouvent pas à elles seules une panne matérielle.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }.padding(26).frame(maxWidth: 1500, alignment: .leading).frame(maxWidth: .infinity)
-            }.background(background)
+            }.background(palette.background)
         }
         .frame(minWidth: 900, minHeight: 620)
-        .preferredColorScheme(theme).tint(.primary)
+        .font(.system(size: 12)).foregroundStyle(palette.primary)
+        .buttonStyle(WorkspaceActionButtonStyle(palette: palette))
+        .preferredColorScheme(theme).tint(palette.primary)
         .onAppear {
             gcs.attach(library: library)
             updates.installationAllowed = { !library.isImporting && !library.isExporting && !library.isMaintainingLibrary && !gcs.isBusy && !library.isQuerying && !library.isLoadingFlight }
             if !library.usesPagedNavigation { library.enablePagedNavigation() }
         }
-        .onChange(of: page) { _, value in selectedGroup = nil; reload(value) }
+        .onChange(of: page) { _, value in
+            selectedGroup = nil
+            if value == .alerts, let group = pendingOverviewGroup {
+                pendingOverviewGroup = nil; selectedGroup = group; groupCursors = [nil]
+                library.loadOccurrences(groupID: group.id)
+            } else { pendingOverviewGroup = nil; reload(value) }
+        }
         .onChange(of: views.state.activeScope) { _, _ in historyCursors = [nil]; groupCursors = [nil]; selectedGroup = nil }
         .onChange(of: views.state.historySort) { _, _ in historyCursors = [nil]; groupCursors = [nil] }
         .onChange(of: library.currentHistoryCursor) { _, cursor in if cursor == nil { historyCursors = [nil] } }
@@ -168,19 +160,93 @@ struct Workspace06View: View {
             VStack(alignment: .leading, spacing: 14) { heading; headerActions }
         }
     }
-    private var sidebarForeground: Color { scheme == .dark ? .white.opacity(0.9) : .black.opacity(0.88) }
+    private var sourceLabel: String {
+        let folders = library.snapshot.sourceFolders
+        guard let first = folders.first else { return "Bibliothèque locale" }
+        return folders.count == 1 ? URL(fileURLWithPath: first).lastPathComponent : "\(folders.count) dossiers sources"
+    }
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "square.stack.3d.up.fill").font(.system(size: 23, weight: .medium))
+                Text("kataLOG").font(.system(size: 25, weight: .bold)).tracking(-1.2)
+            }
+            Text("Les traces de votre flotte.").font(.system(size: 11)).foregroundStyle(palette.secondary)
+                .padding(.top, 7).padding(.bottom, 36)
+            Text("ESPACE DE TRAVAIL").font(.system(size: 9, weight: .semibold)).tracking(1.2)
+                .foregroundStyle(palette.secondary).padding(.horizontal, 12).padding(.bottom, 12)
+            ScrollView {
+                VStack(spacing: 5) {
+                    ForEach([Page.overview, .map, .drones, .alerts, .history, .events, .collection, .storage, .reports, .settings]) { item in
+                        Button { page = item } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: item.symbol).font(.system(size: 15)).frame(width: 18)
+                                Text(item.rawValue).font(.system(size: 12, weight: item == page ? .semibold : .regular))
+                                Spacer(minLength: 0)
+                            }.foregroundStyle(item == page ? palette.primary : palette.secondary)
+                                .padding(.horizontal, 12).frame(height: 43)
+                                .background(item == page ? palette.raised : .clear, in: RoundedRectangle(cornerRadius: 10))
+                        }.buttonStyle(.plain).accessibilityIdentifier("navigation.\(item.id)")
+                    }
+                }
+            }.scrollIndicators(.hidden)
+            VStack(alignment: .leading, spacing: 10) {
+                Button { showingSources = true } label: {
+                    HStack(spacing: 6) {
+                        Circle().fill(palette.mint).frame(width: 5, height: 5)
+                        Text("BIBLIOTHÈQUE LOCALE").font(.system(size: 8, weight: .semibold)).tracking(1)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.system(size: 8))
+                    }
+                }.buttonStyle(.plain).help(LibraryHelp.sources).accessibilityIdentifier("library.sources")
+                Text(sourceLabel).font(.system(size: 12, weight: .semibold)).lineLimit(2)
+                if library.isReadOnly { Label("Lecture seule", systemImage: "lock").font(.system(size: 10)) }
+                Rectangle().fill(palette.border).frame(height: 1)
+                Text("Vos données restent sur ce Mac.").font(.system(size: 10)).foregroundStyle(palette.secondary)
+            }.padding(14).background(palette.card, in: RoundedRectangle(cornerRadius: 12)).padding(.top, 20)
+        }.padding(.horizontal, 18).padding(.top, 34).padding(.bottom, 24).frame(width: 204)
+            .background(palette.sidebar).overlay(alignment: .trailing) { palette.border.frame(width: 1) }
+    }
+    private var topBar: some View {
+        HStack(spacing: 9) {
+            Image(systemName: "externaldrive")
+            Text("Espace local")
+            Text("/").padding(.horizontal, 3)
+            Button { showingSources = true } label: { Text(sourceLabel).foregroundStyle(palette.primary).lineLimit(1) }
+                .buttonStyle(.plain).help(LibraryHelp.sources)
+            Spacer(minLength: 12)
+            if AppPreviewConfiguration().reviewBuild {
+                Text("Preview 0.6").font(.system(size: 10))
+                    .help("Cette version utilise une bibliothèque séparée et conserve les données de l’app installée.")
+            }
+            Button { showingSavedViews = true } label: { Image(systemName: "bookmark").frame(width: 30, height: 30) }
+                .buttonStyle(.plain).disabled(busy).help("Vues enregistrées")
+                .accessibilityLabel("Vues enregistrées").accessibilityIdentifier("library.savedViews")
+                .popover(isPresented: $showingSavedViews) { savedViews.padding(20).frame(width: 340).preferredColorScheme(theme) }
+            Text("PX4 · ULog").font(.system(size: 10, weight: .medium, design: .monospaced)).padding(.trailing, 6)
+            WorkspaceThemeControl(selection: themeSelection, palette: palette).disabled(library.isReadOnly || library.isMaintainingLibrary)
+        }.font(.system(size: 11)).foregroundStyle(palette.secondary)
+            .padding(.horizontal, 30).frame(height: 56)
+            .overlay(alignment: .bottom) { palette.border.frame(height: 1) }
+    }
     private var heading: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(page.rawValue).font(.system(size: 31, weight: .semibold)).tracking(-0.8)
-            Text(page == .drones ? "Registre global · les identités sans log restent visibles" : page == .collection ? "Une seule copie, dans le dossier que vous choisissez." : "Retrouver, comprendre et conserver les données enregistrées.")
-                .font(.callout).foregroundStyle(.secondary)
+            Text(page.rawValue).font(.system(size: 32, weight: .semibold)).tracking(-1.2)
+            Text(page == .overview ? "Les observations de votre flotte, dans une seule bibliothèque." : page == .drones ? "Registre global · les identités sans log restent visibles" : page == .collection ? "Une seule copie, dans le dossier que vous choisissez." : "Retrouver, comprendre et conserver les données enregistrées.")
+                .font(.system(size: 12)).foregroundStyle(palette.secondary)
         }
     }
     private var headerActions: some View {
         HStack {
             if busy { ProgressView().controlSize(.small).accessibilityLabel("Opération en cours") }
-            Button("Actualiser", systemImage: "arrow.clockwise") { reload(page) }.disabled(busy).focused($focusedControl, equals: .refresh)
-            Button("Importer", systemImage: "plus") { chooseImport() }.disabled(mutationBusy || library.isReadOnly).focused($focusedControl, equals: .importFolder)
+            Button { reload(page) } label: { Image(systemName: "arrow.clockwise").frame(width: 30, height: 38) }
+                .buttonStyle(.plain).help("Actualiser").accessibilityLabel("Actualiser").disabled(busy).focused($focusedControl, equals: .refresh)
+            if [.overview, .history, .alerts, .events, .map].contains(page) {
+                Button("Filtrer", systemImage: "line.3.horizontal.decrease") { showingScope = true }
+                    .buttonStyle(.plain).padding(.horizontal, 8).frame(height: 38).disabled(busy)
+                    .focused($focusedControl, equals: .scope).keyboardShortcut("f", modifiers: .command)
+            }
+            Button("Importer un dossier", systemImage: "folder.badge.plus") { chooseImport() }.buttonStyle(WorkspaceActionButtonStyle(palette: palette, prominent: true)).disabled(mutationBusy || library.isReadOnly).focused($focusedControl, equals: .importFolder)
                 .keyboardShortcut("o", modifiers: .command)
         }
     }
@@ -202,30 +268,205 @@ struct Workspace06View: View {
         }
     }
     private var scopeBar: some View {
-        panel {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 7) {
-                    Text("SÉLECTION ACTIVE").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                    Text(views.state.activeScope.description).font(.callout).fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-                Button("Filtrer", systemImage: "line.3.horizontal.decrease") { showingScope = true }.disabled(busy).focused($focusedControl, equals: .scope).keyboardShortcut("f", modifiers: .command)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) { scopeDescription; Spacer(minLength: 8); scopeActions }
+            VStack(alignment: .leading, spacing: 12) { scopeDescription; scopeActions }
+        }.font(.system(size: 11))
+    }
+    private var scopeDescription: some View {
+        Label(views.state.activeScope == SelectionScope() ? "Tous les enregistrements" : views.state.activeScope.description, systemImage: "line.3.horizontal.decrease")
+            .foregroundStyle(palette.secondary).lineLimit(2).help(views.state.activeScope.description)
+    }
+    private var scopeActions: some View {
+        HStack(spacing: 8) {
+            if views.state.activeScope != SelectionScope() {
                 Button("Réinitialiser") { edit { try views.chooseScope(.init()) } }.disabled(busy)
             }
-            HStack {
-                Menu("Vues enregistrées") {
-                    ForEach(views.state.views) { saved in
-                        Button(saved.name) { edit { try views.chooseScope(saved.scope) } }
-                        Button("Supprimer « \(saved.name) »") { edit { try views.removeView(saved.id) } }.disabled(library.isReadOnly)
+            if !views.state.maskedMessageKeys.isEmpty { Text("\(views.state.maskedMessageKeys.count) règles de masquage").foregroundStyle(palette.secondary) }
+        }
+    }
+    private var savedViews: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Vues enregistrées").font(.system(size: 16, weight: .semibold))
+            if !views.state.views.isEmpty {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        ForEach(views.state.views) { saved in
+                            HStack {
+                                Button(saved.name) { edit { try views.chooseScope(saved.scope); showingSavedViews = false } }.buttonStyle(.plain).lineLimit(2)
+                                Spacer()
+                                Button("Supprimer", systemImage: "trash") { edit { try views.removeView(saved.id) } }.labelStyle(.iconOnly).disabled(library.isReadOnly)
+                                    .accessibilityLabel("Supprimer la vue « \(saved.name) »")
+                            }
+                        }
                     }
-                    if views.state.views.isEmpty { Text("Aucune vue enregistrée") }
-                }.disabled(busy)
-                TextField("Nom de la vue", text: $viewName).textFieldStyle(.roundedBorder).frame(maxWidth: 220).disabled(library.isReadOnly || busy)
-                Button("Enregistrer") { edit { try views.saveView(name: viewName); viewName = "" } }.disabled(viewName.trimmingCharacters(in: .whitespaces).isEmpty || library.isReadOnly || busy)
+                }.frame(maxHeight: 220)
+                }
+            if views.state.views.isEmpty { Text("Aucune vue enregistrée.").foregroundStyle(palette.secondary) }
+            Divider()
+            TextField("Nom de la vue", text: $viewName).textFieldStyle(.roundedBorder).disabled(library.isReadOnly || busy)
+            HStack {
+                Button("Enregistrer la sélection") { edit { try views.saveView(name: viewName); viewName = "" } }.disabled(viewName.trimmingCharacters(in: .whitespaces).isEmpty || library.isReadOnly || busy)
                 Spacer()
-                Text("\(views.state.maskedMessageKeys.count) règles de masquage").font(.caption).foregroundStyle(.secondary)
+            }
+            Text("\(views.state.maskedMessageKeys.count) règles de masquage · retrait réversible").font(.caption).foregroundStyle(palette.secondary)
+        }.buttonStyle(WorkspaceActionButtonStyle(palette: palette))
+    }
+    private var priorityGroups: [LibraryGroup] { (library.groupPage?.groups ?? []).filter { $0.priority >= 4 } }
+    private var overview: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            overviewMetrics
+            if totals?.logs == 0 {
+                panel {
+                    Image(systemName: "folder.badge.plus").font(.system(size: 28)).foregroundStyle(palette.secondary)
+                    Text("Votre flotte commence ici.").font(.system(size: 23, weight: .semibold)).tracking(-0.6)
+                    Text("Importez un dossier de logs ou récupérez-les depuis votre GCS. KataLog conserve les analyses et déduplique les copies identiques.").foregroundStyle(palette.secondary)
+                    Button("Importer un dossier", systemImage: "folder.badge.plus") { chooseImport() }
+                        .buttonStyle(WorkspaceActionButtonStyle(palette: palette, prominent: true)).disabled(mutationBusy || library.isReadOnly)
+                }
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 18) {
+                        overviewReview.frame(minWidth: 350, maxWidth: .infinity)
+                        overviewProfile.frame(minWidth: 285, maxWidth: 400)
+                    }
+                    VStack(spacing: 18) { overviewReview; overviewProfile }
+                }
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 18) {
+                        overviewGroups.frame(minWidth: 350, maxWidth: .infinity)
+                        overviewHistory.frame(minWidth: 285, maxWidth: 400)
+                    }
+                    VStack(spacing: 18) { overviewGroups; overviewHistory }
+                }
             }
         }
+    }
+    private var overviewReview: some View {
+        panel {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("À examiner").font(.system(size: 16, weight: .semibold)).tracking(-0.4)
+                if let group = priorityGroups.first {
+                    HStack(spacing: 7) {
+                        Circle().fill(group.priority >= 5 ? palette.red : palette.amber).frame(width: 5, height: 5)
+                        Text(group.level).foregroundStyle(group.priority >= 5 ? palette.red : palette.amber)
+                        Text(group.family.uppercased()).foregroundStyle(palette.secondary)
+                        Spacer()
+                        Text(date(group.lastDate)).foregroundStyle(palette.secondary)
+                    }.font(.system(size: 10, weight: .medium)).padding(.top, 22)
+                    Text(group.title).font(.system(size: 25, weight: .semibold)).tracking(-0.7).lineLimit(3).padding(.top, 12)
+                    Text("\(quantity(group.messageCount, "message")) · \(quantity(group.logCount, "log")) \(group.logCount == 1 ? "concerné" : "concernés") · \(quantity(group.droneCount, "drone"))")
+                        .font(.system(size: 12)).foregroundStyle(palette.secondary).padding(.top, 10)
+                    Button { showOverviewGroup(group) } label: { Label("Examiner les messages", systemImage: "arrow.up.right") }
+                        .buttonStyle(.plain).font(.system(size: 11, weight: .semibold)).padding(.top, 22).disabled(busy)
+                } else {
+                    Text("Aucun message WARN ou de niveau supérieur dans cette sélection.").font(.system(size: 20, weight: .medium)).padding(.top, 22)
+                    Text("Les événements PX4 et les états failsafe restent consultables dans leurs vues dédiées.")
+                        .foregroundStyle(palette.secondary).padding(.top, 12)
+                }
+                Spacer(minLength: 22)
+                Rectangle().fill(palette.border).frame(height: 1)
+                HStack(spacing: 10) {
+                    Image(systemName: "waveform.path.ecg").foregroundStyle(palette.amber)
+                    Text("Priorité issue des messages enregistrés").font(.system(size: 11, weight: .medium))
+                    Spacer()
+                    LibraryHelpButton(title: "À examiner", text: "Le premier groupe est choisi par niveau de sévérité, puis par nombre de logs concernés, sur toute la sélection. Ce panneau couvre les messages WARN et les niveaux supérieurs ; les événements PX4 et les états failsafe sont présentés séparément.")
+                }.padding(.top, 16)
+            }.frame(minHeight: 280, alignment: .topLeading)
+        }
+    }
+    private var overviewProfile: some View {
+        let counts = totals?.familyLogCounts ?? [:]
+        let axes = views.state.profileAxes ?? Array(counts.keys.sorted().prefix(8))
+        return panel {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Profil des alertes").font(.system(size: 16, weight: .semibold)).tracking(-0.4)
+                    Spacer()
+                    LibraryHelpButton(title: "Profil des alertes", text: LibraryHelp.profile)
+                }
+                Text("Logs concernés par famille").font(.system(size: 11)).foregroundStyle(palette.secondary)
+                if counts.isEmpty {
+                    Text("Aucune famille d’alerte textuelle dans cette sélection.").foregroundStyle(palette.secondary).frame(maxHeight: .infinity, alignment: .center)
+                } else {
+                    AlertProfileChart06(axes: axes, counts: counts, denominator: totals?.validLogs ?? 0)
+                        .frame(height: axes.count >= 3 ? 170 : 130).accessibilityHidden(true)
+                    Text(axes.map { "\($0) \(counts[$0] ?? 0)" }.joined(separator: " · "))
+                        .font(.system(size: 10)).foregroundStyle(palette.secondary).lineLimit(3)
+                }
+                Spacer(minLength: 0)
+                Rectangle().fill(palette.border).frame(height: 1)
+                HStack {
+                    Text("Échelle : 0 à \(quantity(totals?.validLogs ?? 0, "log"))").font(.system(size: 10)).foregroundStyle(palette.secondary)
+                    Spacer()
+                    Button("Explorer", systemImage: "arrow.right") { page = .alerts }.buttonStyle(.plain).font(.system(size: 11))
+                }
+            }.frame(minHeight: 280, alignment: .topLeading)
+        }
+    }
+    private var overviewGroups: some View {
+        panel {
+            HStack {
+                Text("Alertes repérées").font(.system(size: 16, weight: .semibold)).tracking(-0.4)
+                Spacer()
+                Button("Explorer", systemImage: "arrow.right") { page = .alerts }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(palette.secondary)
+            }
+            Text("Messages WARN et niveaux supérieurs · textes regroupés").font(.system(size: 10)).foregroundStyle(palette.secondary)
+            ForEach(Array(priorityGroups.prefix(6))) { group in
+                Button { showOverviewGroup(group) } label: {
+                    HStack(spacing: 12) {
+                        Circle().fill(group.priority >= 5 ? palette.red : palette.amber).frame(width: 6, height: 6)
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(group.title).font(.system(size: 12, weight: .semibold)).lineLimit(2)
+                            Text("\(group.family) · \(quantity(group.messageCount, "message")) · \(quantity(group.droneCount, "drone"))").font(.system(size: 10)).foregroundStyle(palette.secondary)
+                        }
+                        Spacer()
+                        Text("\(group.logCount)").font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                        Image(systemName: "chevron.right").font(.system(size: 9)).foregroundStyle(palette.secondary)
+                    }.padding(.vertical, 5).contentShape(Rectangle())
+                }.buttonStyle(.plain).disabled(busy)
+                Divider()
+            }
+            if priorityGroups.isEmpty { Text("Aucun message WARN ou supérieur repéré.").foregroundStyle(palette.secondary).padding(.vertical, 18) }
+        }
+    }
+    private var overviewHistory: some View {
+        panel {
+            HStack {
+                Text("Historique").font(.system(size: 16, weight: .semibold)).tracking(-0.4)
+                Spacer()
+                Button("Tout voir", systemImage: "arrow.right") { page = .history }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(palette.secondary)
+            }
+            Text("Aperçu : \(quantity(min(6, library.snapshot.logs.count), "log")) sur \(totals?.logs ?? 0) dans la sélection")
+                .font(.system(size: 10)).foregroundStyle(palette.secondary)
+            Text("Durées enregistrées, temps au sol inclus").font(.system(size: 10)).foregroundStyle(palette.secondary)
+            ForEach(Array(library.snapshot.logs.prefix(6))) { log in
+                Button { open(log) } label: {
+                    HStack(alignment: .top, spacing: 9) {
+                        Circle().fill(log.status == "error" ? palette.red : log.hasAlerts ? palette.amber : palette.muted).frame(width: 5, height: 5).padding(.top, 5)
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(date(log.date)).font(.system(size: 11, weight: .semibold))
+                            Text(log.displayName).font(.system(size: 10)).foregroundStyle(palette.secondary)
+                            LogAssessmentBadge(log: log)
+                        }
+                        Spacer(minLength: 4)
+                        Text(FlightUIFormat.duration(log.durationSeconds)).font(.system(size: 10)).foregroundStyle(palette.secondary).monospacedDigit()
+                    }.padding(.vertical, 5).contentShape(Rectangle())
+                }.buttonStyle(.plain).disabled(busy).help("Ouvrir \(log.fileName)").accessibilityLabel("Ouvrir \(log.fileName), \(log.displayName), \(date(log.date))")
+                Divider()
+            }
+        }
+    }
+    private func showOverviewGroup(_ group: LibraryGroup) { pendingOverviewGroup = group; page = .alerts }
+    private func quantity(_ count: Int, _ noun: String) -> String { "\(count) \(noun)\(count == 1 ? "" : "s")" }
+    private var overviewMetrics: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 0)], spacing: 12) {
+            metric("Drones scannés", value: totals.map { $0.scannedDrones.formatted() } ?? "—", note: "", help: LibraryHelp.drones + "\n\(totals?.provisionalDrones ?? 0) identités provisoires, comptées à part.")
+            metric("Enregistrements", value: totals.map { $0.logs.formatted() } ?? "—", note: "", help: "Logs uniques de toute la sélection. Les copies identiques sont dédupliquées par contenu ; les fichiers illisibles restent conservés.")
+            metric("Durée enregistrée", value: totals.map { FlightUIFormat.duration($0.recordedSeconds) } ?? "—", note: "", help: LibraryHelp.recordedDuration)
+            metric("Temps de vol cumulé", value: totals?.measuredFlightSeconds.map(FlightUIFormat.duration) ?? "Indisponible", note: "", help: LibraryHelp.flightDuration + "\n\(totals?.flightLogCount ?? 0) / \(totals?.logs ?? 0) logs avec temps de vol mesuré.")
+            metric("Avec alerte", value: totals.map { "\($0.alertLogs) / \($0.validLogs)" } ?? "—", note: "", help: LibraryHelp.alerts)
+        }.padding(.vertical, 12).background(palette.sidebar.opacity(0.8), in: RoundedRectangle(cornerRadius: 12))
     }
     private var history: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -260,14 +501,14 @@ struct Workspace06View: View {
         }
     }
     private var metrics: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 175), spacing: 14)], spacing: 14) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 155), spacing: 0)], spacing: 12) {
             metric("Enregistrements", value: totals.map { $0.logs.formatted() } ?? "—", note: "Copies identiques dédupliquées", help: "Nombre de logs uniques dans la sélection active. Les copies identiques sont dédupliquées par contenu ; les fichiers illisibles restent dans l’historique.")
             metric("Drones scannés", value: totals.map { $0.scannedDrones.formatted() } ?? "—", note: totals.map { "\($0.provisionalDrones) identités provisoires, comptées à part" } ?? "Identités en cours de lecture", help: LibraryHelp.drones)
             metric("Durée enregistrée", value: totals.map { FlightUIFormat.duration($0.recordedSeconds) } ?? "—", note: "Inclut le temps au sol", help: LibraryHelp.recordedDuration)
             metric("Temps de vol cumulé", value: totals?.measuredFlightSeconds.map(FlightUIFormat.duration) ?? "Indisponible", note: totals.flatMap { total in total.flightLogCount.map { "\($0) / \(total.logs) logs avec temps de vol mesuré" } } ?? "Couverture non déterminée", help: LibraryHelp.flightDuration)
             metric("Avec alerte", value: totals.map { $0.alertLogs.formatted() } ?? "—", note: totals.map { "Logs uniques sur \($0.validLogs) lus" } ?? "Lecture en cours", help: LibraryHelp.alerts)
             metric("Failsafe", value: totals.map { $0.failsafeLogs.formatted() } ?? "—", note: views.state.activeScope.hasMessageFilters ? "Non inclus dans ce filtre de messages" : "État enregistré, distinct des textes", help: "Nombre de logs où PX4 a enregistré un état failsafe. Ce compte décrit un état du système et ne confirme pas une panne. Un filtre de messages n’inclut pas cet état dans son périmètre.")
-        }
+        }.padding(.vertical, 16).background(palette.sidebar.opacity(0.8), in: RoundedRectangle(cornerRadius: 12))
     }
     private var alertProfile: some View {
         let counts = totals?.familyLogCounts ?? [:]
@@ -476,7 +717,7 @@ struct Workspace06View: View {
         VStack(alignment: .leading, spacing: 18) {
             panel {
                 Text("Apparence").font(.headline)
-                Picker("Thème", selection: Binding(get: { views.state.theme ?? "system" }, set: { value in edit { try views.setTheme(value) } })) { Text("Système").tag("system"); Text("Clair").tag("light"); Text("Sombre").tag("dark") }.pickerStyle(.segmented).disabled(library.isReadOnly)
+                Picker("Thème", selection: themeSelection) { Text("Système").tag("system"); Text("Clair").tag("light"); Text("Sombre").tag("dark") }.pickerStyle(.segmented).disabled(library.isReadOnly || library.isMaintainingLibrary)
             }
             UpdateSettingsView(store: updates, readOnly: library.isReadOnly)
             panel { Text("Diagnostic local").font(.headline); Text("Versions, système et états de l’app uniquement. Aucun log, texte d’erreur libre, chemin, identité, endpoint GCS ou coordonnée n’est inclus.").font(.callout).foregroundStyle(.secondary); Text("Les comptes de la bibliothèque qualifient la sélection active. Les jobs, masquages et vues qualifient l’app ; chaque compte indique son périmètre dans le JSON.").font(.caption).foregroundStyle(.secondary); Button("Prévisualiser le diagnostic") { makeDiagnostic() }.focused($focusedControl, equals: .diagnostic) }
@@ -494,18 +735,18 @@ struct Workspace06View: View {
         }.padding(26).frame(width: 620, height: 500)
     }
     private func panel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 14, content: content).frame(maxWidth: .infinity, alignment: .leading).padding(20)
-            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(.primary.opacity(0.09), lineWidth: 1))
+        VStack(alignment: .leading, spacing: 14, content: content).frame(maxWidth: .infinity, alignment: .leading).padding(22)
+            .background(palette.card, in: RoundedRectangle(cornerRadius: 17))
+            .overlay(RoundedRectangle(cornerRadius: 17).stroke(palette.border, lineWidth: 1))
     }
     private func notice(_ text: String, symbol: String) -> some View { Label(text, systemImage: symbol).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
     private func metric(_ title: String, value: Int, note: String) -> some View { metric(title, value: value.formatted(), note: note) }
     private func metric(_ title: String, value: String, note: String, help: String? = nil) -> some View {
-        panel {
-            HStack(spacing: 4) { Text(title).font(.caption).foregroundStyle(.secondary); if let help { LibraryHelpButton(title: title, text: help) } }
-            Text(value).font(.system(size: value == "Indisponible" ? 21 : 30, weight: .semibold)).monospacedDigit()
-            Text(note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-        }
+        VStack(alignment: .leading, spacing: 5) {
+            Text(value).font(.system(size: value == "Indisponible" ? 15 : 21, weight: .semibold)).tracking(-0.6).monospacedDigit()
+            HStack(spacing: 3) { Text(title).font(.system(size: 11)).foregroundStyle(palette.secondary); if let help { LibraryHelpButton(title: title, text: help) } }
+            if !note.isEmpty { Text(note).font(.system(size: 10)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true) }
+        }.padding(.horizontal, 14).frame(maxWidth: .infinity, minHeight: note.isEmpty ? 40 : 68, alignment: .topLeading)
     }
     private func empty(_ title: String, action: String, perform: @escaping () -> Void) -> some View { VStack(alignment: .leading, spacing: 12) { Text(title).foregroundStyle(.secondary); Button(action, action: perform).disabled(busy) }.padding(.vertical, 25) }
     private func pagination(cursors: Binding<[String?]>, next: String?, action: @escaping (String?) -> Void) -> some View {
@@ -588,6 +829,8 @@ enum AlertProfile06 {
 
 struct AlertProfileChart06: View {
     let axes: [String]; let counts: [String: Int]; let denominator: Int
+    @Environment(\.colorScheme) private var scheme
+    private var palette: Palette { Palette(dark: scheme == .dark) }
     var body: some View {
         switch AlertProfile06.chartKind(axisCount: axes.count) {
         case .empty:
@@ -601,8 +844,8 @@ struct AlertProfileChart06: View {
                         GeometryReader { geometry in
                             let fraction = denominator > 0 ? min(1, max(0, Double(counts[family] ?? 0) / Double(denominator))) : 0
                             ZStack(alignment: .leading) {
-                                Capsule().fill(.primary.opacity(0.08))
-                                Capsule().fill(.primary.opacity(0.6)).frame(width: geometry.size.width * fraction)
+                                Capsule().fill(palette.border)
+                                Capsule().fill(palette.mint.opacity(0.8)).frame(width: geometry.size.width * fraction)
                             }
                         }.frame(height: 8)
                     }
@@ -615,15 +858,17 @@ struct AlertProfileChart06: View {
 
 private struct ProfileRadar06: View {
     let axes: [String]; let counts: [String: Int]; let denominator: Int
+    @Environment(\.colorScheme) private var scheme
+    private var palette: Palette { Palette(dark: scheme == .dark) }
     var body: some View {
         GeometryReader { geometry in
             let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
             let radius = min(geometry.size.width / 3, geometry.size.height / 2.6)
             let count = axes.count
             ZStack {
-                ForEach(1...4, id: \.self) { ring in Path { path in for index in 0..<count { let p = point(index, count, center, radius * Double(ring) / 4); if index == 0 { path.move(to: p) } else { path.addLine(to: p) } }; path.closeSubpath() }.stroke(.primary.opacity(0.12), lineWidth: 1) }
-                Path { path in for (index, axis) in axes.enumerated() { let fraction = denominator > 0 ? min(1, Double(counts[axis] ?? 0) / Double(denominator)) : 0; let p = point(index, count, center, radius * fraction); if index == 0 { path.move(to: p) } else { path.addLine(to: p) } }; path.closeSubpath() }.fill(.primary.opacity(0.14)).overlay(Path { path in for (index, axis) in axes.enumerated() { let p = point(index, count, center, radius * (denominator > 0 ? min(1, Double(counts[axis] ?? 0) / Double(denominator)) : 0)); if index == 0 { path.move(to: p) } else { path.addLine(to: p) } }; path.closeSubpath() }.stroke(.primary.opacity(0.7), lineWidth: 2))
-                ForEach(Array(axes.enumerated()), id: \.element) { index, axis in Text(axis).font(.caption2).frame(width: 130).position(point(index, count, center, radius + 25)) }
+                ForEach(1...4, id: \.self) { ring in Path { path in for index in 0..<count { let p = point(index, count, center, radius * Double(ring) / 4); if index == 0 { path.move(to: p) } else { path.addLine(to: p) } }; path.closeSubpath() }.stroke(palette.border, lineWidth: 1) }
+                Path { path in for (index, axis) in axes.enumerated() { let fraction = denominator > 0 ? min(1, Double(counts[axis] ?? 0) / Double(denominator)) : 0; let p = point(index, count, center, radius * fraction); if index == 0 { path.move(to: p) } else { path.addLine(to: p) } }; path.closeSubpath() }.fill(palette.mint.opacity(0.15)).overlay(Path { path in for (index, axis) in axes.enumerated() { let p = point(index, count, center, radius * (denominator > 0 ? min(1, Double(counts[axis] ?? 0) / Double(denominator)) : 0)); if index == 0 { path.move(to: p) } else { path.addLine(to: p) } }; path.closeSubpath() }.stroke(palette.mint, lineWidth: 1.5))
+                ForEach(Array(axes.enumerated()), id: \.element) { index, axis in Text(axis).font(.system(size: 9)).foregroundStyle(palette.secondary).frame(width: 100).position(point(index, count, center, radius + 25)) }
             }
         }
     }

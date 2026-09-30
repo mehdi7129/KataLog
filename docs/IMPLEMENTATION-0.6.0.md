@@ -1,14 +1,65 @@
 # KataLog 0.6.0 — code, preuves et portes restantes
 
 Suivi du 30 septembre 2026. **Branche de développement, sans release 0.6.0 ni publication publique.**
-L’installation utilisateur reste la référence 0.5.2 (7). Les nouveaux écrans ont
-été approuvés le 30 septembre et s’activent par défaut dans les builds stables
+La version 0.5.2 (7) reste la référence visuelle. Les parcours supplémentaires
+0.6 ont été approuvés ; leur première présentation a ensuite été corrigée pour
+retrouver la composition bento précédente. Ils s’activent dans les builds stables
 à partir de 0.6.0. Ils restent accessibles par `KATALOG_UI_PREVIEW=1` ou le package de revue avec le flag
 Info.plist `KataLogUIReviewPreview`. Ce package possède son nom, son bundle ID
 et sa bibliothèque par défaut dédiés. L’activation développeur par environnement
 conserve le choix explicite d’une bibliothèque. Recette visuelle et approbation
 restent distinctes des tests du moteur. La bibliothèque de la stable conserve
 son emplacement habituel et les destinations explicites sont préservées.
+
+## Retour à la composition bento — Preview 0.6.0 (12)
+
+- Vue d’ensemble rétablie à l’ouverture : bande de compteurs compacte, panneaux
+  À examiner / Profil des alertes, puis Alertes repérées / Historique.
+- Palette, sidebar, contours, rayons et typographie issus de l’ancien workspace.
+  Les nouvelles vues utilisent ces mêmes tokens ; la collecte conserve son layout.
+- Thème clair/sombre directement accessible dans la barre supérieure, choix
+  Système conservé et préférences persistantes. Le défaut sans préférence est sombre.
+- Filtres dans le header ; vues enregistrées dans un popover borné et scrollable.
+  Aides détaillées disponibles au survol/clic, sans remplir la vue d’ensemble
+  de formulaires ou de grandes cartes de compteurs.
+- Agrégats et radar calculés sur toute la sélection. L’aperçu de logs indique
+  sa couverture ; le panneau prioritaire couvre explicitement WARN et niveaux
+  supérieurs. Aucun nombre global ni période n’est déduit de la première page.
+
+Le package de revue et sa recette restent distincts d’une publication stable.
+Les résultats du build 10 ci-dessous sont conservés comme preuves historiques.
+
+Recette native : **234 tests Swift réussis, zéro échec/skip** (125 Core, 109 App).
+Après les dernières finitions des libellés, les **20 tests du lot
+thème/workspace** repassent avec les captures régénérées. Ces sous-suites ne
+s’ajoutent pas au total. Les 110 empreintes sources/tests natifs et moteur du gel
+correspondent aux fichiers vérifiés. Le moteur Python et les rapports sont inchangés.
+
+Captures synthétiques inspectées : Vue d’ensemble à 1440×980 et neuf écrans à
+900×620 dans les deux thèmes, fiche, import, sources et filtres. Pas de coupure
+horizontale ou d’action principale inaccessible observée. La suite n’ouvre aucune
+GCS ; elle ne vérifie pas les tuiles Apple Maps ni une flotte physique.
+
+### Package et installation du lot bento
+
+La Preview **0.6.0 (12)** et son DMG sont signés et notarisés ; les tickets
+du helper, de l’app et du DMG sont validés. Les **9 gates de distribution passent**
+sur macOS 27.0.1. Guard publication et Gitleaks contrôlent 208 fichiers, sans
+signalement. Aucune release 0.6.0 ni publication publique.
+
+| Package notarisé 0.6.0 (12) | Octets | SHA256 |
+|---|---:|---|
+| DMG | 19 223 557 | `69149c67b4763ca79c2a73c0ec3b5a777d7a416f1929168413f5e2c06e5e23a8` |
+| ZIP avec tickets helper/app | 19 580 395 | `8fbacdae5b7a3f71e50da9f4de6c72705d6ee5510a8dd880cbbb2be2f4d943ea` |
+
+Installation sous Applications vérifiée : signature stricte, tickets app/helper,
+exécutable identique au package ; le log importé et le thème sombre persistent.
+L’app 0.5.2 est inchangée et les apps Preview précédentes sont conservées pour
+récupération. Lancement et bento vérifiés dans l’app installée.
+La bascule clair/sombre, l’ouverture du groupe prioritaire et l’affichage réel
+du fond Apple Maps ont aussi été observés sur le build 11 précédent. La dernière
+finition est limitée aux accords singulier/pluriel dans la Vue d’ensemble ; les
+fixtures desktop de 1 et 120 logs sont inspectées dans les deux thèmes.
 
 ## Sources, indicateurs et badges — lot de clarté
 

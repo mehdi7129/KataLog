@@ -112,20 +112,47 @@ final class WorkspacePreviewTests: XCTestCase {
         return fitting
     }
 
-    func testHistoryAlertsStorageAndReportRenderInBothThemesAtMinimumWindow() async throws {
+    private func renderWorkspace(_ fixture: Fixture, page: Workspace06View.Page, name: String,
+                                 width: CGFloat, height: CGFloat, scheme: ColorScheme) async throws -> NSSize {
+        // Workspace appearance is persistent and takes precedence over the host.
+        // Set the selected mode explicitly so a light capture cannot render dark.
+        try fixture.library.views.setTheme(scheme == .dark ? "dark" : "light")
+        try await settle(fixture.library)
+        return try await render(Workspace06View(library: fixture.library, gcs: fixture.gcs, initialPage: page),
+                                name: name, width: width, height: height, scheme: scheme)
+    }
+
+    func testWorkspacePagesRenderInBothThemesAtMinimumWindow() async throws {
         let f = try await fixture()
         XCTAssertEqual(f.library.historyPage?.totals.logs, 120)
         XCTAssertEqual(f.library.historyPage?.totals.familyLogCounts.count, 9)
-        for page in [Workspace06View.Page.history, .alerts, .storage, .reports] {
+        for page in [Workspace06View.Page.overview, .history, .alerts, .events, .drones,
+                     .collection, .storage, .reports, .settings] {
             for scheme in [ColorScheme.dark, .light] {
-                let fitting = try await render(Workspace06View(library: f.library, gcs: f.gcs, initialPage: page),
-                                               name: "workspace-\(page)-\(scheme)", width: 900, height: 620, scheme: scheme)
+                let fitting = try await renderWorkspace(f, page: page, name: "workspace-\(page)-\(scheme)",
+                                                        width: 900, height: 620, scheme: scheme)
                 XCTAssertLessThanOrEqual(fitting.width, 900.5, "\(page) exceeds the announced minimum window width.")
                 XCTAssertLessThanOrEqual(fitting.height, 620.5, "\(page) exceeds the announced minimum window height.")
             }
         }
         XCTAssertFalse(FileManager.default.fileExists(atPath: f.noNetworkMarker.path))
         XCTAssertFalse(f.gcs.isConnected)
+    }
+
+    func testOverviewRendersInBothThemesAtDesktopSizeWithoutStartingCollection() async throws {
+        for count in [1, 120] {
+            let f = try await fixture(count: count)
+            XCTAssertEqual(f.library.historyPage?.totals.logs, count)
+            for scheme in [ColorScheme.dark, .light] {
+                let name = count == 1 ? "workspace-overview-single-\(scheme)-desktop" : "workspace-overview-\(scheme)-desktop"
+                let fitting = try await renderWorkspace(f, page: .overview, name: name,
+                                                        width: 1440, height: 980, scheme: scheme)
+                XCTAssertLessThanOrEqual(fitting.width, 1440.5)
+                XCTAssertLessThanOrEqual(fitting.height, 980.5)
+            }
+            XCTAssertFalse(FileManager.default.fileExists(atPath: f.noNetworkMarker.path))
+            XCTAssertFalse(f.gcs.isConnected)
+        }
     }
 
     func testSourcesSheetRetirementUndoPreservesLogsAndFitsBothThemes() async throws {
@@ -433,7 +460,8 @@ final class WorkspacePreviewTests: XCTestCase {
         XCTAssertEqual(f.library.dronePage?.total, 4, "The fixture must render populated rows, not merely an empty state.")
         for page in [Workspace06View.Page.drones, .settings] {
             for scheme in [ColorScheme.dark, .light] {
-                let fitting = try await render(Workspace06View(library: f.library, gcs: f.gcs, initialPage: page), name: "workspace-\(page)-\(scheme)-minimum", width: 900, height: 620, scheme: scheme)
+                let fitting = try await renderWorkspace(f, page: page, name: "workspace-\(page)-\(scheme)-minimum",
+                                                        width: 900, height: 620, scheme: scheme)
                 XCTAssertLessThanOrEqual(fitting.width, 900.5); XCTAssertLessThanOrEqual(fitting.height, 620.5)
             }
         }

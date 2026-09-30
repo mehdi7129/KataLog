@@ -3,6 +3,25 @@
 App macOS locale pour une flotte PX4. Direction validée : bento noir et blanc,
 surfaces gris neutre, accents discrets réservés aux états et aux graphiques.
 
+## Référence visuelle pour 0.6.0
+
+La composition de la version 0.5.2 reste la référence demandée : sidebar compacte,
+barre supérieure discrète, bande de compteurs commune et bento asymétrique.
+Les parcours 0.6 s’intègrent à cette composition et partagent exactement sa palette.
+La Vue d’ensemble est l’écran d’accueil. Historique conserve sa navigation paginée ;
+les indicateurs et le radar couvrent toujours toute la sélection.
+
+Le bouton soleil/lune reste visible en haut à droite. Un menu permet aussi de
+suivre le thème macOS. Une préférence absente ouvre le thème sombre ; les choix
+explicites existants sont conservés et enregistrés dans la bibliothèque.
+Les filtres restent accessibles dans le header et les vues enregistrées dans
+la barre supérieure. Leurs formulaires s’ouvrent à la demande.
+
+Recette avant release : inspecter chaque écran en clair et sombre, les fenêtres
+900×620 et la Vue d’ensemble à 1440×980 ; vérifier les données globales, l’ouverture
+des groupes, la persistance du thème et les actions au clavier. La recette visuelle
+de la Preview fait partie des portes de sortie de 0.6.0.
+
 ## Parcours
 
 Vue d'ensemble → groupe d'alertes → inspecteur des preuves. Drones et historique

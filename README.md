@@ -7,21 +7,22 @@ affichées proviennent des imports ; aucun exemple figé n’alimente l’interf
 
 Les sources **0.6.0 en préparation** implémentent l’index paginé, les sauvegardes,
 la restauration, la file GCS durable, les événements PX4 et les courbes à la demande.
-Les nouveaux écrans ont été approuvés et sont activés par défaut dans les builds
+Les nouveaux parcours conservent la composition bento et la palette de 0.5.2 :
+Vue d’ensemble, sidebar compacte et accès direct aux thèmes. Ils sont activés dans les builds
 stables à partir de **0.6.0**. **KataLog Preview** conserve sa bibliothèque
 distincte ; `KATALOG_UI_PREVIEW=1` reste disponible en développement. Sparkle 2.10.0 est
 embarqué mais son feed reste désactivé. L’app installée 0.5.2 n’est pas remplacée.
 Voir le [suivi d’implémentation et ses limites](docs/IMPLEMENTATION-0.6.0.md),
 les [contrats](docs/CONTRACTS-0.6.md), la [matrice de validation](docs/VALIDATION-0.6.0.md) et le [plan de développement](docs/PLAN-0.6.0.md).
 
-Le package de review **0.6.0 (10)** contient **KataLog Preview.app** : il peut
+Le package de review **0.6.0 (12)** contient **KataLog Preview.app** : il peut
 coexister avec KataLog et utilise `~/Library/Application Support/KataLogPreview-0.6/`.
 Il ouvre directement les nouveaux écrans, sans Terminal. Les données de l’app
 installée sont conservées ; la bibliothèque de la Preview commence vide.
 Importer en mode **Référencer** analyse les fichiers existants sans les copier.
 Ce package local est signé Developer ID et notarisé ; il passe les neuf contrôles de
 distribution sur macOS 27.0.1. Il n’est pas une release et son updater
-reste désactivé. Les builds 8 et 9 sont des candidates historiques.
+reste désactivé. Les builds 8 à 11 sont des candidates historiques.
 
 Cette Preview ajoute la gestion persistante des **Sources d’import**
 (retrait/restauration sans suppression), les **Drones scannés** avec identités
