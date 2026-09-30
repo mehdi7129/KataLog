@@ -11,6 +11,9 @@ concurrency:
   cancel-in-progress: true
 jobs:
   tests:
+    # Standard hosted runners are free on public repositories. Skip every
+    # trigger, including manual dispatch, while the repository is private.
+    if: ${{ github.event.repository.visibility == 'public' }}
     strategy:
       fail-fast: false
       matrix:
@@ -42,6 +45,7 @@ jobs:
         run: git diff --check
   package-smoke:
     name: Package ARM64 / ${{ matrix.os }}
+    if: ${{ github.event.repository.visibility == 'public' }}
     strategy:
       fail-fast: false
       matrix:

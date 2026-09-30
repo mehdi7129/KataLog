@@ -7,18 +7,21 @@ affichées proviennent des imports ; aucun exemple figé n’alimente l’interf
 
 Les sources **0.6.0 en préparation** implémentent l’index paginé, les sauvegardes,
 la restauration, la file GCS durable, les événements PX4 et les courbes à la demande.
-Les nouveaux écrans sont accessibles dans **KataLog Preview**, ou en développement avec
-`KATALOG_UI_PREVIEW=1`, jusqu’à leur validation visuelle. Sparkle 2.10.0 est
+Les nouveaux écrans ont été approuvés et sont activés par défaut dans les builds
+stables à partir de **0.6.0**. **KataLog Preview** conserve sa bibliothèque
+distincte ; `KATALOG_UI_PREVIEW=1` reste disponible en développement. Sparkle 2.10.0 est
 embarqué mais son feed reste désactivé. L’app installée 0.5.2 n’est pas remplacée.
 Voir le [suivi d’implémentation et ses limites](docs/IMPLEMENTATION-0.6.0.md),
 les [contrats](docs/CONTRACTS-0.6.md), la [matrice de validation](docs/VALIDATION-0.6.0.md) et le [plan de développement](docs/PLAN-0.6.0.md).
 
-Le package de review **0.6.0 (8)** contient **KataLog Preview.app** : il peut
+Le package de review corrigé **0.6.0 (9)** contient **KataLog Preview.app** : il peut
 coexister avec KataLog et utilise `~/Library/Application Support/KataLogPreview-0.6/`.
 Il ouvre directement les nouveaux écrans, sans Terminal. Les données de l’app
 installée sont conservées ; la bibliothèque de la Preview commence vide.
 Importer en mode **Référencer** analyse les fichiers existants sans les copier.
-Ce package local n’est pas une release et son updater reste désactivé.
+Ce package local est signé Developer ID et passe les sept contrôles de
+distribution, mais n’est pas notarisé. Il n’est pas une release et son updater
+reste désactivé. Le build 8 est une candidate historique remplacée par ce correctif.
 
 L'[audit du 30 septembre](docs/AUDIT-2026-09-30.md) et le
 [backlog exécutable](docs/BACKLOG-0.6.0.md) détaillent les corrections préalables,
@@ -192,8 +195,9 @@ parallèle, avec **1 fichier à la fois par UUID**. Les fichiers déjà vérifi�
 reconnus lors de l’inventaire et exclus des nouveaux téléchargements.
 
 La connexion surveille les nouveaux appareils et se rétablit automatiquement.
-La file et la flotte sont enregistrées dans `gcs-collection.json` ; les files des
-versions précédentes restent lisibles. Les erreurs transitoires déclenchent au
+Les réglages et UUID autorisés sont enregistrés dans `gcs-settings.json`, la
+file durable dans `gcs-queue.sqlite` et les observations dans `fleet.json`.
+L’ancien `gcs-collection.json` est migré lors du chargement. Les erreurs transitoires déclenchent au
 maximum **3 tentatives au total**, avec attentes de **5 puis 15 secondes**, prolongées
 si une session distante est encore en attente de fin. Les erreurs permanentes ne
 sont pas réessayées automatiquement. **Relancer** reprend les fichiers arrêtés,
@@ -271,6 +275,37 @@ Les fixtures publiques sont synthétiques. Le test des neuf logs du corpus réel
 annonce explicitement son absence dans le gate public ; ses résultats privés
 restent hors Git. Le gate natif
 refuse tout test ignoré. Voir [UI-VALIDATION.md](docs/UI-VALIDATION.md).
+
+### GitHub Actions et runners gratuits
+
+La CI utilise les runners GitHub **standard ARM64** `macos-15`, `macos-26` et
+`xcode-27` ; ce dernier est actuellement en public preview. GitHub les fournit
+gratuitement pour les dépôts publics. Les jobs sont ignorés tant que le dépôt
+est privé, y compris lors d’un lancement manuel `workflow_dispatch`. Les tests
+locaux restent disponibles avec les commandes ci-dessous.
+
+Une fois le dépôt public, les push sur `main`, les pull requests et les
+lancements manuels peuvent exécuter les tests et le packaging ad hoc. La CI ne
+publie aucune release et n’utilise ni runner plus grand ni runner auto-hébergé.
+Un job ignoré n’est pas une preuve de validation. Voir les
+[conditions des runners GitHub](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+
+## Licence
+
+Copyright (C) 2026 **mehdi7129**.
+
+Le code propre de KataLog, ses tests, scripts, documentation et ressources
+originales sont distribués sous la **GNU GPL version 3 uniquement**
+(`GPL-3.0-only`), sans garantie. Le texte complet figure dans [LICENSE](LICENSE).
+Ce choix n’accorde pas l’utilisation d’une version ultérieure de la GPL.
+Les composants tiers conservent leurs licences et notices respectives ; voir
+[Dépendances et licences](docs/DEPENDENCIES-LICENSES.md).
+
+Toute distribution d’un binaire doit rendre disponible son code source
+correspondant, avec les scripts nécessaires à sa construction et les notices
+applicables. Pour les releases KataLog, fournir le tag exact et l’archive de
+sources correspondante avec les instructions de build. Les logs et bibliothèques
+des utilisateurs ne font pas partie des sources du logiciel.
 
 ## Confidentialité et distribution publique
 

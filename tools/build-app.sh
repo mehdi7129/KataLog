@@ -53,7 +53,7 @@ def copy_public_file(original, copied):
     shutil.copyfile(original, copied)
     pathlib.Path(copied).chmod(stat.S_IMODE(pathlib.Path(original).stat().st_mode))
     return copied
-for entry in ('Package.swift', 'Package.resolved', 'Sources', 'Tests', 'tools',
+for entry in ('Package.swift', 'Package.resolved', 'LICENSE', 'Sources', 'Tests', 'tools',
               'requirements-runtime-build.txt', 'requirements-runtime.txt', 'assets/icon'):
     original, copied = source / entry, destination / entry
     if not original.exists():
@@ -71,6 +71,15 @@ if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || ! "$build_number" =~ ^[0-9]+$ 
     printf 'Version ou numéro de build invalide.\n' >&2
     exit 1
 fi
+# Fail before a costly build if the public source snapshot lacks the reviewed GPL.
+python3 - "$project_dir" <<'PY'
+import importlib.util, pathlib, sys
+project = pathlib.Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location('katalog_distribution', project / 'tools/verify-distribution.py')
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module.validate_project_license_source(project)
+PY
 if [[ -z "${KATALOG_ENGINE_PATH:-}" ]]; then
     bash tools/build-engine.sh
     engine_path="${KATALOG_ENGINE_BUILD_DIR:-/private/tmp/katalog-engine-build}/dist/KataLogEngine.app"
@@ -171,6 +180,16 @@ if [[ "$ui_preview_build" == 1 ]]; then
     /usr/bin/plutil -replace CFBundleName -string 'KataLog Preview' "$app_path/Contents/Info.plist"
     /usr/bin/plutil -replace CFBundleDisplayName -string 'KataLog Preview' "$app_path/Contents/Info.plist"
 fi
+# Embed KataLog's own GPL and public attribution separately from dependencies.
+python3 - "$project_dir" "$app_path" <<'PY'
+import importlib.util, pathlib, sys
+project, app = map(pathlib.Path, sys.argv[1:])
+spec = importlib.util.spec_from_file_location('katalog_distribution', project / 'tools/verify-distribution.py')
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module.write_project_license(project, app)
+module.validate_project_license(app, module.plistlib.loads((app / 'Contents/Info.plist').read_bytes()))
+PY
 update_arguments=(configure --app "$app_path" --channel "$update_channel")
 if [[ -n "$update_feed_url" ]]; then update_arguments+=(--feed-url "$update_feed_url"); fi
 if [[ -n "$update_public_key" ]]; then update_arguments+=(--public-key "$update_public_key"); fi

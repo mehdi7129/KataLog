@@ -105,6 +105,17 @@ Le DMG et le ZIP doivent provenir du **même bundle final signé et notarisé**.
 Le pipeline public reste soumis aux contrôles de
 [publication](PUBLICATION.md) et de [distribution](DISTRIBUTION-VALIDATION.md).
 
+KataLog est sous **GPL-3.0-only**. Chaque release binaire doit proposer son
+code source correspondant, identifié par le tag exact, avec l’archive de
+sources, les scripts et instructions de build et les notices des dépendances.
+Les clés privées, credentials et données utilisateurs restent hors des archives
+de sources. Voir [les licences de distribution](DEPENDENCIES-LICENSES.md).
+
+La CI utilise uniquement des runners GitHub standard, gratuits lorsque le dépôt
+est public. Tant qu’il reste privé, ses jobs sont ignorés, même sur lancement
+manuel ; les tests et builds locaux restent disponibles. Publier le dépôt ne
+publie pas une release, un appcast ou une mise à jour de l’app.
+
 Avant activation publique, qualifier un cycle staging complet : proposition de
 version, refus d’une mauvaise signature de feed et d’archive, téléchargement
 interrompu, refus d’un downgrade, attente pendant une collecte, installation et

@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 import Darwin
 import KataLogCore
 @testable import KataLog
@@ -232,11 +233,41 @@ else:
     func testCollectAllRunsTwoDronesRetriesAndSkipsVerifiedCache() async throws {
         let (store, root) = try fixture(mode: "retry")
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        var observedFailures: [String: GCSTransfer] = [:]
+        // Capture errors when they are published, before a later retry clears
+        // them. Timeout-only snapshots cannot diagnose an earlier attempt.
+        let failures = store.$queue.sink { transfers in
+            for transfer in transfers {
+                guard let error = transfer.error else { continue }
+                observedFailures["\(transfer.id):\(transfer.attemptCount):\(error)"] = transfer
+            }
+        }
+        defer { failures.cancel() }
+        func recordFailureState(_ phase: String) {
+            do {
+                let queue = try JSONSerialization.jsonObject(with: JSONEncoder().encode(store.queue))
+                let failures = try JSONSerialization.jsonObject(with: JSONEncoder().encode(Array(observedFailures.values)))
+                let freeBytes = try FileManager.default.attributesOfFileSystem(forPath: root.path)[.systemFreeSize] as? NSNumber
+                let proof: [String: Any] = ["phase": phase, "queue": queue, "observedFailures": failures,
+                    "connected": store.isConnected, "busy": store.isBusy,
+                    "status": store.statusMessage ?? "", "error": store.errorMessage ?? "",
+                    "freeBytes": freeBytes?.int64Value ?? -1,
+                    "trace": (try? String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8)) ?? ""]
+                let data = try JSONSerialization.data(withJSONObject: proof, options: [.sortedKeys])
+                print("GCS retry failure state: " + String(decoding: data, as: UTF8.self))
+                if let artifacts = ProcessInfo.processInfo.environment["KATALOG_GCS_ARTIFACTS"] {
+                    let directory = URL(fileURLWithPath: artifacts)
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    try data.write(to: directory.appendingPathComponent("retry-\(root.lastPathComponent)-\(phase).json"))
+                }
+            } catch { print("GCS retry failure diagnostics unavailable: \(error.localizedDescription)") }
+        }
         try await waitUntil { store.canCollectAll }
         store.collectAll()
         try await waitUntil { store.activeTransferCount == 2 }
         XCTAssertEqual(Set(store.queue.filter(\.isActive).map(\.droneUUID)).count, 2)
         try await waitUntil { store.queue.count == 4 && store.queue.allSatisfy(\.isSuccessful) && !store.isBusy }
+        if store.queue.count != 4 || !store.queue.allSatisfy(\.isSuccessful) || store.isBusy { recordFailureState("copy") }
         XCTAssertEqual(store.queue.first { $0.droneUUID == first && $0.filename == "a.ulg" }?.attemptCount, 2)
         XCTAssertEqual(store.batchProgress.completedCount, 4)
         XCTAssertEqual(store.batchProgress.fraction, 1)
@@ -244,6 +275,7 @@ else:
         XCTAssertEqual(attempts.split(separator: "\n").count, 5)
         store.collectAll()
         try await waitUntil { !store.isBusy && store.cachedFileCount == 4 }
+        if store.isBusy || store.cachedFileCount != 4 { recordFailureState("cache") }
         XCTAssertEqual(store.batchProgress.totalCount, 0)
         XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8), attempts)
     }

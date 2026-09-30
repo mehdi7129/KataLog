@@ -1,23 +1,83 @@
 # KataLog 0.6.0 — code, preuves et portes restantes
 
 Suivi du 30 septembre 2026. **Branche de développement, sans release 0.6.0 ni publication publique.**
-L’installation utilisateur reste la référence 0.5.2 (7). Les nouveaux écrans sont
-accessibles par `KATALOG_UI_PREVIEW=1` ou le package de revue avec le flag
+L’installation utilisateur reste la référence 0.5.2 (7). Les nouveaux écrans ont
+été approuvés le 30 septembre et s’activent par défaut dans les builds stables
+à partir de 0.6.0. Ils restent accessibles par `KATALOG_UI_PREVIEW=1` ou le package de revue avec le flag
 Info.plist `KataLogUIReviewPreview`. Ce package possède son nom, son bundle ID
 et sa bibliothèque par défaut dédiés. L’activation développeur par environnement
 conserve le choix explicite d’une bibliothèque. Recette visuelle et approbation
-restent distinctes des tests du moteur.
+restent distinctes des tests du moteur. La bibliothèque de la stable conserve
+son emplacement habituel et les destinations explicites sont préservées.
+
+## Suite autorisée et recette physique
+
+- **Décisions enregistrées :** interfaces approuvées, licence **GPL-3.0-only**,
+  runners GitHub standard uniquement après passage public. Aucun runner n’est
+  alloué par ce workflow pendant que le dépôt est privé.
+- **Défaut observé :** le store GCS de la première Preview choisissait la
+  bibliothèque installée au lieu de la bibliothèque Preview. Il a chargé et
+  migré des réglages/queue installés. Aucune collecte n’a été lancée pendant
+  cette observation. Le résolveur de bibliothèque est maintenant partagé par
+  les stores Library et GCS, avant toute lecture ou migration.
+- **Reconnexion au démarrage :** l’attachement GCS pendant `ensure-index`
+  reportait une erreur de maintenance et ne relançait pas sa première
+  connexion. La découverte et l’initialisation de la file sont maintenant
+  différées jusqu’à la fin de cette maintenance ; une collecte arrêtée reste
+  arrêtée.
+- **Recette logicielle actuelle :** 38 tests ciblés puis **214 tests Swift
+  complets réussis, aucun skip ni échec**, sur les mêmes sources. Le premier
+  gate de ces corrections avait échoué dans le cas simulé de retry GCS ; des
+  répétitions ciblées et le gate instrumenté passent avec les assertions et
+  délais inchangés. La cause exacte de ce premier échec reste inconnue. Le
+  minimum d’espace libre mesuré pendant le gate réussi est 24,58 Gio ; cela
+  ne prouve pas la cause du premier échec.
+- **Licence dans le bundle :** texte GNU exact, notice originale publique,
+  attribution SPDX et manifeste SHA/version/build. **17 tests distribution
+  réussis**, dont six nouveaux tests d’intégrité. Le contrôle est obligatoire
+  à partir de 0.6.0 ; les notices tierces sont conservées.
+- **Matériel :** un drone disponible, découverte passive et inventaire réel
+  de deux ULogs. Le transfert physique n’est pas encore qualifié. Le lancement
+  du package corrigé ouvre l’Historique vide et les réglages GCS démarrent sans
+  UUID installé. Les appels Computer Use suivants expirent ; le titulaire
+  confirme que la page Collecte GCS répond manuellement. Cela ne qualifie pas
+  le transfert GUI. Un seul drone
+  ne ferme pas GCS-10 et ne qualifie ni deux transferts physiques concurrents
+  ni une flotte de 500 appareils.
+- **Distribution :** Preview corrigée **0.6.0 (9)** construite et signée
+  Developer ID, **sept gates réussis**. Le scan inspecte 174 fichiers et 472
+  payloads embarqués sans finding ; 22 composants natifs ARM64 sans dépendance
+  externe. Import, cache, backup/restore, archivage, événements, courbes,
+  rapport et collecte loopback sont exécutés avec le helper signé sous HOME
+  isolé et environnement Python hostile. Le DMG est vérifié et son app montée
+  correspond au bundle. Le parcours Finder et les transferts réels restent
+  distincts de ces contrôles. Les
+  empreintes et sept gates du build 8 ci-dessous sont des preuves historiques,
+  pas une validation du nouveau code. Aucun profil de notarisation n’est
+  disponible selon le titulaire ; sa création interactive est décrite dans
+  [RELEASING](RELEASING.md). Aucun credential ni soumission Apple n’est créé
+  par cette passe. Le feed Sparkle reste désactivé.
+
+| Package corrigé 0.6.0 (9) | Octets | SHA256 |
+|---|---:|---|
+| DMG preview | 18 857 910 | `8cb8547e1e243ff3f1a0a5adbe7f76f3f27b725aee6ae463cbe119a616c769be` |
+| ZIP preview | 19 020 291 | `afabe2ad6acf8703ba0474d0ff942394d0d17d1eba2e89ae32f2ac27b18393fe` |
+
+Les sources de cette recette sont figées dans une copie locale hors iCloud à
+partir du HEAD distant vérifié. Le dossier Desktop reste indisponible lors des
+lectures ; son identité avec la copie locale n’est pas revendiquée et ses
+modifications éventuelles doivent être préservées à la consolidation.
 
 Le [backlog](BACKLOG-0.6.0.md) conserve les **117 IDs, dépendances et critères**.
 Son état signifie code testé, preview, critère partiel, qualification externe ou
 décision requise. Aucun état « Validé ciblé » n’annonce une recette matérielle,
 un fonctionnement universel sans bug ou une release.
 
-### État de consolidation après le package de revue
+### État des 117 tickets après approbation UI et choix de licence
 
 | État du backlog | Tickets |
 |---|---:|
-| Critères ciblés validés | 66 |
+| Critères ciblés validés | 67 |
 | Protocole/collecte simulés validés | 10 |
 | Corpus privé validé | 1 |
 | Migration legacy validée | 1 |
@@ -26,7 +86,7 @@ un fonctionnement universel sans bug ou une release.
 | Implémenté, gates UI/distribution/CI distincts | 16 |
 | Preview avec recette visuelle restante | 3 |
 | Qualification externe | 9 |
-| Décision explicite requise | 3 |
+| Décision explicite requise | 2 |
 | Intégration finale en cours | 0 |
 | **Total d’IDs uniques** | **117** |
 
@@ -53,7 +113,7 @@ pas présentées comme des tests réussis.
 Les [contrats](CONTRACTS-0.6.md) décrivent les DTO et limites. Aucun format ancien
 ne devient courant simplement parce que le numéro du parseur a changé.
 
-## Preuves de cette passe
+## Preuves historiques du gel précédant la recette GCS
 
 | Gate | Résultat disponible | Limite |
 |---|---|---|
@@ -189,7 +249,8 @@ Preuves : [test_analyzer.py](../Tests/test_analyzer.py),
 [GCSStoreTests](../Tests/KataLogAppTests/GCSStoreTests.swift),
 [LibraryStoreTests](../Tests/KataLogAppTests/LibraryStoreTests.swift),
 [ReportDOMTests](../Tests/KataLogCoreTests/ReportDOMTests.swift).
-Les retouches de layout et filtres restent à approuver dans leur preview.
+Les retouches de layout et filtres ont été approuvées ; la recette des
+interactions dans le package corrigé reste distincte.
 
 ## L0 — contrats et oracles
 
@@ -502,7 +563,7 @@ revendiqué. L8-01 reste une qualification externe : l’exécution distante doi
 | Hygiène des sources, historique de base et assets | L8-09 | Audit final précommit validé ; aucune publication |
 | CI distante | L8-01 | Tentative observée : CI hébergée indisponible, quatre jobs refusés avant runner, zéro étape ; exécution distante restante |
 | Documentation et matrice de preuves | L8-12 | Consolidation logicielle terminée ; tentative CI et absence d’exécution consignées |
-| Licence, hébergementfeed, release et visibilité | L7-01, L8-08/14 | Décisions explicites ; aucun changement public effectué |
+| Licence, hébergementfeed, release et visibilité | L7-01, L8-08/14 | GPL-3.0-only choisie et notices intégrées ; feed/release/visibilité distincts, aucun changement public effectué |
 
 ## Reproduire les gates autonomes
 

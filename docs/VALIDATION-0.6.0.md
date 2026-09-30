@@ -5,8 +5,9 @@ réussis des contrôles encore ouverts. Il ne constitue pas une qualification de
 500 drones physiques ou de toutes les versions de macOS.
 
 L’app déjà installée est conservée. La candidate utilise une bibliothèque de
-test isolée et des données inventées. Les nouvelles pages restent derrière le
-flag de preview jusqu’à leur validation visuelle.
+test isolée et des données inventées. Les nouvelles pages sont approuvées et
+activées dans les futurs builds stables 0.6.0. L’approbation ne remplace pas les
+recettes en fonctionnement ; les anciens résultats ci-dessous décrivent leur gel source.
 
 ## Arrêt des opérations et accès à la bibliothèque
 

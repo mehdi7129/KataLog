@@ -52,15 +52,43 @@ build. Les runners ciblent macOS 15 ARM64 et macOS 27 ARM64 via le label
 `xcode-27`, actuellement en public preview ; leur disponibilité ne constitue
 pas une preuve d’exécution de la CI.
 
+Les labels `macos-15`, `macos-26` et `xcode-27` appartiennent à l’offre standard
+GitHub, gratuite sur les dépôts publics. Chaque job exige une visibilité
+`public` avant son allocation à un runner. Tant que le dépôt est privé, tous
+les déclencheurs sont ignorés, y compris `workflow_dispatch`, pour conserver
+ce choix de runners gratuits. Aucun runner `-large`, `-xlarge` ou auto-hébergé
+n’est configuré. Les commandes de tests locaux restent indépendantes de la CI.
+Un statut GitHub « skipped » ne qualifie aucun test ni build.
+
 ## Licence du dépôt KataLog
 
-La licence applicable au code propre de KataLog doit être choisie explicitement
-avant publication publique. Aucune licence globale n’est créée par ce lot.
-Les obligations des dépendances restent applicables quel que soit ce choix.
+Copyright (C) 2026 **mehdi7129**.
+
+Le code propre de KataLog, les tests, scripts, documentation et ressources
+originales sont sous **GNU GPL version 3 uniquement**, identifiant SPDX
+`GPL-3.0-only`. Le [texte officiel complet](../LICENSE) est reproduit sans
+modification. Aucune permission d’utiliser une future version de la GPL n’est
+accordée par cette notice.
+
+Cette licence ne remplace pas celles des dépendances et ne réattribue aucun
+copyright tiers. Les licences CPython, NumPy, pyulog, PyInstaller et Sparkle
+restent conservées dans l’app avec leurs notices. L’exception du bootloader
+PyInstaller est également conservée ; elle ne modifie pas la licence du code
+propre de KataLog. Les frameworks système restent soumis aux conditions de
+leur fournisseur.
+
+Pour chaque binaire distribué, les sources correspondantes doivent être
+disponibles, avec le tag exact de la release, les scripts et instructions de
+construction et les notices nécessaires. Les données privées des utilisateurs
+ne font pas partie de ce code source. La release doit conserver cette
+correspondance entre binaire et sources, indépendamment de la notarisation.
+
 Un changement de dépendance ou de wheel doit entraîner une nouvelle inspection
 des licences et des notices du bundle final.
 
-Sources : [CPython](https://docs.python.org/3/license.html),
+Sources : [GNU GPL v3](https://www.gnu.org/licenses/gpl-3.0.html),
+[identifiant SPDX GPL-3.0-only](https://spdx.org/licenses/GPL-3.0-only.html),
+[CPython](https://docs.python.org/3/license.html),
 [python-build-standalone](https://github.com/astral-sh/python-build-standalone),
 [NumPy](https://github.com/numpy/numpy/blob/main/LICENSE.txt),
 [pyulog](https://github.com/PX4/pyulog/blob/main/LICENSE.md),

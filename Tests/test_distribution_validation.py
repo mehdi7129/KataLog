@@ -1,6 +1,7 @@
 """The publication recipe uses only fabricated data and isolated destinations."""
 import importlib.util
 import base64
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,130 @@ SPEC.loader.exec_module(recipe)
 
 
 class DistributionRecipeTests(unittest.TestCase):
+    def make_project_license_bundle(self, directory, version="0.6.0", build="8"):
+        project = Path(directory) / "source"
+        project.mkdir()
+        (project / "LICENSE").write_bytes((ROOT / "LICENSE").read_bytes())
+        app = Path(directory) / "KataLog.app"
+        (app / "Contents").mkdir(parents=True)
+        info = dict(CFBundleIdentifier="org.example.katalog", CFBundleShortVersionString=version,
+                    CFBundleVersion=build, LSMinimumSystemVersion="15.0")
+        (app / "Contents/Info.plist").write_bytes(plistlib.dumps(info))
+        recipe.write_project_license(project, app)
+        return project, app, plistlib.loads((app / "Contents/Info.plist").read_bytes())
+
+    def test_project_license_bundle_contains_exact_gnu_text_and_public_attribution(self):
+        with tempfile.TemporaryDirectory(prefix="katalog-license-") as directory:
+            _, app, info = self.make_project_license_bundle(directory)
+            licenses = app / "Contents/Resources/Licenses"
+            upstream = licenses / "Sparkle-LICENSE.txt"
+            upstream.write_text("Synthetic upstream notice, retained unchanged")
+            project = Path(directory) / "source"
+            recipe.write_project_license(project, app)
+            included = licenses / "KataLog"
+            # Reviewed upstream bytes, rather than a license synthesized by the writer.
+            self.assertEqual((included / "GPL-3.0.txt").read_bytes(), (ROOT / "LICENSE").read_bytes())
+            self.assertEqual(hashlib.sha256((included / "GPL-3.0.txt").read_bytes()).hexdigest(),
+                             "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986")
+            notice = (included / "NOTICE.txt").read_text()
+            self.assertIn("Copyright (C) 2026 mehdi7129", notice)
+            self.assertIn("SPDX-License-Identifier: GPL-3.0-only", notice)
+            self.assertIn("https://github.com/mehdi7129/KataLog", notice)
+            self.assertEqual(upstream.read_text(), "Synthetic upstream notice, retained unchanged")
+            manifest = json.loads((included / "manifest.json").read_text())
+            self.assertEqual((manifest["appVersion"], manifest["buildNumber"]), ("0.6.0", "8"))
+            self.assertNotIn(directory, json.dumps(manifest))
+            self.assertTrue(recipe.validate_project_license(app, info)["required"])
+
+    def test_current_and_future_packages_cannot_omit_project_license_material(self):
+        with tempfile.TemporaryDirectory(prefix="katalog-missing-license-") as directory:
+            _, app, info = self.make_project_license_bundle(directory)
+            included = app / "Contents/Resources/Licenses/KataLog"
+            for name in ("GPL-3.0.txt", "NOTICE.txt", "manifest.json"):
+                path = included / name
+                original = path.read_bytes()
+                path.unlink()
+                with self.subTest(missing=name), self.assertRaisesRegex(recipe.CheckError, "KataLog license"):
+                    # The production bundle check must enforce this, not just a helper test.
+                    recipe.Verification(app).inspect_bundle()
+                path.write_bytes(original)
+            absent_app = Path(directory) / "future.app"
+            for version in ("0.6.0", "0.6.0-preview.1", "0.6.1", "0.10.0", "1.0.0"):
+                with self.subTest(version=version), self.assertRaisesRegex(recipe.CheckError, "license directory"):
+                    recipe.validate_project_license(absent_app, dict(info, CFBundleShortVersionString=version))
+
+    def test_license_and_notice_tampering_cannot_be_hidden_by_rehashing_manifest(self):
+        with tempfile.TemporaryDirectory(prefix="katalog-tampered-license-") as directory:
+            _, app, info = self.make_project_license_bundle(directory)
+            included = app / "Contents/Resources/Licenses/KataLog"
+            manifest_path = included / "manifest.json"
+            original_manifest = manifest_path.read_bytes()
+            for name in ("GPL-3.0.txt", "NOTICE.txt"):
+                path = included / name
+                original = path.read_bytes()
+                for payload in (b"", original + b"\nAltered distribution terms\n"):
+                    path.write_bytes(payload)
+                    manifest = json.loads(original_manifest)
+                    manifest["files"][name] = hashlib.sha256(payload).hexdigest()
+                    manifest_path.write_text(json.dumps(manifest))
+                    with self.subTest(name=name, empty=not payload), self.assertRaisesRegex(recipe.CheckError, "reviewed text"):
+                        recipe.validate_project_license(app, info)
+                path.write_bytes(original)
+                manifest_path.write_bytes(original_manifest)
+            self.assertTrue(recipe.validate_project_license(app, info)["included"])
+
+    def test_license_manifest_cannot_change_release_identity_or_license_scope(self):
+        with tempfile.TemporaryDirectory(prefix="katalog-license-manifest-") as directory:
+            _, app, info = self.make_project_license_bundle(directory)
+            manifest_path = app / "Contents/Resources/Licenses/KataLog/manifest.json"
+            original = json.loads(manifest_path.read_text())
+            for change in (dict(appVersion="0.5.2"), dict(buildNumber="7"), dict(license="GPL-3.0-or-later"),
+                           dict(sourceRepository="https://example.org/unrelated"), dict(copyright="Unknown author")):
+                manifest_path.write_text(json.dumps(dict(original, **change)))
+                with self.subTest(change=change), self.assertRaisesRegex(recipe.CheckError, "manifest does not match"):
+                    recipe.validate_project_license(app, info)
+            for payload in ("", "not JSON", "{}"):
+                manifest_path.write_text(payload)
+                with self.subTest(payload=payload), self.assertRaises(recipe.CheckError):
+                    recipe.validate_project_license(app, info)
+            manifest_path.write_text(json.dumps(original))
+            with self.assertRaisesRegex(recipe.CheckError, "copyright metadata"):
+                recipe.validate_project_license(app, dict(info, NSHumanReadableCopyright=""))
+
+    def test_source_license_integrity_and_regular_files_are_required_before_packaging(self):
+        with tempfile.TemporaryDirectory(prefix="katalog-license-source-") as directory:
+            _, app, info = self.make_project_license_bundle(directory)
+            project = Path(directory) / "source"
+            source_license = project / "LICENSE"
+            original = source_license.read_bytes()
+            source_license.unlink()
+            with self.assertRaisesRegex(recipe.CheckError, "source license is absent"):
+                recipe.write_project_license(project, app)
+            for payload in (b"", original + b"Modified GNU terms"):
+                source_license.write_bytes(payload)
+                with self.subTest(empty=not payload), self.assertRaisesRegex(recipe.CheckError, "official GNU"):
+                    recipe.write_project_license(project, app)
+            included = app / "Contents/Resources/Licenses/KataLog/GPL-3.0.txt"
+            outside = Path(directory) / "external-license.txt"
+            outside.write_bytes(original)
+            included.unlink()
+            included.symlink_to(outside)
+            with self.assertRaisesRegex(recipe.CheckError, "absent or invalid"):
+                recipe.validate_project_license(app, info)
+
+    def test_historical_052_package_without_project_license_remains_accepted_on_this_gate(self):
+        with tempfile.TemporaryDirectory(prefix="katalog-historical-license-") as directory:
+            app = Path(directory) / "KataLog.app"
+            detail = recipe.validate_project_license(app, dict(CFBundleShortVersionString="0.5.2", CFBundleVersion="7"))
+            self.assertFalse(detail["required"])
+            self.assertFalse(detail["included"])
+            # A newly rebuilt older version includes the notice and cannot skip integrity.
+            _, app, info = self.make_project_license_bundle(directory, version="0.5.2", build="7")
+            self.assertTrue(recipe.validate_project_license(app, info)["included"])
+            (app / "Contents/Resources/Licenses/KataLog/NOTICE.txt").write_bytes(b"")
+            with self.assertRaisesRegex(recipe.CheckError, "reviewed text"):
+                recipe.validate_project_license(app, info)
+
     def test_updater_bundle_requires_framework_helpers_and_portable_app_link(self):
         with tempfile.TemporaryDirectory(prefix="katalog-sparkle-fixture-") as directory:
             app = Path(directory) / "KataLog.app"

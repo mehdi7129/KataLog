@@ -117,19 +117,22 @@ final class GCSStore: ObservableObject {
     private var refreshTask: Task<Void, Never>?
     private var termination: AnyCancellable?
     private var reconnect: Bool
+    private var pendingAttachmentReconnect = false
     private var connectedHost: String?
     private var lastSave = Date.distantPast
 
     init(storageDirectory: URL? = nil, collector: URL? = nil,
          snapshot: (() -> FleetSnapshot)? = nil,
          importer: ((URL) async throws -> FleetSnapshot)? = nil,
-         directoryIssue: ((URL) -> String?)? = nil) {
+         directoryIssue: ((URL) -> String?)? = nil,
+         previewConfiguration: AppPreviewConfiguration = AppPreviewConfiguration(),
+         applicationSupportDirectory: URL? = nil) {
         collectorOverride = collector
         snapshotOverride = snapshot
         importOverride = importer
         directoryIssueOverride = directoryIssue
-        let base = storageDirectory ?? ProcessInfo.processInfo.environment["KATALOG_LIBRARY_DIR"].map { URL(fileURLWithPath: $0) }
-            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("KataLog")
+        let base = previewConfiguration.libraryDirectory(storageDirectory: storageDirectory,
+                                                        applicationSupportDirectory: applicationSupportDirectory)
         stateURL = base.appendingPathComponent("gcs-settings.json")
         legacyStateURL = base.appendingPathComponent("gcs-collection.json")
         queueDatabaseURL = base.appendingPathComponent("gcs-queue.sqlite")
@@ -191,6 +194,10 @@ final class GCSStore: ObservableObject {
         library.willRestoreLibrary = { [weak self] in try self?.preparePersistedStorageForRestore() }
         library.didRestoreLibrary = { [weak self] in try self?.reloadPersistedStateAfterRestore() }
         recordFleetObservations([])
+        // A first launch can attach while the index is being prepared. Preserve
+        // this pending initialization so the app-owned destination and queue are
+        // created after maintenance instead of waiting for a manual connection.
+        configurationDirty = true
         if !isReadOnly && !isMaintenanceBlocked { persist() }
         refreshTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -199,10 +206,20 @@ final class GCSStore: ObservableObject {
                 self.objectWillChange.send() // Availability and retry countdown expire without new packets.
                 if (!self.dirtyTransferIDs.isEmpty || self.configurationDirty) && !self.isReadOnly && !self.isMaintenanceBlocked { self.persist() }
                 self.fleetObservations.flush()
+                self.reconnectAfterAttachmentIfReady()
                 self.runQueue()
             }
         }
-        if reconnect && !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { connect() }
+        pendingAttachmentReconnect = reconnect && !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        reconnectAfterAttachmentIfReady()
+    }
+
+    private func reconnectAfterAttachmentIfReady() {
+        // Startup index preparation temporarily owns the maintenance gate.
+        // Resume discovery once it releases; never resume a stopped transfer.
+        guard pendingAttachmentReconnect, !isMaintenanceBlocked else { return }
+        pendingAttachmentReconnect = false
+        if reconnect { connect() }
     }
 
     /// Called before the maintenance flag is raised, so backups include the latest discovery settings.
@@ -288,6 +305,7 @@ final class GCSStore: ObservableObject {
 
     func connect() {
         guard permitMutation() else { return }
+        pendingAttachmentReconnect = false
         guard discoveryTask == nil else { return }
         let value = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, value.count <= 253,
@@ -354,6 +372,7 @@ final class GCSStore: ObservableObject {
 
     func disconnect() {
         guard !isBusy else { pauseQueue(); return }
+        pendingAttachmentReconnect = false
         reconnect = false; isQueuePaused = true
         if let uuid = activeInventoryUUID { inventoryBusyUntil[uuid] = Date().addingTimeInterval(21) }
         discoveryTask?.cancel(); inventoryTask?.cancel()

@@ -1,12 +1,12 @@
 # KataLog — backlog exécutable 0.5.3 / 0.6.0
 
 **Suivi de développement du 30 septembre 2026 : 117 tickets suivis, aucune release 0.6.0 publiée.**
-Référence installée : **0.5.2 (7)**, parseur **1.2.0**. Branche en développement : parseur **1.4.0**, projection SQLite **6**, révisions d’analyse **1**. Les nouveaux écrans restent en preview tant que leur approbation visuelle n’a pas été enregistrée. L'installation utilisateur
+Référence installée : **0.5.2 (7)**, parseur **1.2.0**. Branche en développement : parseur **1.4.0**, projection SQLite **6**, révisions d’analyse **1**. Les nouveaux écrans ont été approuvés le 30 septembre ; les builds stables 0.6.0 les activent par défaut. La Preview conserve un stockage distinct. L'installation utilisateur
 sur macOS 27 a réussi. L'audit de référence compte **87 tests Python, 79 Swift et
 9 Node réussis, soit 175 tests**. Cela ne qualifie ni macOS 15 sur machine réelle,
 ni plusieurs années d'historique, ni une collecte réelle de 500 drones.
 
-La passe finale locale de développement compte **523 tests uniques réussis :
+La passe locale précédant la recette GCS compte **523 tests uniques réussis :
 302 Python privés, 208 Swift et 13 Node**, sans échec ni skip. Le gate Python
 public exécute 302 cas : 301 réussissent et l’absence du corpus privé est
 annoncée séparément, sans skip inattendu. Les sous-suites et les recettes du
@@ -17,6 +17,15 @@ indisponible lors de la tentative observée : quatre jobs refusés avant runner,
 aucun test ou build distant. La notarisation et le parcours quarantiné ont leurs
 portes séparées.
 L’installation 0.5.2 reste inchangée.
+
+La recette suivante a révélé un défaut d’isolation GCS de la Preview et une
+reconnexion initiale prématurée ; leurs corrections passent 38 tests ciblés,
+puis 214 tests Swift complets sans échec ni skip. Le premier gate Swift de ces
+corrections avait échoué sur un cas simulé de retry GCS ; sa cause exacte reste
+inconnue. Le package corrigé 0.6.0 (9) passe sept gates locaux, sans notarisation.
+La matrice conserve les gels et résultats historiques séparément.
+La licence **GPL-3.0-only** a été choisie par le titulaire. La CI attend la
+visibilité publique et n’alloue aucun runner pendant que le dépôt est privé.
 
 Ce document transforme le [plan de version](PLAN-0.6.0.md) en tâches avec
 responsabilité, dépendance et recette. Le [rapport d'audit](AUDIT-2026-09-30.md)
@@ -135,7 +144,7 @@ GCS n'est pas transformée en preuve d'arrêt distant.
 | L0-07 | P1 | Créer grand index déterministe et oracle de résultats ; outils benchmark, moteur/Core | L0-03/06 | 500 identités, 50 000 résumés, 5 millions de messages multi-années, numéros partagés et drones sans log ; jeux d'IDs/agrégats exportés ; ce n'est pas un test de parsing de 50 000 ULog | Validé ciblé · 50k/5M |
 | L0-08 | P1 | Mesurer baseline et fixer budgets ; outils benchmark, QA | L0-07 | Cold/warm, disque, p50/p95, RSS Swift/helper/navigateur, taille rapports et réimport ; protocole répétable ; objectifs fixés avant optimisation et limites écrites | Validé ciblé · moteur et banc natif final |
 | L0-09 | P1 | Définir coordination des opérations et doubles instances ; Core services, stores | L0-05 | Tableau import/collecte/archive/backup/migration/export/update, verrou writer et révisions ; test deux processus/configs, propriétaire du lock disparu et relance ; aucun global preference hack | Validé ciblé · leases/process |
-| L0-10 | P2 | Maquetter flux nouveaux et variantes d'état ; SwiftUI/design | L0-02/03/09 | Scope/historique/stockage/courbes/événements/update + vide/loading/erreur/offline, clair/sombre/petit écran ; approbation visuelle enregistrée avant intégration | Preview · approbation attendue |
+| L0-10 | P2 | Maquetter flux nouveaux et variantes d'état ; SwiftUI/design | L0-02/03/09 | Scope/historique/stockage/courbes/événements/update + vide/loading/erreur/offline, clair/sombre/petit écran ; approbation visuelle enregistrée avant intégration | Preview · approuvée, recette en fonctionnement restante |
 
 ## L1 — Distribution autonome : qualification restante
 
@@ -278,7 +287,7 @@ de vol : accès limité aux logs de la flotte explicitement autorisée.
 | L8-05 | P1 | Qualifier hors ligne/GCS absente/MapKit en erreur ; QA app | L3/L4/L6, GCS-07 | Bibliothèque et fiche cached/report disponibles ; manque de tuiles distinct du GPS absent ; retry/load explicites ; aucune demande de position du Mac pour logs | Qualification externe · MapKit réel ; offline logiciel validé |
 | L8-06 | P1 | Fermer bancs de performance et stress ; QA/outils | L3-12, L4-10/14, L6-09, GCS-09 | Matrice cold/warm/RSS/p95/annulation/disque/50k5M ; objectifs retenus satisfaits ou défauts corrigés ; séparations synthétique/moteur/UI/réseau respectées | Validé ciblé · moteur, SwiftUI, courbes et WebKit |
 | L8-07 | P1 | Créer diagnostic local exportable avec preview ; Core service/UI proposé | L0-09, L4-13 | Version/OS/runtime/opérations/codes/états, sans payload privé par défaut ; inclure détails uniquement via choix explicite ; export borné et utile pour reproduire un ticket | Validé ciblé · diagnostic borné selon scope |
-| L8-08 | P1 | Auditer licences/droits des sources et dépendances ; docs/release | L1-04, L7-02, décision utilisateur | Inventaire licences/notices avec versions ; droits réutilisations documentés ; choix LICENSE explicite par titulaire, aucun ajout automatique ; blocage public tant que choix/droits non résolus | Décision requise · licence/droits |
+| L8-08 | P1 | Auditer licences/droits des sources et dépendances ; docs/release | L1-04, L7-02, décision utilisateur | Inventaire licences/notices avec versions ; droits réutilisations documentés ; choix LICENSE explicite par titulaire, aucun ajout automatique ; blocage public tant que choix/droits non résolus | Validé ciblé · GPL-3.0-only choisie, notices du bundle vérifiées |
 | L8-09 | P1 | Auditer arbre/history/assets/surfaces GitHub publiables ; outils publication/release | L8-08, code final | Guard + secrets scan + revue images/metadonnées/historique/branches/tags/CI/reports ; apps/DMG/ZIP/PYZ inspectés ; aucune donnée personnelle ; archive historique reste privée | Validé ciblé · audit final précommit, aucune publication |
 | L8-10 | P1 | Recette version finale signée/notarisée ; QA distribution | L1-02/06, L7-03/06, L8-09 | macOS 15 réel et27, app téléchargée/quarantinée, DMG drag-copy/eject/launch et update ; sig/Gatekeeper/tickets vérifiés sur fichiers livrés | Qualification externe · package final |
 | L8-11 | P1 | Faire recette matérielle finale et consigner limites ; QA GCS | GCS-10, app finale | Deux drones réels si disponibles, collecte/recovery/cache/cancel/update ; matériel indisponible déclaré ; aucune qualification500 annoncée par extrapolation | Qualification externe · matériel |
@@ -334,4 +343,4 @@ sont pas des compromis de performance.
 - Port Intel, Windows ou mobile : pas implicites dans cette roadmap macOS
   Apple Silicon ; décision et banc séparés si demandés.
 
-**Prochaines portes :** relancer la CI distante lorsque la CI hébergée est disponible, approuver les nouveaux écrans, puis exécuter les recettes externes disponibles. Le package local de revue et l’audit final précommit sont validés. Le feed, la licence, la release et la visibilité du dépôt nécessitent leurs décisions explicites. La branche de développement et les tests ne modifient pas l’installation utilisateur.
+**Prochaines portes :** terminer la recette avec le drone disponible, créer le profil de notarisation, puis exécuter les recettes externes disponibles. Le diagnostic Swift et les sept gates du package corrigé sont réussis ; le premier échec simulé garde sa limite de cause inconnue. La CI utilisera les runners standard après publication publique, conformément au choix utilisateur. L’approbation UI et le choix GPL-3.0-only sont enregistrés. Le feed, la release et le passage public gardent leurs portes distinctes. La branche de développement et les tests ne modifient pas l’installation utilisateur.

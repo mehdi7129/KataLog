@@ -65,14 +65,7 @@ final class LibraryStore: ObservableObject {
     init(storageDirectory: URL? = nil, engine: URL? = nil, pagedNavigation: Bool = false) {
         usesPagedNavigation = pagedNavigation
         engineOverride = engine
-        let base: URL
-        if let storageDirectory { base = storageDirectory }
-        else if let override = ProcessInfo.processInfo.environment["KATALOG_LIBRARY_DIR"] {
-            base = URL(fileURLWithPath: override, isDirectory: true)
-        } else {
-            base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent(AppPreviewConfiguration().defaultLibraryComponent, isDirectory: true)
-        }
+        let base = AppPreviewConfiguration().libraryDirectory(storageDirectory: storageDirectory)
         self.storageDirectory = base
         var writable = false
         do {

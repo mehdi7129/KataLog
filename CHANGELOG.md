@@ -9,9 +9,11 @@
 - Événements binaires bruts, dictionnaires locaux exact SHA, couverture des caches et niveaux interne/externe distincts.
 - Catalogue réel Batterie/GNSS/EKF, quatre courbes partageant 2 048 points, segments et pertes annoncés ; relevé HTML/JSON exportable.
 - Rapports de toute la sélection par pages, capture cohérente, publication atomique, progression/annulation et partage conservateur.
-- Nouveaux écrans bento clair/sombre/Système **en preview uniquement** ; activation après validation visuelle.
+- Nouveaux écrans bento clair/sombre/Système approuvés, activés par défaut dans les builds stables 0.6.0 ; Preview isolée de la bibliothèque, des réglages et de la file GCS installés.
+- Reconnexion initiale GCS différée jusqu’à la fin de la maintenance de la bibliothèque, sans relancer une collecte arrêtée.
 - Sparkle 2.10.0 embarqué et signatures testées ; **feed désactivé** jusqu’au choix et à la recette de staging.
-- CI autonome Python/Swift/Node et packaging ARM64 ; diagnostic sans données privées par défaut, inventaire des licences et contrôles de publication.
+- Licence GPL-3.0-only pour le code propre, notices originales et tierces conservées dans le bundle ; sources correspondantes associées à la release.
+- CI autonome Python/Swift/Node et packaging ARM64 sur runners standard uniquement après passage public du dépôt ; diagnostic sans données privées par défaut et contrôles de publication.
 
 La validation finale, les mesures et les gates externes sont suivis dans
 [IMPLEMENTATION-0.6.0.md](docs/IMPLEMENTATION-0.6.0.md). Aucune release publique

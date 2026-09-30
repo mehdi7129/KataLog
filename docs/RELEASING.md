@@ -52,6 +52,26 @@ sert au développement ; une distribution requiert Developer ID.
 
 ## Notariser l’app, puis le DMG
 
+### Créer un profil si le Trousseau n’en possède pas
+
+Le profil est un nom choisi localement, par exemple `KataLog-notary`. Il ne
+correspond pas à un certificat Developer ID et n’existe pas automatiquement.
+Depuis Terminal, le titulaire exécute :
+
+```sh
+xcrun notarytool store-credentials KataLog-notary
+```
+
+Les questions interactives demandent l’Apple ID du compte Developer, son Team ID
+(page Membership du compte) et un mot de passe spécifique à l’app créé dans le
+compte Apple. Le titulaire saisit ces informations directement dans Terminal ;
+elles ne sont ni demandées dans une conversation ni ajoutées aux sources.
+`notarytool` les valide et les conserve dans le Trousseau. Ce choix n’installe
+pas l’app via l’App Store. Le pipeline peut ensuite utiliser ce seul nom de
+profil. Ne pas soumettre une release tant que le profil n’a pas été validé.
+
+### Soumettre les fichiers qualifiés
+
 ```sh
 xcrun notarytool submit dist/KataLog-VERSION-macOS-arm64.zip \
   --keychain-profile MON_PROFIL --wait

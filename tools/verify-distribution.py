@@ -37,6 +37,31 @@ SPARKLE_VERSION = "2.10.0"
 HELPER_BUNDLE = Path("Contents/Helpers/KataLogEngine.app")
 HELPER_EXECUTABLE = HELPER_BUNDLE / "Contents/MacOS/KataLogEngine"
 HELPER_MANIFEST = HELPER_BUNDLE / "Contents/Resources/runtime-manifest.json"
+PROJECT_LICENSE_DIRECTORY = Path("Contents/Resources/Licenses/KataLog")
+PROJECT_LICENSE_SPDX = "GPL-3.0-only"
+PROJECT_COPYRIGHT = "Copyright (C) 2026 mehdi7129"
+PROJECT_SOURCE_REPOSITORY = "https://github.com/mehdi7129/KataLog"
+# Exact bytes of the official GNU text, reviewed when GPL-3.0-only was chosen.
+PROJECT_GPL_SHA256 = "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+PROJECT_LICENSE_NOTICE = ("KataLog\n"
+    "Copyright (C) 2026 mehdi7129\n"
+    "SPDX-License-Identifier: GPL-3.0-only\n\n"
+    "KataLog is free software: you can redistribute it and/or modify it under\n"
+    "the GNU General Public License, version 3 only. No permission to use a\n"
+    "later version is granted by this notice.\n\n"
+    "KataLog is distributed WITHOUT ANY WARRANTY; without even the implied\n"
+    "warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n"
+    "See GPL-3.0.txt for the complete license.\n\n"
+    "Official source repository:\n"
+    "https://github.com/mehdi7129/KataLog\n"
+    "Each published binary must provide its matching release tag, source\n"
+    "archive and build instructions. A preview is not a published release.\n\n"
+    "Official GNU license text:\n"
+    "https://www.gnu.org/licenses/gpl-3.0.txt\n\n"
+    "Third-party components retain their respective licenses and notices.\n"
+    "Sparkle notices are in ../Sparkle-LICENSE.txt; Python runtime notices\n"
+    "are in Contents/Helpers/KataLogEngine.app/Contents/Resources/Licenses\n"
+    "relative to the application bundle. User data is not program source.\n").encode("utf-8")
 MAGIC = b"ULog\x01\x12\x35"
 UUID = "0102030405060708090A0B0C"
 REMOTE = "/fs/microsd/log/2030-01-01/00_00_00.ulg"
@@ -52,6 +77,80 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def validate_project_license_source(project: Path) -> bytes:
+    """Reject a missing or edited GPL before compiling or signing an app."""
+    path = project / "LICENSE"
+    if not path.is_file() or path.is_symlink():
+        raise CheckError("KataLog source license is absent or not a regular file")
+    data = path.read_bytes()
+    if hashlib.sha256(data).hexdigest() != PROJECT_GPL_SHA256:
+        raise CheckError("KataLog source license differs from the official GNU GPL v3 text")
+    return data
+
+
+def project_license_manifest(info):
+    return {
+        "schemaVersion": 1,
+        "license": PROJECT_LICENSE_SPDX,
+        "copyright": PROJECT_COPYRIGHT,
+        "sourceRepository": PROJECT_SOURCE_REPOSITORY,
+        "appVersion": info.get("CFBundleShortVersionString"),
+        "buildNumber": info.get("CFBundleVersion"),
+        "files": {
+            "GPL-3.0.txt": PROJECT_GPL_SHA256,
+            "NOTICE.txt": hashlib.sha256(PROJECT_LICENSE_NOTICE).hexdigest(),
+        },
+    }
+
+
+def write_project_license(project: Path, app: Path):
+    """Package only public license material; upstream notices stay untouched."""
+    data = validate_project_license_source(project)
+    info_path = app / "Contents/Info.plist"
+    info = plistlib.loads(info_path.read_bytes())
+    info["NSHumanReadableCopyright"] = PROJECT_COPYRIGHT + "; " + PROJECT_LICENSE_SPDX
+    directory = app / PROJECT_LICENSE_DIRECTORY
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "GPL-3.0.txt").write_bytes(data)
+    (directory / "NOTICE.txt").write_bytes(PROJECT_LICENSE_NOTICE)
+    (directory / "manifest.json").write_text(
+        json.dumps(project_license_manifest(info), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    info_path.write_bytes(plistlib.dumps(info))
+
+
+def validate_project_license(app: Path, info):
+    version = info.get("CFBundleShortVersionString", "")
+    if not isinstance(version, str) or not re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9.]+)?", version):
+        raise CheckError("App version is invalid for license verification")
+    required = tuple(map(int, re.split(r"[-+]", version, maxsplit=1)[0].split("."))) >= (0, 6, 0)
+    directory = app / PROJECT_LICENSE_DIRECTORY
+    # Already-built historical packages predate this notice. Rebuilt older
+    # versions containing license material must still pass its integrity check.
+    if not required and not directory.exists():
+        return {"required": False, "included": False, "historicalPackage": True}
+    if not directory.is_dir() or directory.is_symlink():
+        raise CheckError("Bundled KataLog license directory is absent or invalid")
+    for name, expected in project_license_manifest(info)["files"].items():
+        path = directory / name
+        if not path.is_file() or path.is_symlink() or not path.resolve().is_relative_to(app.resolve()):
+            raise CheckError("Bundled KataLog license or notice is absent or invalid")
+        if sha256(path) != expected:
+            raise CheckError("Bundled KataLog license or notice differs from its reviewed text")
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.is_file() or manifest_path.is_symlink():
+        raise CheckError("Bundled KataLog license manifest is absent or invalid")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise CheckError("Bundled KataLog license manifest is absent or invalid") from error
+    if manifest != project_license_manifest(info):
+        raise CheckError("Bundled KataLog license manifest does not match the app or reviewed notices")
+    if info.get("NSHumanReadableCopyright") != PROJECT_COPYRIGHT + "; " + PROJECT_LICENSE_SPDX:
+        raise CheckError("KataLog copyright metadata is absent or inconsistent")
+    return {"required": required, "included": True, "license": PROJECT_LICENSE_SPDX,
+            "licenseSHA256": PROJECT_GPL_SHA256, "noticeSHA256": manifest["files"]["NOTICE.txt"]}
 
 
 SOURCE_UNAVAILABLE_NOTICE = "Source originale actuellement indisponible : résumé et analyses en cache conservés ; consultez l’état des chemins source."
@@ -281,6 +380,7 @@ class Verification:
                 raise CheckError("Missing app metadata: " + key)
         if not re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9.]+)?", info["CFBundleShortVersionString"]) or not info["CFBundleVersion"].isdigit():
             raise CheckError("App version or build number is invalid")
+        project_license = validate_project_license(self.app, info)
         if info.get("KatalogBundledEngineRequired") is not True:
             raise CheckError("The app does not require its bundled runtime")
         preview = info.get("KataLogUIReviewPreview", False)
@@ -327,7 +427,8 @@ class Verification:
                            minimumMacOS=info["LSMinimumSystemVersion"], appExecutableSHA256=sha256(executable), uiReviewPreview=preview)
         return {"bundleIdentifier": info["CFBundleIdentifier"], "bundledRuntimeRequired": True,
                 "helperBundleIdentifier": helper_info["CFBundleIdentifier"], "properHelperAppBundle": True,
-                "runtimeManifestProtocol": manifest["protocol"], "sourceModulesVerified": len(resource_sources)}
+                "runtimeManifestProtocol": manifest["protocol"], "sourceModulesVerified": len(resource_sources),
+                "projectLicense": project_license}
 
     def privacy(self):
         bad, files, payloads = [], 0, 0
