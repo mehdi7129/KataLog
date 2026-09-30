@@ -110,7 +110,7 @@ final class GCSQueuePolicyTests: XCTestCase {
         XCTAssertEqual(progress.totalCount, 8)
         XCTAssertEqual(progress.totalBytes, 800)
         XCTAssertEqual(progress.completedBytes, 400)
-        XCTAssertEqual(progress.fraction, 0.5, accuracy: 0.000001)
+        XCTAssertEqual(progress.fraction, 399.0 / 800.0, accuracy: 0.000001)
         XCTAssertEqual(progress.completedCount, 2)
         XCTAssertEqual(progress.failedCount, 2)
         XCTAssertEqual(progress.stoppedCount, 1)
@@ -120,7 +120,7 @@ final class GCSQueuePolicyTests: XCTestCase {
 
     func testTransportAtOneHundredPercentDoesNotClaimImportCompletion() {
         let progress = GCSBatchProgress(transfers: [job(droneA, state: "importing", bytes: 100)])
-        XCTAssertEqual(progress.fraction, 1)
+        XCTAssertEqual(progress.fraction, 0.99)
         XCTAssertEqual(progress.completedCount, 0)
         XCTAssertEqual(progress.activeCount, 1)
         XCTAssertEqual(progress.totalCount, 1)
@@ -139,7 +139,7 @@ final class GCSQueuePolicyTests: XCTestCase {
         ])
         XCTAssertEqual(progress.totalBytes, 200)
         XCTAssertEqual(progress.completedBytes, 100)
-        XCTAssertEqual(progress.fraction, 0.5)
+        XCTAssertEqual(progress.fraction, 0.495)
     }
 
     private func job(_ uuid: String, index: Int = 0, state: String = "queued", size: Int64 = 100, bytes: Int64 = 0, host: String = "gcs.local") -> GCSTransfer {

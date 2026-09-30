@@ -25,6 +25,14 @@ modifie ni firmware, paramètres ni fichiers distants.
 - Trois tentatives pour erreurs transitoires, délais de 5 puis 15 secondes,
   prolongés si une session distante reste en attente de fin.
 - Destination choisie conservée au redémarrage ; aucun fallback si elle est inaccessible.
+- Changement de destination : nouvelle progression à zéro, inventaire local
+  invalidé puis revérifié pour le drone sélectionné s’il est connecté. Les anciens
+  transferts et fichiers conservent leur destination dans l’historique. Les
+  transferts actifs ou en attente doivent être arrêtés avant le changement.
+- Progression globale pondérée par la taille des logs : première moitié pour
+  Drone → GCS, deuxième moitié pour GCS → Mac. La fin reste sous 100 % jusqu’à
+  vérification et, si activée, analyse. Le compteur d’octets désigne seulement
+  les données reçues sur le Mac. Les copies déjà présentes sont revérifiées.
 - Cache de copie vérifié par UUID, chemin distant, taille, manifeste et SHA256.
 - Import automatique des fichiers vérifiés ; réanalyse locale sans nouveau transfert.
 

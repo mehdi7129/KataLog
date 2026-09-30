@@ -93,6 +93,19 @@ public struct GCSTransfer: Codable, Identifiable, Sendable {
     public var isActive: Bool { ["downloading", "importing"].contains(state) }
     public var isSuccessful: Bool { ["downloaded", "complete"].contains(state) }
     public var progress: Double { size > 0 ? min(1, max(0, Double(completedBytes) / Double(size))) : 0 }
+    /// Overall collection work, distinct from the bytes received on this Mac.
+    /// Drone → GCS and GCS → Mac each contribute half; 100% requires success.
+    public var workFraction: Double {
+        if isSuccessful { return 1 }
+        guard !isPending, size > 0 else { return 0 }
+        let fraction: Double
+        switch phase {
+        case "drone": fraction = 0.5 * (phaseProgress ?? 0)
+        case "http": fraction = 0.5 + 0.5 * progress
+        default: fraction = progress // Queues/collectors predating transport phases.
+        }
+        return min(0.99, max(0, fraction))
+    }
     public var phaseProgress: Double? {
         guard let total = phaseTotal, total > 0, let bytes = phaseBytes else { return nil }
         return min(1, max(0, Double(bytes) / Double(total)))
@@ -101,8 +114,11 @@ public struct GCSTransfer: Codable, Identifiable, Sendable {
         // Legacy collectors reported a single transport. New collectors always identify it.
         let incoming = incomingPhase ?? "http"
         guard ["drone", "http"].contains(incoming) else { return }
-        if phase != incoming { phaseBytes = 0 }
-        phase = incoming
+        // A delayed drone event cannot rewind an HTTP/verification phase.
+        if incoming == "drone", ["http", "verification", "verified", "import"].contains(phase ?? "") { return }
+        if phase != incomingPhase { phaseBytes = 0 }
+        // Keep legacy, unphased collectors on their original 0–100% scale.
+        phase = incomingPhase
         phaseTotal = max(0, total ?? size)
         phaseBytes = min(phaseTotal ?? size, max(phaseBytes ?? 0, max(0, bytes)))
         if incoming == "http" { completedBytes = min(max(0, size), max(completedBytes, max(0, bytes))) }
@@ -158,6 +174,8 @@ public struct GCSCollectionState: Codable, Sendable {
     public var queue: [GCSTransfer] = []
     public var currentBatchID: String?
     public var cachedFileCount: Int?
+    /// Available files in the selected drone's destination preview, before scheduling a collection.
+    public var destinationPreviewFileCount: Int?
     public var queuePaused: Bool?
     public var inventoryBusyUntil: [String: Date]?
     public var expectedInventoryUUIDs: Set<String>?
@@ -169,34 +187,51 @@ public struct GCSCollectionState: Codable, Sendable {
 }
 
 /// Progress covers one collection, including failed/stopped work in the denominator.
-/// Transport reaching 100% is distinct from verification/import completion.
+/// Virtual work and actual Mac bytes are separate; only successful files reach 100%.
 public struct GCSBatchProgress: Sendable {
     public let fraction: Double
     public let completedCount: Int
     public let totalCount: Int
     public let completedBytes: Int64
     public let totalBytes: Int64
+    /// Size-weighted collection work; these are not downloaded bytes.
+    public let completedWorkBytes: Double
     public let failedCount: Int
     public let activeCount: Int
     public let pendingCount: Int
     public let stoppedCount: Int
-    public init(totalCount: Int, completedCount: Int, failedCount: Int, activeCount: Int, pendingCount: Int, stoppedCount: Int, totalBytes: Int64, completedBytes: Int64) {
+    public init(totalCount: Int, completedCount: Int, failedCount: Int, activeCount: Int, pendingCount: Int, stoppedCount: Int, totalBytes: Int64, completedBytes: Int64,
+                completedWorkBytes: Double? = nil, totalWorkBytes: Double? = nil) {
         self.totalCount = max(0, totalCount); self.completedCount = max(0, completedCount)
         self.failedCount = max(0, failedCount); self.activeCount = max(0, activeCount)
         self.pendingCount = max(0, pendingCount); self.stoppedCount = max(0, stoppedCount)
         self.totalBytes = max(0, totalBytes); self.completedBytes = min(self.totalBytes, max(0, completedBytes))
-        fraction = self.totalBytes > 0 ? Double(self.completedBytes) / Double(self.totalBytes) : 0
+        let workTotal = GCSProgressMath.boundedWork(totalWorkBytes ?? Double(self.totalBytes))
+        self.completedWorkBytes = min(workTotal, GCSProgressMath.boundedWork(completedWorkBytes ?? Double(self.completedBytes)))
+        if self.totalCount == 0 { fraction = 0 }
+        else if self.completedCount == self.totalCount { fraction = 1 }
+        else { fraction = workTotal > 0 ? min(0.99, self.completedWorkBytes / workTotal) : 0 }
     }
     public init(transfers: [GCSTransfer]) {
-        totalCount = transfers.count
-        completedCount = transfers.filter(\.isSuccessful).count
-        failedCount = transfers.filter { ["failed", "interrupted"].contains($0.state) }.count
-        activeCount = transfers.filter(\.isActive).count
-        pendingCount = transfers.filter(\.isPending).count
-        stoppedCount = transfers.filter { $0.state == "stopped" }.count
-        totalBytes = transfers.reduce(0) { $0 + max(0, $1.size) }
-        completedBytes = transfers.reduce(0) { $0 + min(max(0, $1.size), max(0, $1.completedBytes)) }
-        fraction = totalBytes > 0 ? Double(completedBytes) / Double(totalBytes) : 0
+        let workTotal = transfers.reduce(0.0) { $0 + Double(max(0, $1.size)) }
+        let macBytes = transfers.reduce(0.0) { $0 + Double(min(max(0, $1.size), max(0, $1.completedBytes))) }
+        let completedWork = transfers.reduce(0.0) { $0 + Double(max(0, $1.size)) * $1.workFraction }
+        self.init(totalCount: transfers.count,
+                  completedCount: transfers.filter(\.isSuccessful).count,
+                  failedCount: transfers.filter { ["failed", "interrupted"].contains($0.state) }.count,
+                  activeCount: transfers.filter(\.isActive).count,
+                  pendingCount: transfers.filter(\.isPending).count,
+                  stoppedCount: transfers.filter { $0.state == "stopped" }.count,
+                  totalBytes: GCSProgressMath.boundedInteger(workTotal), completedBytes: GCSProgressMath.boundedInteger(macBytes),
+                  completedWorkBytes: completedWork, totalWorkBytes: workTotal)
+    }
+}
+
+enum GCSProgressMath {
+    static func boundedWork(_ value: Double) -> Double { value.isFinite ? max(0, value) : 0 }
+    static func boundedInteger(_ value: Double) -> Int64 {
+        guard value.isFinite, value > 0 else { return 0 }
+        return value >= Double(Int64.max) ? Int64.max : Int64(value)
     }
 }
 
