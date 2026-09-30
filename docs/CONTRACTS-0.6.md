@@ -8,7 +8,7 @@ Statut : implémentation et qualification en cours. Ces contrats sont indépenda
 |---|---:|---|
 | Snapshot JSON | 1 | Champs nouveaux optionnels ; une version future est refusée |
 | Bibliothèque canonique SQLite | 1 | Résumés, sources et détails conservés ; projections dérivées reconstruisibles |
-| Projections / requête | 6 / 1 | Révision du contenu, empreinte du scope et curseur liés ; page de 1 à 200 entrées et réponse bornée à 4 Mio |
+| Projections / requête | 7 / 1 | Révision du contenu, empreinte du scope et curseur liés ; page de 1 à 200 entrées et réponse bornée à 4 Mio |
 | Protocole helper / GCS | 1 | Handshake de versions ; inventaires en pages identifiées ; compatibilité avec un inventaire ancien borné |
 | File GCS SQLite / réglages | 1 / 1 | Migration transactionnelle ; JSON ancien conservé ; actifs interrompus au restart |
 | Analyse | 1.4.0 | Détails antérieurs restent lisibles sans source et sont signalés |
@@ -25,6 +25,7 @@ Une mise à jour du parseur ne transforme pas une analyse ancienne en analyse co
 - La clé de numéro est `gcs:<UUID>` lorsqu'une preuve univoque existe ; sinon `ulog:<identité source>`. Résumé, fiche et rapport utilisent la même identité canonique.
 - Une carte SD, un contrôleur et un drone physique sont des notions distinctes. L'association datée de plusieurs contrôleurs à un drone physique reste un futur workflow.
 - La provenance comprend tous les chemins connus. Disponibilité : present, missing, offline, inaccessible, modified ou unknown, avec date de contrôle. L'absence d'une source conserve l'historique.
+- La liste globale des sources d’import est indépendante de la page de logs et de leur provenance. Retirer/restaurer un root modifie sa visibilité persistante, conserve les fichiers et analyses, et invalide les curseurs. Un nouvel import explicite réactive une source retirée.
 - Une date GPS est UTC. Une date tirée d'un chemin reste un jour du calendrier sans fuseau inventé. Les dates inconnues sont incluses par défaut et disposent d'une option explicite.
 
 ## Mesures et comptages
@@ -35,15 +36,25 @@ Une mise à jour du parseur ne transforme pas une analyse ancienne en analyse co
 | Événement | Une occurrence binaire distincte ; aucune fusion heuristique avec un texte |
 | Groupe | Occurrences d'un message normalisé ; les variantes brutes restent accessibles |
 | Log | Un contenu SHA unique ; ses copies ne multiplient pas les mesures |
-| Identité | Un contrôleur source ; ce compte ne constitue pas un inventaire de drones physiques |
+| Drones scannés | Identités de contrôleurs distinctes observées dans les logs sélectionnés ; les identités provisoires sans identifiant fiable sont comptées séparément |
 | Log avec alerte | Log valide contenant un texte d'alerte visible ou un état failsafe observé sans filtre de message |
 | Famille du profil | Nombre de logs valides uniques contenant un texte d'alerte de cette famille |
 | Durée enregistrée | Étendue observée du log, incluant le sol |
 | Durée en vol | Durée qualifiée seulement avec couverture suffisante du détecteur ; portion observée et couverture restent séparées |
+| Temps de vol cumulé | Somme des temps qualifiés finis et non négatifs des logs lisibles sélectionnés ; zéro mesuré reste zéro, une absence reste indisponible ; couverture N / M logs |
+| Badge du log | Gravité maximale observée des messages, événements PX4 et failsafe dans le périmètre ; critique / erreur / avertissement / aucune alerte détectée / indéterminé, sans diagnostic de panne |
 | RTK fixé | Pourcentage sur la durée observée d'un récepteur identifié ; jamais concaténation implicite de récepteurs |
 | Failsafe | État réellement observé ; aucune occurrence textuelle créée pour remplir un filtre |
 
 Une famille ou un niveau de sévérité ne constitue pas un diagnostic de panne. Les familles n'étant pas exclusives, leur somme peut dépasser le nombre de logs.
+
+Le compteur « Avec alerte » conserve le périmètre messages textuels/failsafe.
+Les événements binaires restent évalués dans les badges ; leur niveau connu est
+conservé même sans traduction. La lecture du fichier et la gravité du signal
+sont indépendantes. Un failsafe sans niveau textuel ne reçoit aucun niveau
+CRITICAL inventé. Les filtres de messages excluent les événements et l’état
+failsafe de leur badge ; masquer un texte ne masque pas les événements bruts.
+Les aides et libellés communs sont définis dans `LibraryHelp` et `LogAssessment`.
 
 ## Périmètre commun
 

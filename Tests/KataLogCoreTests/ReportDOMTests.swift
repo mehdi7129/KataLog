@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @preconcurrency import WebKit
+@preconcurrency import AppKit
 @testable import KataLogCore
 
 /// Exercises the generated document in the system WebKit DOM, without a user's
@@ -49,6 +50,35 @@ final class ReportDOMTests: XCTestCase {
         assertTrue(try await text("#stat-alert-detail", in: page).contains("0 message"))
     }
 
+    func testFlightCoverageProvisionalIdentityBadgesAndHelpFollowVisibleScope() async throws {
+        var measured = log("measured", messages: [message("error", text: "Navigation error")])
+        measured.flightSeconds = 30
+        var warning = message("warning", text: "Battery warning")
+        warning.level = "WARNING"; warning.family = "Batterie"
+        var unknown = log("unknown", messages: [warning])
+        unknown.droneID = "card:synthetic"; unknown.status = "partial"
+        let page = try await load(snapshot([measured, unknown]))
+        assertEqual(try await text("#stat-drones", in: page), "1")
+        assertTrue(try await text("#stat-provisional", in: page).contains("1 identité provisoire"))
+        assertEqual(try await text("#stat-flight-coverage", in: page), "Calculé sur 1 / 2 logs")
+        assertEqual(try await text("#log-1 .log-status", in: page), "Lecture partielle")
+        assertEqual(try await text("#log-1 .log-assessment", in: page), "Avertissement")
+        try await page.evaluateJavaScript("document.querySelector('.report-help summary').focus();document.activeElement.click()")
+        assertEqual(try await page.evaluateJavaScript("document.activeElement.closest('details').open") as? Bool, true)
+        assertTrue(try await page.evaluateJavaScript("document.activeElement.getAttribute('aria-label').startsWith('Aide :')") as? Bool == true)
+        try await page.evaluateJavaScript("document.getElementById('family-filter').value='Batterie';document.getElementById('family-filter').dispatchEvent(new Event('change'))")
+        assertEqual(try await text("#stat-flight", in: page), "Non disponible")
+        assertEqual(try await text("#stat-flight-coverage", in: page), "Calculé sur 0 / 1 logs")
+        assertEqual(try await text("#stat-drones", in: page), "0")
+        assertTrue(try await text("#assessment-scope", in: page).contains("événements PX4 et état failsafe exclus"))
+        try await page.evaluateJavaScript("window.dispatchEvent(new Event('beforeprint'));window.dispatchEvent(new Event('afterprint'))")
+        assertEqual(try await page.evaluateJavaScript("document.querySelector('.report-help').open") as? Bool, true)
+        try await page.evaluateJavaScript("document.getElementById('reset-filters').click()")
+        assertEqual(try await text("#stat-flight-coverage", in: page), "Calculé sur 1 / 2 logs")
+        try await page.evaluateJavaScript("document.querySelector('.report-help').open=false")
+        try await capture(page, name: "report-top-js")
+    }
+
     func testUnicodeHostileSourceThemeAndPrintLifecycleRemainSafe() async throws {
         let attack = "</script><img src=x onerror=window.__sourceExecuted=true>\u{2028}\u{2029} Batterie éè 漢字"
         let page = try await load(snapshot([log("unicode", messages: [message("unsafe", text: attack)])]))
@@ -73,6 +103,9 @@ final class ReportDOMTests: XCTestCase {
         assertEqual(try await page.evaluateJavaScript("document.getElementById('filter-controls').hidden && document.getElementById('report-actions').hidden") as? Bool, true)
         assertEqual(try await page.evaluateJavaScript("document.querySelectorAll('.log-card').length") as? Int, 1)
         assertEqual(try await page.evaluateJavaScript("document.querySelector('.log-card').hidden") as? Bool, false)
+        try await page.evaluateJavaScript("document.querySelector('.report-help summary').focus();document.activeElement.click()")
+        assertEqual(try await page.evaluateJavaScript("document.activeElement.closest('details').open") as? Bool, true)
+        try await capture(page, name: "report-desktop-no-js")
     }
 
     func testLongDetailPaginationPrintSelectionAndCloseRestoreAllMessages() async throws {
@@ -146,6 +179,22 @@ final class ReportDOMTests: XCTestCase {
         }
         XCTFail("WebKit document did not reach the expected state within 20 seconds: \(expression)")
         throw NSError(domain: "KataLog.ReportDOMTests", code: 1)
+    }
+
+    /// Optional visual artifacts from the same invented data and WebKit DOM.
+    /// The normal gate never depends on screenshot permissions or a browser.
+    private func capture(_ page: WKWebView, name: String) async throws {
+        guard let path = ProcessInfo.processInfo.environment["KATALOG_REPORT_SCREENSHOT_DIR"] else { return }
+        let directory = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        page.frame = CGRect(x: 0, y: 0, width: 1360, height: 1500)
+        try await page.evaluateJavaScript("window.scrollTo(0,0)")
+        try await Task.sleep(for: .milliseconds(150))
+        let screenshot = try await page.takeSnapshot(configuration: nil)
+        let tiff = try XCTUnwrap(screenshot.tiffRepresentation)
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: tiff))
+        let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+        try png.write(to: directory.appendingPathComponent(name + ".png"))
     }
 
     private func text(_ selector: String, in page: WKWebView) async throws -> String {

@@ -106,7 +106,7 @@ enum ReportStyle {
     .scope-bar input, .scope-bar select { width: 100%; min-width: 0; font-size: .9rem; font-weight: 400; color: var(--ink); }
     .scope-bar button { flex-shrink: 0; }
     .filter-status { flex-basis: 100%; color: var(--muted); font-size: .83rem; }
-    .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 0 0 20px; }
+    .stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin: 0 0 20px; }
     .stat { border: 1px solid var(--line); background: var(--surface); border-radius: 16px;
       padding: 22px 24px; box-shadow: var(--shadow); min-width: 0; }
     .stat label, .stat .label, .stat > span { display: block; color: var(--muted); font-size: .85rem; font-weight: 550; }
@@ -115,6 +115,18 @@ enum ReportStyle {
     .stat strong em { font-size: .42em; font-style: normal; font-weight: 500;
       color: var(--muted); letter-spacing: -.015em; white-space: nowrap; }
     .stat small { display: block; color: var(--muted); font-size: .77rem; }
+    .stat-label, .heading-with-help { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: .85rem; }
+    .heading-with-help { color: var(--ink); }
+    .report-help { display: inline-block; position: relative; flex-shrink: 0; font-size: 12px; font-weight: 400; }
+    .report-help > summary { display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; width: 24px; height: 24px; color: var(--muted); }
+    .report-help > summary:hover { background: var(--surface-2); color: var(--ink); }
+    .report-help > summary::after { display: none; }
+    .report-help > p { position: absolute; top: 100%; left: 0; z-index: 3; width: min(320px, 76vw); padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-size: .85rem; box-shadow: var(--shadow); }
+    .stat:nth-last-child(-n+2) .report-help > p { left: auto; right: 0; }
+    .assessment-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: .83rem; margin: 18px 0; }
+    .log-assessment { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; font-size: .73rem; font-weight: 600; color: var(--muted); }
+    .log-assessment.red { color: var(--red); background: var(--red-soft); border-color: var(--red); }
+    .log-assessment.orange, .log-assessment.yellow { color: var(--amber); background: var(--amber-soft); border-color: var(--amber); }
     .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); gap: 20px; margin-bottom: 20px; }
     .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
       padding: 25px 26px; box-shadow: var(--shadow); min-width: 0; }
@@ -353,6 +365,7 @@ enum ReportStyle {
       .topbar-inner { min-height: 0; max-width: none; padding: 0 0 13px; }
       .topbar nav, .topbar .actions, .filter-controls, #expand-logs, .scope-bar label, .scope-bar > button,
       .scope-bar input, .scope-bar select, .no-print { display: none !important; }
+      .detail-pagination, .report-help { display: none !important; }
       .report-shell { max-width: none; padding: 24px 0 0; }
       h1 { font-size: 30px; }
       h2 { font-size: 17px; }
@@ -361,7 +374,7 @@ enum ReportStyle {
       .hero .meta { margin-top: 10px; }
       .scope-bar { padding: 9px 12px; border-radius: 6px; margin-bottom: 13px; }
       .filter-status { display: block !important; color: #50504b; }
-      .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 13px; }
+      .stats { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 13px; }
       .stat { padding: 12px; border-radius: 8px; }
       .stat strong { font-size: 24px; margin: 5px 0 3px; }
       .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }

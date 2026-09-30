@@ -96,6 +96,9 @@ public struct FlightLog: Codable, Identifiable, Sendable {
     public var summaryAlertMessageCount: Int? = nil
     public var summaryHasAlerts: Bool? = nil
     public var selectionIncludesFailsafe: Bool? = nil
+    public var selectionIncludesEvents: Bool? = nil
+    public var identityProvisional: Bool? = nil
+    public var signalAssessment: LogAssessment? = nil
     public var hasAlerts: Bool { (summaryHasAlerts ?? messages.contains(where: \.isAlert)) || (failsafeObserved && (selectionIncludesFailsafe ?? true)) }
 }
 

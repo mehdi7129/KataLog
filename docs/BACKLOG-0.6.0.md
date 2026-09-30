@@ -1,7 +1,7 @@
 # KataLog — backlog exécutable 0.5.3 / 0.6.0
 
 **Suivi de développement du 30 septembre 2026 : 117 tickets suivis, aucune release 0.6.0 publiée.**
-Référence installée : **0.5.2 (7)**, parseur **1.2.0**. Branche en développement : parseur **1.4.0**, projection SQLite **6**, révisions d’analyse **1**. Les nouveaux écrans ont été approuvés le 30 septembre ; les builds stables 0.6.0 les activent par défaut. La Preview conserve un stockage distinct. L'installation utilisateur
+Référence installée : **0.5.2 (7)**, parseur **1.2.0**. Branche en développement : parseur **1.4.0**, projection SQLite **7**, révisions d’analyse **1**. Les nouveaux écrans ont été approuvés le 30 septembre ; les builds stables 0.6.0 les activent par défaut. La Preview conserve un stockage distinct. L'installation utilisateur
 sur macOS 27 a réussi. L'audit de référence compte **87 tests Python, 79 Swift et
 9 Node réussis, soit 175 tests**. Cela ne qualifie ni macOS 15 sur machine réelle,
 ni plusieurs années d'historique, ni une collecte réelle de 500 drones.

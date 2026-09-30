@@ -305,6 +305,12 @@ def reassociate(database, folder):
                 except (OSError, ValueError) as error:
                     db.rollback()
                     errors.append(str(error))
+        if matched:
+            # A successfully chosen reassociation root is an explicit import
+            # source. Unrelated folders do not enter the persistent list.
+            db.execute('INSERT OR IGNORE INTO folders(path) VALUES(?)', (str(root),))
+            db.execute('DELETE FROM source_folder_retirements WHERE path=?', (str(root),))
+            db.commit()
         library_repository.initialize(db)
         return {'reassociateVersion': 1, 'matched': matched, 'unrelated': unrelated, 'errors': errors, 'originalsDeleted': False}
     finally:

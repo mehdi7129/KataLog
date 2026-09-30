@@ -111,9 +111,20 @@ public struct SelectionScope: Codable, Equatable, Sendable {
             }
             guard !hasMessageFilters || !log.messages.isEmpty else { return nil }
             log.selectionIncludesFailsafe = !hasMessageFilters
+            log.selectionIncludesEvents = !hasMessageFilters
+            if !includeMasked && original.messages.contains(where: {
+                ($0.isMasked == true || maskedMessageKeys.contains($0.classificationKey)) &&
+                $0.text.range(of: #"\bfailsafe activated\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+            }) { log.selectionIncludesFailsafe = false }
             log.summaryMessageCount = log.messages.count
             log.summaryAlertMessageCount = log.messages.filter(\.isAlert).count
             log.summaryHasAlerts = log.summaryAlertMessageCount! > 0
+            // A projection badge belongs to its original message selection.
+            // Recompute after filtering/masking to avoid retaining a hidden signal.
+            if hasMessageFilters || log.messages.count != original.messages.count {
+                log.signalAssessment = nil
+                log.signalAssessment = log.inferredAssessment
+            }
             return log
         }
         return result

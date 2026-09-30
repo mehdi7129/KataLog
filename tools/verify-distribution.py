@@ -627,6 +627,28 @@ class Verification:
                 raise CheckError("On-demand details or parameter decoding failed")
             if len(detail.get("topicDetails", [])) != 1 or detail["topicDetails"][0]["sampleCount"] != 3:
                 raise CheckError("On-demand topic details failed")
+            # Exercise the new source commands in the frozen engine, across
+            # separate processes; Python module discovery in development alone
+            # would not establish that they are shipped in the helper.
+            run("analyzer", "source-folders", "--database", str(database), "--output", str(output))
+            folders = json.loads(output.read_text())
+            if folders.get("activeCount") != 1 or folders["folders"][0].get("logCount") != 1:
+                raise CheckError("Source listing is not global or content-deduplicated")
+            run("analyzer", "retire-source", "--folder", str(source), "--database", str(database), "--output", str(output))
+            retired = json.loads(output.read_text())
+            if retired.get("removed") is not True or retired.get("logsDeleted") is not False or retired.get("originalsDeleted") is not False:
+                raise CheckError("Source retirement did not confirm preservation")
+            run("analyzer", "snapshot", "--database", str(database), "--output", str(output))
+            retired_snapshot = json.loads(output.read_text())
+            if retired_snapshot.get("sourceFolders") or [item["id"] for item in retired_snapshot["logs"]] != [expected_id]:
+                raise CheckError("Source retirement removed history or retained an active root")
+            if original.read_bytes() != payload or (source / "duplicate.ulg").read_bytes() != payload:
+                raise CheckError("Source retirement modified original ULogs")
+            run("analyzer", "restore-source", "--folder", str(source), "--database", str(database), "--output", str(output))
+            run("analyzer", "snapshot", "--database", str(database), "--output", str(output))
+            restored = json.loads(output.read_text())
+            if restored.get("sourceFolders") != [str(source)] or restored["logs"][0].get("signalAssessment", {}).get("state") not in ("warning", "error", "critical"):
+                raise CheckError("Source restoration or packaged signal assessment failed")
             cli_root = work / "native-cli"
             cli_root.mkdir()
             cli_database, cli_output, cli_html = cli_root / "library.sqlite", cli_root / "library.json", cli_root / "report.html"
@@ -663,7 +685,9 @@ class Verification:
             return {"protocol": 1, "parserVersion": PARSER_VERSION, "dependencies": {name: runtime_info[name] for name in ("python", "numpy", "pyulog")},
                     "systemPATHOnly": True, "isolatedHOME": True, "hostilePythonEnvironmentIgnored": True,
                     "syntheticImport": True, "repeatImportDeduplicated": True, "snapshot": True, "cachedDetails": True,
-                    "appBundleUnmodified": True, "installedCLIOutsideCheckout": True, **advanced, **gcs}
+                    "appBundleUnmodified": True, "installedCLIOutsideCheckout": True,
+                    "sourceRetirementAndRestoration": True, "originalULogsPreserved": True,
+                    "signalAssessment": True, **advanced, **gcs}
 
     @staticmethod
     def advanced_library_recipe(run, work):

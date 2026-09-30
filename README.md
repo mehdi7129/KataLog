@@ -14,14 +14,20 @@ embarqué mais son feed reste désactivé. L’app installée 0.5.2 n’est pas 
 Voir le [suivi d’implémentation et ses limites](docs/IMPLEMENTATION-0.6.0.md),
 les [contrats](docs/CONTRACTS-0.6.md), la [matrice de validation](docs/VALIDATION-0.6.0.md) et le [plan de développement](docs/PLAN-0.6.0.md).
 
-Le package de review corrigé **0.6.0 (9)** contient **KataLog Preview.app** : il peut
+Le package de review **0.6.0 (10)** contient **KataLog Preview.app** : il peut
 coexister avec KataLog et utilise `~/Library/Application Support/KataLogPreview-0.6/`.
 Il ouvre directement les nouveaux écrans, sans Terminal. Les données de l’app
 installée sont conservées ; la bibliothèque de la Preview commence vide.
 Importer en mode **Référencer** analyse les fichiers existants sans les copier.
-Ce package local est signé Developer ID et passe les sept contrôles de
-distribution, mais n’est pas notarisé. Il n’est pas une release et son updater
-reste désactivé. Le build 8 est une candidate historique remplacée par ce correctif.
+Ce package local est signé Developer ID et notarisé ; il passe les neuf contrôles de
+distribution sur macOS 27.0.1. Il n’est pas une release et son updater
+reste désactivé. Les builds 8 et 9 sont des candidates historiques.
+
+Cette Preview ajoute la gestion persistante des **Sources d’import**
+(retrait/restauration sans suppression), les **Drones scannés** avec identités
+provisoires séparées, le **Temps de vol cumulé** avec couverture et les badges de
+signaux distincts de la qualité de lecture. Les aides sont accessibles au survol
+ou au clic et reprises dans les rapports HTML/JSON.
 
 L'[audit du 30 septembre](docs/AUDIT-2026-09-30.md) et le
 [backlog exécutable](docs/BACKLOG-0.6.0.md) détaillent les corrections préalables,

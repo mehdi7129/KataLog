@@ -34,7 +34,8 @@ final class WorkspacePreviewTests: XCTestCase {
         from pathlib import Path
         sys.path.insert(0,sys.argv[2])
         import analyzer
-        folder=Path(sys.argv[1]);db=analyzer.open_database(folder/'library.sqlite')
+        folder=Path(sys.argv[1]).resolve();db=analyzer.open_database(folder/'library.sqlite')
+        db.execute('INSERT INTO folders(path) VALUES(?)',(str(folder),))
         families=['Batterie','GNSS','Estimateur','Moteurs','Liaison radio','Capteurs','Stockage','Navigation','Alimentation']
         for i in range(int(sys.argv[3])):
             source=folder/('log_demo_%03d.ulg'%i);source.write_bytes(b'anonymous synthetic source')
@@ -125,6 +126,41 @@ final class WorkspacePreviewTests: XCTestCase {
         }
         XCTAssertFalse(FileManager.default.fileExists(atPath: f.noNetworkMarker.path))
         XCTAssertFalse(f.gcs.isConnected)
+    }
+
+    func testSourcesSheetRetirementUndoPreservesLogsAndFitsBothThemes() async throws {
+        let f = try await fixture(count: 3)
+        let sources = SourcesImportStore(library: f.library)
+        sources.load(includeRemoved: true)
+        var deadline = Date().addingTimeInterval(10)
+        while sources.isLoading, Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertNil(sources.errorMessage)
+        let folder = try XCTUnwrap(sources.page?.folders.first)
+        let originalCount = f.library.historyPage?.totals.logs
+        let original = f.root.appendingPathComponent("log_demo_000.ulg")
+        let originalData = try Data(contentsOf: original)
+        sources.setRemoved(true, path: folder.path)
+        deadline = Date().addingTimeInterval(10)
+        while sources.isWorking || sources.isLoading || f.library.isQuerying, Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertNil(sources.errorMessage)
+        XCTAssertEqual(sources.page?.removedCount, 1)
+        XCTAssertEqual(sources.lastChange?.undoLabel, "Annuler le retrait")
+        XCTAssertEqual(f.library.historyPage?.totals.logs, originalCount)
+        XCTAssertEqual(try Data(contentsOf: original), originalData)
+        sources.undo()
+        deadline = Date().addingTimeInterval(10)
+        while sources.isWorking || sources.isLoading || f.library.isQuerying, Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertNil(sources.errorMessage)
+        XCTAssertEqual(sources.page?.activeCount, 1)
+        XCTAssertEqual(sources.page?.removedCount, 0)
+        XCTAssertNil(sources.lastChange)
+        XCTAssertEqual(f.library.historyPage?.totals.logs, originalCount)
+        XCTAssertEqual(try Data(contentsOf: original), originalData)
+        for scheme in [ColorScheme.dark, .light] {
+            let fitting = try await render(SourcesImportView(library: f.library), name: "sources-\(scheme)", width: 650, height: 460, scheme: scheme)
+            XCTAssertLessThanOrEqual(fitting.width, 651)
+            XCTAssertLessThanOrEqual(fitting.height, 461)
+        }
     }
 
     func testPagedHistoryAndMessageScopeKeepReportCountsInSync() async throws {

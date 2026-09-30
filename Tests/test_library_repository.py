@@ -62,7 +62,8 @@ class RepositoryTests(unittest.TestCase):
         result = self.query()
         self.assertEqual(result['totals'], {'logs': 5, 'validLogs': 4, 'recordedSeconds': 100,
             'droneCount': 4, 'failsafeLogs': 1, 'alertLogs': 4, 'messages': 4,
-            'groupCount': 3, 'familyLogCounts': {'Batterie': 2, 'GPS': 1}})
+            'groupCount': 3, 'familyLogCounts': {'Batterie': 2, 'GPS': 1},
+            'scannedDroneCount': 4, 'provisionalDroneCount': 0, 'flightSeconds': None, 'flightLogCount': 0})
         values = result['snapshot']['logs']
         self.assertTrue(all(value['messages'] == [] for value in values))
         self.assertEqual(sum(value['summaryMessageCount'] for value in values), 4)
@@ -486,7 +487,7 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(item['rawTimestamp'], 2 ** 63 + 1)
         self.assertEqual(item['rawLogLevel'], 52)
         self.assertEqual(item['sourceIndex'], 3)
-        self.assertEqual(self.db.execute("SELECT value FROM kl_meta WHERE key='projectionVersion'").fetchone()[0], '6')
+        self.assertEqual(self.db.execute("SELECT value FROM kl_meta WHERE key='projectionVersion'").fetchone()[0], str(repository.PROJECTION_VERSION))
         path = self.db.execute("SELECT value FROM settings WHERE key='indexMigrationBackup'").fetchone()[0]
         import library_storage
         self.assertEqual(library_storage.inspect_backup(path)['logCount'], 5)

@@ -16,9 +16,10 @@ import sqlite3
 import struct
 import unicodedata
 import uuid
+from signal_assessment import SignalAccumulator
 
 QUERY_VERSION = 1
-PROJECTION_VERSION = 6
+PROJECTION_VERSION = 7
 MESSAGE_METADATA_FIELDS = ('source', 'tag', 'rawTimestamp', 'rawLogLevel', 'sourceIndex')
 MAX_QUERY_BYTES = 4 * 1024 * 1024
 MAX_PAGE_SIZE = 200
@@ -43,7 +44,7 @@ def initialize(db):
     db.execute('PRAGMA cache_size=-131072')
     tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     version = db.execute("SELECT value FROM kl_meta WHERE key='projectionVersion'").fetchone() if 'kl_meta' in tables else None
-    if version and int(version[0]) not in (1, 2, 3, 4, 5, PROJECTION_VERSION):
+    if version and int(version[0]) not in (1, 2, 3, 4, 5, 6, PROJECTION_VERSION):
         raise ValueError("Version d’index de bibliothèque non prise en charge.")
     if not version or int(version[0]) != PROJECTION_VERSION:
         database = db.execute('PRAGMA database_list').fetchone()[2]
@@ -64,7 +65,7 @@ def initialize(db):
                 db.execute('DROP TRIGGER IF EXISTS ' + name)
             for name in ('kl_messages', 'kl_events', 'kl_event_cache', 'kl_definitions', 'kl_definition_presence', 'kl_group_stats', 'kl_family_stats', 'kl_groups', 'kl_logs', 'kl_dirty', 'kl_meta'):
                 db.execute('DROP TABLE IF EXISTS ' + name)
-        elif version and int(version[0]) not in (3, 4, 5, PROJECTION_VERSION):
+        elif version and int(version[0]) not in (3, 4, 5, 6, PROJECTION_VERSION):
             raise ValueError("Version d’index de bibliothèque non prise en charge.")
     db.executescript("""
         CREATE TABLE IF NOT EXISTS kl_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
@@ -168,10 +169,17 @@ def initialize(db):
     """)
     if 'metadata_json' not in {row[1] for row in db.execute('PRAGMA table_info(kl_messages)')}:
         db.execute('ALTER TABLE kl_messages ADD COLUMN metadata_json TEXT')
+    for name, sql_type in (('flight_seconds', 'REAL'), ('signal_messages_json', 'TEXT')):
+        if name not in {row[1] for row in db.execute('PRAGMA table_info(kl_logs)')}:
+            db.execute('ALTER TABLE kl_logs ADD COLUMN ' + name + ' ' + sql_type)
+    if 'signal_events_json' not in {row[1] for row in db.execute('PRAGMA table_info(kl_event_cache)')}:
+        db.execute('ALTER TABLE kl_event_cache ADD COLUMN signal_events_json TEXT')
+    db.execute('CREATE INDEX IF NOT EXISTS kl_logs_flight_totals ON kl_logs(status,drone_id,flight_seconds)')
     db.execute("INSERT OR IGNORE INTO kl_meta(key,value) VALUES('projectionVersion',?)", (str(PROJECTION_VERSION),))
     presence_migration = bool(version and int(version[0]) == 3)
     event_migration = bool(version and int(version[0]) in (3, 4))
     metadata_migration = bool(version and int(version[0]) in (3, 4, 5))
+    signal_migration = bool(version and int(version[0]) in (3, 4, 5, 6))
     db.execute("INSERT OR IGNORE INTO kl_meta(key,value) VALUES('revision','0')")
     built = db.execute("SELECT value FROM kl_meta WHERE key='initialized'").fetchone()
     definition_cache = {}
@@ -188,6 +196,14 @@ def initialize(db):
         db.execute("UPDATE kl_meta SET value=CAST(value AS INTEGER)+1 WHERE key='revision'")
         db.commit()
     else:
+        if signal_migration:
+            # Derived scalars/occurrence summaries only. No original ULog is
+            # opened, and canonical analyses/revisions keep their exact bytes.
+            for identity, summary in db.execute('SELECT id,summary FROM logs'):
+                db.execute('UPDATE kl_logs SET summary_hash=? WHERE id=?', ('', identity))
+                project_log(db, identity, summary, definition_cache)
+            refresh_rollups(db)
+            refresh_presence(db)
         dirty = list(db.execute("SELECT log_id,flags FROM kl_dirty"))
         summaries_changed = False
         for identity, flags in dirty:
@@ -220,7 +236,7 @@ def initialize(db):
             db.execute("UPDATE kl_meta SET value=CAST(value AS INTEGER)+1 WHERE key='revision'")
         if presence_migration:
             refresh_presence(db)
-        if event_migration:
+        if event_migration or signal_migration:
             for identity, parser, summary in db.execute('SELECT log_id,parser_version,summary FROM flight_details'):
                 project_events(db, identity, parser, summary)
         if metadata_migration:
@@ -234,7 +250,7 @@ def initialize(db):
                     if metadata:
                         db.execute('UPDATE kl_messages SET metadata_json=? WHERE log_id=? AND sequence=?',
                                    (json.dumps(metadata, ensure_ascii=False, allow_nan=False), identity, sequence))
-        if event_migration or metadata_migration:
+        if event_migration or metadata_migration or signal_migration:
             db.execute("UPDATE kl_meta SET value=? WHERE key='projectionVersion'", (str(PROJECTION_VERSION),))
             db.execute("UPDATE kl_meta SET value=CAST(value AS INTEGER)+1 WHERE key='revision'")
         db.commit()
@@ -251,6 +267,13 @@ def project_log(db, identity, summary, definition_cache=None):
     message_list = log.get("messages", [])
     projection = {key: value for key, value in log.items() if key not in ("messages", "sourceAvailability")}
     projection["messages"] = []
+    projection['identityProvisional'] = str(log['droneID']).startswith(('card:', 'unknown:'))
+    signals = SignalAccumulator()
+    for message in message_list:
+        signals.observe_message(message)
+    flight_seconds = log.get('flightSeconds')
+    if log.get('status') == 'error' or type(flight_seconds) not in (int, float) or not math.isfinite(flight_seconds) or flight_seconds < 0:
+        flight_seconds = None
     stamp = str(log.get("date", ""))
     try:
         day = date.fromisoformat(stamp[:10]).isoformat()
@@ -272,6 +295,8 @@ def project_log(db, identity, summary, definition_cache=None):
                (identity, checksum, log["droneID"], log["droneName"], gcs_uuid, metadata.get("gcsIdentityStatus", "unavailable"),
                 stamp, day, log.get("status", "error"), float(log.get("durationSeconds", 0)), int(bool(log.get("failsafeObserved"))),
                 normalized(" ".join(str(value) for value in fields)), json.dumps(projection, ensure_ascii=False, allow_nan=False), len(message_list), alerts))
+    db.execute('UPDATE kl_logs SET flight_seconds=?,signal_messages_json=? WHERE id=?',
+               (flight_seconds, json.dumps(signals.observations(), ensure_ascii=False, allow_nan=False), identity))
     db.execute("DELETE FROM kl_messages WHERE log_id=?", (identity,))
     for index, message in enumerate(message_list):
         text, level = str(message.get("text", "")), str(message.get("level", "UNKNOWN"))
@@ -364,8 +389,8 @@ def presence_bits(encoding, payload):
 
 def project_events(db, identity, parser_version, summary):
     checksum = hashlib.sha256(summary.encode('utf-8')).hexdigest()
-    previous = db.execute('SELECT summary_hash,parser_version FROM kl_event_cache WHERE log_id=?', (identity,)).fetchone()
-    if previous and tuple(previous) == (checksum, parser_version):
+    previous = db.execute('SELECT summary_hash,parser_version,signal_events_json FROM kl_event_cache WHERE log_id=?', (identity,)).fetchone()
+    if previous and tuple(previous[:2]) == (checksum, parser_version) and previous[2] is not None:
         return
     try:
         value = json.loads(summary)
@@ -387,6 +412,7 @@ def project_events(db, identity, parser_version, summary):
         state, events, encoded_events = 'invalid', None, []
     db.execute('DELETE FROM kl_events WHERE log_id=?', (identity,))
     translated = 0
+    signals = SignalAccumulator()
     for sequence, (event, encoded_event) in enumerate(zip(events or [], encoded_events)):
         stamp = event.get('timeSeconds')
         if type(stamp) not in (int, float) or not math.isfinite(stamp):
@@ -396,7 +422,10 @@ def project_events(db, identity, parser_version, summary):
         search = normalized(' '.join(str(event.get(key) or '') for key in ('eventID', 'message', 'eventName', 'namespace', 'group', 'translationStatus')))
         db.execute('INSERT INTO kl_events VALUES(?,?,?,?,?,?,?)', (identity, sequence, stamp, internal, external, search, encoded_event))
         translated += event.get('translationStatus') == 'translated'
-    db.execute('INSERT OR REPLACE INTO kl_event_cache VALUES(?,?,?,?,?,?)', (identity, checksum, parser_version, state, len(events or []), translated))
+        signals.observe_event(event)
+    db.execute('INSERT OR REPLACE INTO kl_event_cache(log_id,summary_hash,parser_version,state,event_count,translated_count,signal_events_json) VALUES(?,?,?,?,?,?,?)',
+               (identity, checksum, parser_version, state, len(events or []), translated,
+                json.dumps(signals.observations(), ensure_ascii=False, allow_nan=False)))
 
 
 def string_list(value, field):
@@ -905,6 +934,14 @@ def query(db, request, read_only=False):
                 totals["groupCount"] = db.execute(statement + "SELECT COUNT(DISTINCT group_id) FROM matching", params).fetchone()[0]
                 totals["familyLogCounts"] = dict(db.execute(statement + "SELECT family,COUNT(DISTINCT log_id) FROM matching JOIN selected ON selected.id=matching.log_id WHERE is_alert=1 AND selected.status<>'error' GROUP BY family ORDER BY family", params).fetchall())
         import analyzer
+        scalar_source = ('kl_logs l INDEXED BY kl_logs_flight_totals' if unfiltered else
+                         'kl_logs l INDEXED BY kl_logs_flight_totals CROSS JOIN kl_query_selected s ON s.log_ordinal=l.rowid' if compact_totals is not None else
+                         'kl_query_selected s CROSS JOIN kl_logs l ON l.id=s.id')
+        totals.update(dict(db.execute('''SELECT SUM(l.flight_seconds) AS flightSeconds,
+            COUNT(l.flight_seconds) AS flightLogCount,
+            COUNT(DISTINCT CASE WHEN l.drone_id NOT LIKE 'card:%' AND l.drone_id NOT LIKE 'unknown:%' THEN l.drone_id END) AS scannedDroneCount,
+            COUNT(DISTINCT CASE WHEN l.drone_id LIKE 'card:%' OR l.drone_id LIKE 'unknown:%' THEN l.drone_id END) AS provisionalDroneCount
+            FROM ''' + scalar_source).fetchone()))
         # Global coverage is independent of the current page and selection.
         # Unanalysable error logs require an import retry, not a refresh prompt.
         stale = db.execute("SELECT COUNT(*) FROM logs c INDEXED BY kl_canonical_parser JOIN kl_logs l INDEXED BY kl_logs_scope_meta ON l.id=c.id WHERE COALESCE(c.parser_version,'')<>? AND l.status<>'error'", (analyzer.PARSER_VERSION,)).fetchone()[0]
@@ -916,12 +953,13 @@ def query(db, request, read_only=False):
         if kind in ("logs", 'map'):
             counts = "cached_messages AS message_count,cached_alerts AS alert_count" if unfiltered else "selected.message_count,selected.alert_count"
             compact_page = not unfiltered and compact_totals is not None
-            page_select = ('SELECT selected.*,l.summary_projection,' + counts + ' FROM kl_logs l INDEXED BY kl_logs_date CROSS JOIN selected ON selected.id=l.id' if compact_page else 'SELECT selected.*, ' + counts + ' FROM selected' if unfiltered else 'SELECT selected.*,l.summary_projection,' + counts + ' FROM selected CROSS JOIN kl_logs l ON l.id=selected.id')
+            page_select = ('SELECT selected.*,l.summary_projection,l.flight_seconds,l.signal_messages_json,' + counts + ' FROM kl_logs l INDEXED BY kl_logs_date CROSS JOIN selected ON selected.id=l.id' if compact_page else 'SELECT selected.*, ' + counts + ' FROM selected' if unfiltered else 'SELECT selected.*,l.summary_projection,l.flight_seconds,l.signal_messages_json,' + counts + ' FROM selected CROSS JOIN kl_logs l ON l.id=selected.id')
             direction = 'ASC' if request.get('sortOrder') == 'oldest' else 'DESC'
             order_source = 'l' if compact_page else 'selected'
             rows = db.execute(statement + page_select + " ORDER BY " + order_source + ".date " + direction + "," + order_source + ".id " + direction + " LIMIT ? OFFSET ?", params + [limit, offset]).fetchall()
             def map_log(row):
                 value = json.loads(row["summary_projection"])
+                value['flightSeconds'] = row['flight_seconds']
                 message_count, alert_count = row['message_count'], row['alert_count']
                 if message_count is None:
                     message_count, alert_count = db.execute('SELECT COUNT(*),COALESCE(SUM(d.is_alert),0) FROM kl_query_definitions d CROSS JOIN kl_messages m INDEXED BY kl_messages_definition ON m.definition_id=d.id WHERE m.log_id=?', (row['id'],)).fetchone()
@@ -930,6 +968,33 @@ def query(db, request, read_only=False):
                 value["summaryMessageCount"] = message_count
                 value["summaryAlertMessageCount"] = alert_count
                 value["summaryHasAlerts"] = bool(alert_count or (not message_active and row["failsafe"]))
+                signals = SignalAccumulator()
+                cached_messages = json.loads(row['signal_messages_json'])
+                if unfiltered:
+                    signals.merge(cached_messages)
+                else:
+                    # A repeated definition is accumulated once with its exact
+                    # occurrence count; masked/filtered messages never leak back
+                    # through the canonical summary's severity.
+                    for item in db.execute(statement + 'SELECT level,is_alert,raw_text,title,COUNT(*) AS count FROM matching WHERE log_id=? GROUP BY level,is_alert,raw_text,title', params + [row['id']]):
+                        signals.observe_message({'level': item['level'], 'isAlert': bool(item['is_alert']),
+                                                 'text': item['raw_text'], 'title': item['title']}, item['count'])
+                canonical_parser = db.execute('SELECT parser_version FROM logs WHERE id=?', (row['id'],)).fetchone()[0]
+                event_cache = db.execute('SELECT * FROM kl_event_cache WHERE log_id=?', (row['id'],)).fetchone()
+                current = canonical_parser == analyzer.PARSER_VERSION
+                if message_active:
+                    # These predicates address text-message definitions. Events
+                    # and failsafe flags cannot satisfy their family/text/level.
+                    events_complete = current
+                elif event_cache:
+                    signals.merge(json.loads(event_cache['signal_events_json']))
+                    events_complete = current and event_cache['state'] == 'available' and event_cache['parser_version'] == analyzer.PARSER_VERSION
+                else:
+                    events_complete = current and 'topics' in value and 'event' not in value['topics']
+                include_failsafe = not message_active and not (masks and not scope['includeMasked'] and cached_messages.get('failsafeMessage'))
+                value['selectionIncludesFailsafe'] = include_failsafe
+                value['selectionIncludesEvents'] = not message_active
+                value['signalAssessment'] = signals.result(value, events_complete, include_failsafe)
                 value['annotationWarning'] = None
                 if row['gcs_status'] == 'rejected':
                     value['annotationWarning'] = 'Identité GCS rejetée dans ce log : aucune liaison déduite des autres enregistrements.'
@@ -940,7 +1005,6 @@ def query(db, request, read_only=False):
                 if row["annotation_key"].startswith("gcs:") and value.get("metadata", {}).get("gcsUUID") is None:
                     value["annotationGCSUUID"] = row["annotation_key"][4:]
                 source_paths = [item[0] for item in db.execute("SELECT path FROM sources WHERE log_id=? ORDER BY path", (row["id"],))]
-                import analyzer
                 known_files = {item['path']: item for item in db.execute("SELECT * FROM files WHERE path IN (SELECT path FROM sources WHERE log_id=?)", (row["id"],))}
                 analyzer.attach_source_availability(value, source_paths, known_files)
                 if request.get("includeMessages", False):
@@ -953,7 +1017,8 @@ def query(db, request, read_only=False):
                         value['messages'].append(record)
                 return value
             values = bounded_rows(rows, map_log, result)
-            folders = sorted({str(Path(path).parent) for value in values for path in value['sourcePaths']})
+            from library_sources import active_folders
+            folders = active_folders(db)
             result["snapshot"] = {"schemaVersion": 1, "generatedAt": now(), "sourceFolders": folders,
                                   "importStats": latest_import_stats(db), "logs": values}
             total = totals["logs"]

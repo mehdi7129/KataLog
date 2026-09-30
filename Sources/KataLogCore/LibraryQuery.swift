@@ -32,6 +32,10 @@ public struct LibraryTotals: Codable, Sendable {
     public var groupCount: Int
     public var staleAnalysisLogs: Int? = nil
     public var libraryStaleAnalysisLogs: Int? = nil
+    public var scannedDroneCount: Int? = nil
+    public var provisionalDroneCount: Int? = nil
+    public var flightSeconds: Double? = nil
+    public var flightLogCount: Int? = nil
 }
 
 public struct LibraryDrone: Codable, Identifiable, Sendable {

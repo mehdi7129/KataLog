@@ -77,6 +77,7 @@ private struct WorkspaceView: View {
     @State private var allGroups: [AlertGroup] = []
     @State private var showsFlight = false
     @State private var showFamilyCounts = false
+    @State private var showingSources = false
 
     private var palette: Palette { Palette(dark: dark) }
     private var logs: [FlightLog] {
@@ -84,6 +85,7 @@ private struct WorkspaceView: View {
             .sorted { ($0.date, $0.fileName) < ($1.date, $1.fileName) }
     }
     private var validLogs: [FlightLog] { logs.filter { $0.status != "error" } }
+    private var scopedSnapshot: FleetSnapshot { var result = store.snapshot; result.logs = logs; return result }
     private var groups: [AlertGroup] {
         guard droneFilter != "Tous" else { return allGroups }
         let selectedLogIDs = Set(logs.map(\.id))
@@ -194,6 +196,7 @@ private struct WorkspaceView: View {
             FlightDetailView(store: store)
                 .preferredColorScheme(dark ? .dark : .light)
         }
+        .sheet(isPresented: $showingSources) { SourcesImportView(library: store, externalBusy: gcs.isBusy).preferredColorScheme(dark ? .dark : .light) }
     }
 
     private var sidebar: some View {
@@ -229,10 +232,13 @@ private struct WorkspaceView: View {
             }
             Spacer(minLength: 40)
             VStack(alignment: .leading, spacing: 11) {
-                HStack(spacing: 7) {
-                    Circle().fill(palette.mint).frame(width: 5, height: 5)
-                    eyebrow("BIBLIOTHÈQUE LOCALE")
-                }
+                Button { showingSources = true } label: {
+                    HStack(spacing: 7) {
+                        Circle().fill(palette.mint).frame(width: 5, height: 5)
+                        eyebrow("BIBLIOTHÈQUE LOCALE")
+                        Image(systemName: "chevron.right").font(.system(size: 8))
+                    }
+                }.buttonStyle(.plain).help(LibraryHelp.sources).accessibilityIdentifier("library.sources")
                 Text(sourceLabel)
                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(palette.primary)
                     .lineLimit(2)
@@ -257,7 +263,8 @@ private struct WorkspaceView: View {
             Image(systemName: "externaldrive")
             Text("Espace local")
             Text("/").padding(.horizontal, 3)
-            Text(sourceLabel).foregroundStyle(palette.primary).lineLimit(1)
+            Button { showingSources = true } label: { Text(sourceLabel).foregroundStyle(palette.primary).lineLimit(1) }
+                .buttonStyle(.plain).help(LibraryHelp.sources)
             Spacer()
             Text("PX4 · ULog").font(.system(size: 10, weight: .medium, design: .monospaced)).padding(.trailing, 12)
             Button { dark.toggle() } label: {
@@ -419,25 +426,30 @@ private struct WorkspaceView: View {
 
     private var coverage: some View {
         HStack(spacing: 0) {
-            coverageMetric("\(Set(logs.map(\.droneID)).count)", label: "identités drone")
+            coverageMetric("\(scopedSnapshot.scannedDroneCount)", label: "Drones scannés", note: "\(scopedSnapshot.provisionalDroneCount) identités provisoires à part", help: LibraryHelp.drones)
             coverageDivider
             coverageMetric("\(validLogs.count)", label: "logs lisibles")
             coverageDivider
-            coverageMetric(duration(validLogs.reduce(0) { $0 + $1.durationSeconds }), label: "enregistrées")
+            coverageMetric(duration(scopedSnapshot.totalDurationSeconds), label: "Durée enregistrée", help: LibraryHelp.recordedDuration)
             coverageDivider
-            coverageMetric("\(validLogs.filter(\.hasAlerts).count) / \(validLogs.count)", label: "logs avec alertes", accent: palette.amber)
+            coverageMetric(scopedSnapshot.totalFlightSeconds.map(duration) ?? "Indisponible", label: "Temps de vol cumulé", note: "\(scopedSnapshot.flightLogCount) / \(logs.count) logs", help: LibraryHelp.flightDuration)
+            coverageDivider
+            coverageMetric("\(validLogs.filter(\.hasAlerts).count) / \(validLogs.count)", label: "logs avec alertes", accent: palette.amber, help: LibraryHelp.alerts)
         }
         .padding(.vertical, 16)
         .background(palette.sidebar.opacity(0.8), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private func coverageMetric(_ value: String, label: String, accent: Color? = nil) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 9) {
+    private func coverageMetric(_ value: String, label: String, accent: Color? = nil, note: String? = nil, help: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
             Text(value).font(.system(size: 21, weight: .semibold)).tracking(-0.6).foregroundStyle(accent ?? palette.primary)
-            Text(label).font(.system(size: 11)).foregroundStyle(palette.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 3) {
+                Text(label).font(.system(size: 11)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
+                if let help { LibraryHelpButton(title: label, text: help) }
+            }
+            if let note { Text(note).font(.system(size: 10)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true) }
         }
-        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 14).frame(maxWidth: .infinity, alignment: .leading)
     }
     private var coverageDivider: some View { palette.border.frame(width: 1, height: 24) }
 
@@ -507,6 +519,7 @@ private struct WorkspaceView: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     cardTitle("Profil des alertes texte")
+                    LibraryHelpButton(title: "Profil des alertes", text: LibraryHelp.profile)
                     Spacer()
                     Text("0 — \(max(validLogs.count, 1)) logs")
                         .font(.system(size: 10, design: .monospaced)).foregroundStyle(palette.secondary)
@@ -623,7 +636,7 @@ private struct WorkspaceView: View {
                     Spacer()
                     Text("\(logs.count) logs").font(.system(size: 10)).foregroundStyle(palette.secondary)
                 }
-                Text("Ambre : alertes · rouge : lecture impossible")
+                Text("Signaux enregistrés et qualité de lecture")
                     .font(.system(size: 10)).foregroundStyle(palette.secondary).padding(.top, 8).padding(.bottom, 15)
                 ScrollView {
                     LazyVStack(spacing: 0) {
@@ -631,21 +644,23 @@ private struct WorkspaceView: View {
                             HStack(spacing: 8) {
                                 Button { openFlight(log) } label: {
                                 HStack(spacing: 10) {
-                                    Circle().fill(log.status == "error" ? palette.red : log.hasAlerts ? palette.amber : palette.secondary.opacity(0.5))
-                                        .frame(width: 5, height: 5)
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text(dateLabel(log.date)).font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(palette.primary)
                                         Text(log.displayName).font(.system(size: 9)).foregroundStyle(palette.secondary).lineLimit(1)
                                     }
                                     Spacer()
-                                    Text(log.status == "error" ? "Illisible" : duration(log.durationSeconds))
-                                        .font(.system(size: 10, design: .monospaced)).foregroundStyle(log.status == "error" ? palette.red : palette.secondary)
+                                    VStack(alignment: .trailing, spacing: 4) {
+                                        LogAssessmentBadge(log: log)
+                                        Text(log.assessment.reason).font(.system(size: 10)).foregroundStyle(palette.secondary).lineLimit(1)
+                                        Text(log.analysisQualityLabel).font(.system(size: 10)).foregroundStyle(palette.secondary)
+                                        Text("\(duration(log.durationSeconds)) enregistrées").font(.system(size: 10, design: .monospaced)).foregroundStyle(palette.secondary)
+                                    }
                                 }
-                                .frame(height: 38).contentShape(Rectangle())
+                                .padding(.vertical, 10).contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityIdentifier("flight.open.\(log.id)")
-                                .help("Ouvrir \(log.fileName) · \(String(format: "%.1f", log.durationSeconds)) s enregistrées · \(log.status)")
+                                .help("Ouvrir \(log.fileName) · \(log.assessment.help) · \(log.analysisQualityLabel)")
                                 Button {
                                     if let source = log.sourcePaths.first { store.revealSource(source) }
                                 } label: {
@@ -918,7 +933,7 @@ private struct WorkspaceView: View {
                 droneFilter = log.annotationKey; page = .overview
             }
             if !logs.isEmpty {
-                Text(droneFilter == "Tous" ? "Historique de toutes les identités" : "Historique du drone sélectionné")
+                Text(droneFilter == "Tous" ? "Historique des drones" : "Historique du drone sélectionné")
                     .font(.caption).foregroundStyle(palette.secondary)
                 historyCard
             }
@@ -933,7 +948,7 @@ private struct WorkspaceView: View {
                         Image(systemName: "doc.text").font(.system(size: 30, weight: .light))
                         Text("Le rapport complet de votre flotte")
                             .font(.system(size: 26, weight: .semibold)).tracking(-0.7)
-                        Text("\(store.snapshot.logs.count) logs · \(store.snapshot.drones.count) identités · \(store.snapshot.logs.reduce(0) { $0 + $1.messages.count }) messages conservés")
+                        Text("\(store.snapshot.logs.count) logs · \(store.snapshot.scannedDroneCount) drones scannés · \(store.snapshot.provisionalDroneCount) identités provisoires · \(store.snapshot.logs.reduce(0) { $0 + $1.messages.count }) messages conservés")
                             .font(.system(size: 12)).foregroundStyle(palette.secondary)
                         Text("Les exports couvrent toute la bibliothèque, y compris les logs illisibles, les limites de lecture et les messages de tous niveaux. Les filtres de l’interface ne réduisent pas le rapport.")
                             .font(.system(size: 12)).lineSpacing(4).foregroundStyle(palette.secondary)

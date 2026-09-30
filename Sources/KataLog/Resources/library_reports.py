@@ -20,6 +20,7 @@ import time
 import uuid
 
 import library_repository as repository
+from signal_assessment import SignalAccumulator
 
 REPORT_VERSION = 1
 MAX_CONTEXT_BYTES = 16 * 1024 * 1024
@@ -221,13 +222,23 @@ def _header(db, row, context):
                             value['analysisRevision'] = analyzer.revision_metadata(db, revision)
     value['droneName'] = row['canonical_name']
     value['stockNumber'] = row['stock_number']
-    value['selectionIncludesFailsafe'] = not context['messageActive']
+    cached_messages = json.loads(row['signal_messages_json'])
+    masks = context['query'].get('maskedMessageKeys') or []
+    include_masked = context['query'].get('scope', {}).get('includeMasked', False)
+    value['selectionIncludesFailsafe'] = not context['messageActive'] and not (masks and not include_masked and cached_messages.get('failsafeMessage'))
+    value['selectionIncludesEvents'] = not context['messageActive']
+    key = str(value['droneID']).strip().lower()
+    value['identityProvisional'] = value.get('identityProvisional', not key or key.startswith(('card:', 'unknown:')))
+    flight = value.get('flightSeconds')
+    if not isinstance(flight, (int, float)) or isinstance(flight, bool) or not math.isfinite(flight) or flight < 0:
+        value['flightSeconds'] = None
     if row['annotation_key'].startswith('gcs:') and value.get('metadata', {}).get('gcsUUID') is None:
         value['annotationGCSUUID'] = row['annotation_key'][4:]
     paths = {item[0] for item in db.execute('SELECT path FROM sources WHERE log_id=?', (row['id'],))}
     paths.update(value.get('sourcePaths', []))
     value['sourcePaths'] = sorted(paths)
     value.pop('messages', None)
+    value.pop('signalAssessment', None)  # Recomputed from the exported selection.
     return value
 
 
@@ -257,11 +268,13 @@ class _Shared:
                 'flightObservedSeconds': source.get('flightObservedSeconds'),
                 'flightCoverageSeconds': source.get('flightCoverageSeconds'),
                 'flightCoverageFraction': source.get('flightCoverageFraction'),
+                'identityProvisional': source['identityProvisional'],
                 'status': source['status'] if source['status'] in ('ok', 'error', 'warning', 'partial') else 'partial',
                 'issues': [], 'metadata': {}, 'topics': [], 'metrics': [],
                 'coverage': ['Synthèse anonymisée : textes et métadonnées brutes retirés.'],
                 'failsafeObserved': bool(source.get('failsafeObserved')),
-                'selectionIncludesFailsafe': source['selectionIncludesFailsafe']}
+                'selectionIncludesFailsafe': source['selectionIncludesFailsafe'],
+                'selectionIncludesEvents': source['selectionIncludesEvents']}
 
     def message(self, source, ordinal):
         family = self.family(source.get('family', 'Autres'))
@@ -276,6 +289,7 @@ class _Shared:
 def prepare_report(capture, destination, cancel=None, progress=None):
     """Stream full selection from a capture to a new unpublished directory."""
     context, captured = _load_capture(capture, cancel)
+    import analyzer
     root = Path(destination)
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
     query = context['query']
@@ -324,6 +338,8 @@ def prepare_report(capture, destination, cancel=None, progress=None):
         log_count, message_count, detailed_count = 0, 0, 0
         _progress(progress, 0, captured['totalLogs'], 'Préparation des données du rapport…')
         valid_logs, seconds, alert_logs, failsafe_logs = 0, 0.0, 0, 0
+        flight_seconds, flight_logs = 0.0, 0
+        scanned_drones, provisional_drones = set(), set()
         families = {}
         cursor = db.execute(statement + 'SELECT * FROM selected ORDER BY date DESC,id DESC', params)
         while True:
@@ -334,6 +350,17 @@ def prepare_report(capture, destination, cancel=None, progress=None):
                 _check(cancel)
                 log_count += 1
                 source = _header(db, row, context)
+                (provisional_drones if source['identityProvisional'] else scanned_drones).add(source['droneID'])
+                signals = SignalAccumulator()
+                current_parser = db.execute('SELECT parser_version FROM logs WHERE id=?', (row['id'],)).fetchone()[0] == analyzer.PARSER_VERSION
+                events_complete = current_parser if active else False
+                if not active:
+                    event_cache = db.execute('SELECT * FROM kl_event_cache WHERE log_id=?', (row['id'],)).fetchone()
+                    if event_cache:
+                        signals.merge(json.loads(event_cache['signal_events_json']))
+                        events_complete = current_parser and event_cache['state'] == 'available' and event_cache['parser_version'] == analyzer.PARSER_VERSION
+                    else:
+                        events_complete = current_parser and 'topics' in source and 'event' not in source['topics']
                 if not shared:
                     db.executemany('INSERT OR IGNORE INTO report_source_folders VALUES(?)',
                                    ((str(Path(path).parent),) for path in source.get('sourcePaths', [])))
@@ -351,6 +378,7 @@ def prepare_report(capture, destination, cancel=None, progress=None):
                     _check(cancel)
                     message_count += 1; per_log_messages += 1
                     record = repository.message_record(item)
+                    signals.observe_message(record)
                     if record['isAlert']:
                         per_log_alerts += 1
                         if row['status'] != 'error': seen_families.add(record['family'])
@@ -361,11 +389,16 @@ def prepare_report(capture, destination, cancel=None, progress=None):
                         _progress(progress, log_count - 1, captured['totalLogs'],
                                   f'{message_count} messages · {writer.size} octets · génération JSON')
                         last_progress = time.monotonic()
-                writer.write(b']}')
+                signal = signals.result(source, events_complete=events_complete, include_failsafe=source['selectionIncludesFailsafe'])
+                if shared: signal['primaryText'] = None
+                writer.write(b'],"signalAssessment":'); writer.value(signal); writer.write(b'}')
                 if row['status'] != 'error':
                     valid_logs += 1; seconds += row['duration']
-                    failsafe_logs += bool(row['failsafe']) and not active
-                    alert_logs += bool(per_log_alerts or (row['failsafe'] and not active))
+                    if source['flightSeconds'] is not None:
+                        flight_logs += 1; flight_seconds += source['flightSeconds']
+                    failsafe = bool(row['failsafe']) and source['selectionIncludesFailsafe']
+                    failsafe_logs += failsafe
+                    alert_logs += bool(per_log_alerts or failsafe)
                     for family in seen_families:
                         label = redaction.family(family) if redaction else family
                         families[label] = families.get(label, 0) + 1
@@ -389,6 +422,8 @@ def prepare_report(capture, destination, cancel=None, progress=None):
                    'validLogs': valid_logs, 'recordedSeconds': seconds, 'alertLogs': alert_logs,
                    'failsafeLogs': failsafe_logs, 'familyLogCounts': families,
                    'droneCount': len(redaction.drones) if redaction else captured['totals']['droneCount'],
+                   'scannedDroneCount': len(scanned_drones), 'provisionalDroneCount': len(provisional_drones),
+                   'flightSeconds': flight_seconds if flight_logs else None, 'flightLogCount': flight_logs,
                    'rawDataIncluded': not shared, 'detailedCachedLogCount': detailed_count}
         export_manifest['files'].append(_write_json(root / 'summary.json', summary, cancel))
         _write_json(root / 'manifest.json', export_manifest, cancel)

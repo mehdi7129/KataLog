@@ -115,7 +115,9 @@ def open_database(path, read_only=False):
         CREATE TABLE IF NOT EXISTS sources (
             log_id TEXT NOT NULL, path TEXT NOT NULL, PRIMARY KEY(log_id,path)
         );
+        CREATE INDEX IF NOT EXISTS sources_path_log ON sources(path,log_id);
         CREATE TABLE IF NOT EXISTS folders (path TEXT PRIMARY KEY);
+        CREATE TABLE IF NOT EXISTS source_folder_retirements (path TEXT PRIMARY KEY,retired_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS source_observations (
             log_id TEXT NOT NULL,path TEXT NOT NULL,state TEXT NOT NULL,checked_at TEXT NOT NULL,
@@ -825,10 +827,14 @@ def remember_log(db, log):
 
 
 def snapshot(db, stats=None):
+    from library_sources import active_folders
+    from signal_assessment import assessment
     if stats is None:
         stored = db.execute("SELECT value FROM settings WHERE key='lastImportStats'").fetchone()
         stats = json.loads(stored[0]) if stored else dict.fromkeys(("discovered", "imported", "unchanged", "duplicates", "failed"), 0)
-    logs = [json.loads(row[0]) for row in db.execute("SELECT summary FROM logs")]
+    records = [(row[0], json.loads(row[1])) for row in db.execute('SELECT parser_version,summary FROM logs')]
+    logs = [value for _, value in records]
+    parsers = {value['id']: parser for parser, value in records}
     sources = {}
     for row in db.execute("SELECT log_id,path FROM sources ORDER BY path"):
         sources.setdefault(row[0], []).append(row[1])
@@ -844,9 +850,25 @@ def snapshot(db, stats=None):
         if not log["sourcePaths"]:
             log["coverage"].append("Source originale indisponible : chemins remplacés par un autre contenu; résumé et messages historiques conservés.")
         log["droneName"] = names.get(log["droneID"], log["droneName"])
+        log['identityProvisional'] = str(log['droneID']).startswith(('card:', 'unknown:'))
+        current = parsers[log['id']] == PARSER_VERSION
+        events, events_complete = [], current and 'topics' in log and 'event' not in log['topics']
+        cached = db.execute('SELECT parser_version,summary FROM flight_details WHERE log_id=?', (log['id'],)).fetchone()
+        if cached:
+            events_complete = False
+            try:
+                detail_cache = json.loads(cached[1])
+                if (isinstance(detail_cache, dict) and detail_cache.get('id') == log['id']
+                        and detail_cache.get('status') != 'error' and isinstance(detail_cache.get('events'), list)
+                        and all(isinstance(event, dict) for event in detail_cache['events'])):
+                    events = detail_cache['events']
+                    events_complete = current and cached[0] == PARSER_VERSION
+            except (ValueError, TypeError):
+                pass
+        log['signalAssessment'] = assessment(log, events=events, events_complete=events_complete)
     logs.sort(key=lambda log: (log["date"], log["id"]), reverse=True)
     return {"schemaVersion": SCHEMA_VERSION, "generatedAt": utc_now(),
-            "sourceFolders": [row[0] for row in db.execute("SELECT path FROM folders ORDER BY path")],
+            "sourceFolders": active_folders(db),
             "importStats": stats, "logs": logs}
 
 
@@ -897,6 +919,9 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
     db = open_database(database)
     try:
         db.execute("INSERT OR IGNORE INTO folders(path) VALUES(?)", (str(root),))
+        # An explicit import of this root makes a deliberately retired source
+        # visible again; historical sources and analyses were never deleted.
+        db.execute('DELETE FROM source_folder_retirements WHERE path=?', (str(root),))
         for directory in walked:
             error_id = "directory:" + hashlib.sha256(directory.encode()).hexdigest()
             db.execute("DELETE FROM logs WHERE id=?", (error_id,))
@@ -1341,6 +1366,16 @@ def main(argv=None):
     snapshot_command.add_argument("--database", required=True)
     snapshot_command.add_argument("--output", required=True)
     snapshot_command.add_argument("--read-only", action="store_true")
+    for name in ('source-folders', 'retire-source', 'restore-source'):
+        command = commands.add_parser(name)
+        command.add_argument('--database', required=True)
+        command.add_argument('--output', required=True)
+        if name == 'source-folders':
+            command.add_argument('--offset', type=int, default=0)
+            command.add_argument('--limit', type=int, default=200)
+            command.add_argument('--include-removed', action='store_true')
+        else:
+            command.add_argument('--folder', required=True)
     query_command = commands.add_parser("query")
     query_command.add_argument("--request", required=True)
     query_command.add_argument("--database", required=True)
@@ -1430,6 +1465,14 @@ def main(argv=None):
     recover_command.add_argument("--output", required=True)
     args = parser.parse_args(argv)
     try:
+        if args.command in ('source-folders', 'retire-source', 'restore-source'):
+            import library_sources
+            result = (library_sources.source_folders(args.database, args.offset, args.limit, args.include_removed)
+                      if args.command == 'source-folders' else
+                      library_sources.set_removed(args.database, args.folder, args.command == 'retire-source'))
+            atomic_json(args.output, result)
+            print(json.dumps({'command': args.command, 'ok': True}))
+            return 0
         if args.command == 'analysis-revisions':
             result = analysis_revisions(args.log_id, args.database, args.offset, args.limit, args.read_only)
             atomic_json(args.output, result)

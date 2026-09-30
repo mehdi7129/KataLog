@@ -7,6 +7,8 @@ enum ReportInteraction {
       const rank = level => ({EMERGENCY:8,ALERT:7,CRITICAL:6,ERROR:5,WARNING:4,WARN:4,NOTICE:3,INFO:2,DEBUG:1}[level] || 0);
       const norm = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr');
       const finite = value => Number.isFinite(value) ? Math.max(0, value) : 0;
+      const validFlight = value => Number.isFinite(value) && value >= 0;
+      const provisional = log => log.identityProvisional ?? (!String(log.droneID||'').trim() || /^(card:|unknown:)/.test(String(log.droneID).trim().toLowerCase()));
       const dayKey = value => {
         const match = String(value || '').match(/^\d{4}-\d{2}-\d{2}(?=$|T|\s)/);
         if (!match) return 'undated';
@@ -30,15 +32,55 @@ enum ReportInteraction {
             return !search || matchesLog || norm([message.text,message.title,message.family].join(' ')).includes(search);
           });
           if (hasMessageFilter && !messages.length && !(matchesLog && !family && !level)) return [];
-          return [{log,messages,includeFailsafe:!hasMessageFilter && log.selectionIncludesFailsafe !== false}];
+          return [{log,messages,messageScoped:hasMessageFilter || (log.selectionIncludesEvents ?? log.selectionIncludesFailsafe) === false,
+            includeFailsafe:!hasMessageFilter && log.selectionIncludesFailsafe !== false,hasMessageFilter}];
         });
       }
+      function assessment(item) {
+        const {log,messages,includeFailsafe,messageScoped,hasMessageFilter} = item;
+        if (!hasMessageFilter && log.signalAssessment) return log.signalAssessment;
+        let maximum=0,level=null,primaryText=null,occurrenceCount=0,eventCount=0,untranslatedEventCount=0,uncertain=false,failsafeMessage=false;
+        function observe(priority,sourceLevel,text) {
+          if(priority<4)return;
+          occurrenceCount++;
+          if(priority>maximum){maximum=priority;level=sourceLevel;primaryText=text;}
+        }
+        for(const message of messages) {
+          const sourceLevel=String(message.level||'UNKNOWN').toUpperCase(), priority=rank(sourceLevel), text=message.text||message.title||'';
+          const failsafe=/\bfailsafe activated\b/i.test(text);
+          failsafeMessage ||= failsafe; uncertain ||= priority===0;
+          observe(Math.max(priority,message.isAlert||failsafe||text.toUpperCase().includes('[ALARM]')?4:0),priority?sourceLevel:null,text||null);
+        }
+        if(!messageScoped)for(const event of log.events||[]) {
+          eventCount++;
+          const translated=event.translationStatus==='translated';if(!translated)untranslatedEventCount++;
+          const levels=[event.internalLevelName,event.externalLevelName].filter(Boolean);
+          if(!levels.length)levels.push(event.level||'UNKNOWN');
+          const sourceLevel=levels.map(value=>String(value).toUpperCase()).sort((a,b)=>rank(b)-rank(a))[0],priority=rank(sourceLevel);
+          uncertain ||= priority===0;
+          observe(priority,priority?sourceLevel:null,translated&&event.message?event.message:'Événement PX4 '+String(event.eventID??'?'));
+        }
+        if(includeFailsafe&&log.failsafeObserved&&!failsafeMessage){
+          occurrenceCount++;if(maximum<4){maximum=4;level=null;primaryText='Failsafe observé';}
+        }
+        const complete=log.status==='ok'&&!uncertain&&(messageScoped||log.eventsComplete===true||Array.isArray(log.events));
+        const state=maximum>=6?'critical':maximum>=5?'error':maximum>=4?'warning':complete?'none':'unknown';
+        return {state,level,primaryText,occurrenceCount,eventCount,untranslatedEventCount};
+      }
+      const assessmentLabel = value => ({critical:'Signal critique',error:'Erreur à vérifier',warning:'Avertissement',none:'Aucune alerte détectée',unknown:'Niveau indéterminé'}[value.state]||'Niveau indéterminé');
+      const assessmentTone = value => ({critical:'red',error:'orange',warning:'yellow'}[value.state]||'neutral');
+      const assessmentReason = value => value.primaryText || (value.state==='none'?'Aucune alerte classée dans les données évaluées':value.state==='unknown'?'Données insuffisantes pour établir le niveau':'Signal enregistré dans les données évaluées');
       const withAlerts = item => item.log.status !== 'error' && (item.messages.some(m => m.isAlert) || (item.includeFailsafe && item.log.failsafeObserved));
       function statistics(selected) {
         const valid = selected.filter(item => item.log.status !== 'error');
+        const flight = valid.filter(item => validFlight(item.log.flightSeconds));
         return {
           logCount:selected.length, droneCount:new Set(selected.map(item => item.log.droneID)).size,
+          scannedDroneCount:new Set(selected.filter(item => !provisional(item.log)).map(item => item.log.droneID)).size,
+          provisionalDroneCount:new Set(selected.filter(item => provisional(item.log)).map(item => item.log.droneID)).size,
           validLogCount:valid.length, durationSeconds:valid.reduce((sum,item) => sum + finite(item.log.durationSeconds),0),
+          flightSeconds:flight.length ? flight.reduce((sum,item) => sum + item.log.flightSeconds,0) : null,
+          flightLogCount:flight.length,
           alertLogCount:selected.filter(withAlerts).length,
           messageCount:selected.reduce((sum,item) => sum + item.messages.length,0),
           alertMessageCount:valid.reduce((sum,item) => sum + item.messages.filter(m => m.isAlert).length,0),
@@ -84,7 +126,7 @@ enum ReportInteraction {
         const start=page*limit, end=Math.min(values.length,start+limit);
         return {items:values.slice(start,end),index:page,start,end,total:values.length,hasPrevious:page>0,hasNext:end<values.length};
       }
-      if (typeof module !== 'undefined' && module.exports) module.exports = {selectLogs,statistics,familyCounts,dailyCounts,dayKey,groupCounts,pageWindow};
+      if (typeof module !== 'undefined' && module.exports) module.exports = {selectLogs,statistics,familyCounts,dailyCounts,dayKey,groupCounts,pageWindow,assessment,assessmentLabel,assessmentTone};
       if (typeof document === 'undefined') return;
       const $ = id => document.getElementById(id);
       const el = (tag, className, text) => {
@@ -183,7 +225,7 @@ enum ReportInteraction {
           container.replaceChildren(); legend.replaceChildren();
           $('radar-scale').textContent = '0 — ' + count(stats.validLogCount,'log');
           if (!values.length) {
-            empty(container,stats.failsafeLogCount ? 'Failsafe observé, sans famille d’alerte textuelle dans ce périmètre.' : 'Aucune alerte textuelle repérée dans ce périmètre.'); return;
+            empty(container,stats.failsafeLogCount ? 'Failsafe observé, sans famille d’alerte textuelle dans ce périmètre.' : 'Aucun message d’alerte textuel affiché. Consulter le badge et la couverture de chaque log.'); return;
           }
           const maximum = Math.max(1,stats.validLogCount);
           if (values.length >= 3 && values.length <= 8) {
@@ -250,12 +292,17 @@ enum ReportInteraction {
           current = selectLogs(data.logs,filters);
           const stats = statistics(current), byLog = new Map(current.map(item=>[item.log.id,item])), groups = groupCounts(current);
           currentByLog=byLog;currentGroups=groups;
-          $('stat-drones').textContent = integer.format(stats.droneCount);
+          $('stat-drones').textContent = integer.format(stats.scannedDroneCount);
+          $('stat-provisional').textContent = count(stats.provisionalDroneCount,'identité')+' provisoire'+(stats.provisionalDroneCount>1?'s':'');
           $('stat-logs').textContent = integer.format(stats.logCount);
           $('stat-quality').textContent = count(stats.validLogCount,'lisible')+' · '+stats.failedLogCount+' en erreur';
           $('stat-duration').replaceChildren(document.createTextNode(decimal.format(stats.durationSeconds/60)),el('em','',' min'));
+          $('stat-flight').replaceChildren(document.createTextNode(stats.flightSeconds===null?'Non disponible':decimal.format(stats.flightSeconds/60)),...(stats.flightSeconds===null?[]:[el('em','',' min')]));
+          $('stat-flight-coverage').textContent = 'Calculé sur '+stats.flightLogCount+' / '+stats.logCount+' logs';
           $('stat-alerts').replaceChildren(document.createTextNode(integer.format(stats.alertLogCount)),el('em','',' / '+stats.validLogCount));
           $('stat-alert-detail').textContent = count(stats.alertMessageCount,'message')+' d’alerte'+(stats.failsafeLogCount?' · '+count(stats.failsafeLogCount,'log')+' avec failsafe':'');
+          const messagesOnly=current.some(item=>item.messageScoped);
+          $('assessment-scope').textContent = messagesOnly ? 'Badge limité aux messages affichés : événements PX4 et état failsafe exclus du périmètre.' : 'Badge : messages, événements PX4 disponibles et état failsafe dans le périmètre exporté.';
           const scope = [];
           if(filters.drone) scope.push($('drone-filter').selectedOptions[0].textContent);
           if(filters.family) scope.push(filters.family);
@@ -270,6 +317,13 @@ enum ReportInteraction {
             const item = byLog.get(card.dataset.log); card.hidden = !item;
             if (!item) {clearDetail(card,'.lazy-message-table');continue;}
             card.querySelector('.visible-message-count').textContent = count(item.messages.length,'message');
+            const signal=assessment(item),badge=card.querySelector('.log-assessment');
+            badge.textContent=assessmentLabel(signal);badge.className='log-assessment '+assessmentTone(signal);
+            badge.title=(item.messageScoped?'Messages affichés uniquement. ':'')+assessmentReason(signal)+'. '+count(signal.occurrenceCount,'signal')+' observé'+(signal.occurrenceCount>1?'s':'')+'. '+count(signal.untranslatedEventCount,'événement')+' sans traduction.';
+            const description=card.querySelector('.assessment-description'),primary=card.querySelector('.assessment-primary'),counts=card.querySelector('.assessment-counts');
+            if(description)description.textContent=badge.title;
+            if(primary)primary.textContent=assessmentReason(signal);
+            if(counts)counts.textContent=count(signal.occurrenceCount,'occurrence')+' de signaux · '+count(signal.eventCount,'événement')+' observé'+(signal.eventCount>1?'s':'')+' · '+signal.untranslatedEventCount+' sans traduction.';
             hydrateLog(card);
           }
           const droneIDs = new Set(current.map(item=>item.log.droneID));

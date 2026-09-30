@@ -3,7 +3,10 @@
 ## 0.6.0 — en préparation, non publiée
 
 - Identité stable entre résumé et fiche ; ancienne analyse conservée sans source ; durée de vol et GNSS qualifiés par couverture.
-- Projections SQLite version 6, requêtes paginées et scope partagé ; annotations, masquages, recherche Unicode et tri intégrés aux agrégats.
+- Projections SQLite version 7, requêtes paginées et scope partagé ; annotations, masquages, recherche Unicode et tri intégrés aux agrégats.
+- Sources d’import retirables et restaurables sans supprimer les ULogs ni leurs analyses ; liste persistante et globale.
+- Drones scannés et identités provisoires séparés ; durée enregistrée et temps de vol cumulé avec couverture explicitée.
+- Badges de signaux distincts de la qualité de lecture, y compris les événements PX4 non traduits ; aides au survol et au clic harmonisées dans les rapports.
 - Sauvegardes vérifiées, restauration avec recovery, archives et réassociation SHA ; nettoyage de cache réversible sans supprimer les sources.
 - File GCS SQLite durable, inventaires en pages, progression par phase, imports exacts et arrêt borné des helpers ; protection du verrou après décès du parent.
 - Événements binaires bruts, dictionnaires locaux exact SHA, couverture des caches et niveaux interne/externe distincts.

@@ -36,13 +36,13 @@ class ReportTests(unittest.TestCase):
         self.add('failsafe', 'controller-3', [], 30, failsafe=True)
         self.add('broken', 'controller-4', [], 999, status='error')
 
-    def add(self, name, drone, messages, duration=0, failsafe=False, status='ok'):
+    def add(self, name, drone, messages, duration=0, failsafe=False, status='ok', flight=None):
         source = self.root / (name + '.ulg'); source.write_bytes(b'Source untouched ' + name.encode())
         identity = hashlib.sha256(name.encode()).hexdigest()
         value = analyzer.base_log(source, self.root, identity, 1)
         value.update(droneID=drone, droneName=drone, date='2026-01-01T12:00:00Z',
                      messages=copy.deepcopy(messages), durationSeconds=duration,
-                     failsafeObserved=failsafe, status=status)
+                     failsafeObserved=failsafe, status=status, flightSeconds=flight)
         analyzer.remember_log(self.db, value)
         self.db.execute('INSERT INTO sources VALUES(?,?)', (identity, str(source)))
         self.db.commit(); self.values.append(value)
@@ -84,8 +84,74 @@ class ReportTests(unittest.TestCase):
             self.assertEqual({value['id'] for value in payload['logs']}, {value['id'] for value in oracle['snapshot']['logs']})
             self.assertEqual(result['messageCount'], oracle['totals']['messages'])
             summary = json.loads((root / 'summary.json').read_text())
-            for key in ['recordedSeconds', 'alertLogs', 'failsafeLogs', 'familyLogCounts', 'droneCount']:
+            for key in ['recordedSeconds', 'alertLogs', 'failsafeLogs', 'familyLogCounts', 'droneCount',
+                        'scannedDroneCount', 'provisionalDroneCount', 'flightSeconds', 'flightLogCount']:
                 self.assertEqual(summary[key], oracle['totals'][key])
+
+    def test_streamed_flight_coverage_and_provisional_counts_remain_separate_in_shared_exports(self):
+        self.add('measured', 'controller-flight', [], duration=120, flight=40)
+        self.add('zero', 'card:provisional-card', [], duration=60, flight=0)
+        self.add('unavailable', 'unknown:provisional-unknown', [], duration=60)
+        self.add('failed-flight', 'controller-failed-flight', [], status='error', flight=900)
+        for options in [{'format': 'html'}, {'format': 'html', 'excludeIdentity': True}]:
+            _, _, root, _ = self.export(self.request(options=options))
+            summary = json.loads((root / 'summary.json').read_text())
+            self.assertEqual(summary['scannedDroneCount'], 6)
+            self.assertEqual(summary['provisionalDroneCount'], 2)
+            self.assertEqual(summary['flightSeconds'], 40)
+            self.assertEqual(summary['flightLogCount'], 2)
+            self.assertEqual(summary['totalLogs'], 8)
+            payload = json.loads((root / 'rapport.json').read_text())
+            self.assertEqual(sum(log['identityProvisional'] for log in payload['logs']), 2)
+            self.assertEqual(sum(log['signalAssessment']['untranslatedEventCount'] for log in payload['logs']), 0)
+        _, _, root, _ = self.export(self.request(scope={'droneKeys': ['ulog:unknown:provisional-unknown']}))
+        summary = json.loads((root / 'summary.json').read_text())
+        self.assertEqual(summary['flightLogCount'], 0)
+        self.assertIsNone(summary['flightSeconds'])
+
+    def test_streamed_badges_use_selected_messages_and_never_restore_filtered_events(self):
+        value = self.add('event-warning', 'controller-events', [message('Selected warning')], status='partial')
+        value['events'] = [{'id': 'raw', 'eventID': 42, 'level': 'INFO', 'internalLevelName': 'WARNING',
+                            'externalLevelName': 'CRITICAL', 'translationStatus': 'untranslated', 'message': None}]
+        self.db.execute('INSERT INTO flight_details VALUES(?,?,?)', (value['id'], analyzer.PARSER_VERSION, json.dumps(value)))
+        self.db.commit()
+        _, _, root, _ = self.export(self.request(options={'format': 'html', 'includeCachedDetails': True}))
+        payload = json.loads((root / 'rapport.json').read_text())
+        exported = next(log for log in payload['logs'] if log['id'] == value['id'])
+        self.assertEqual(exported['signalAssessment']['state'], 'critical')
+        self.assertEqual(exported['signalAssessment']['primaryText'], 'Événement PX4 42')
+        self.assertEqual(exported['signalAssessment']['untranslatedEventCount'], 1)
+        # A summary export still includes the cached observed badge without
+        # attaching the raw event detail or reopening the ULog.
+        _, _, root, _ = self.export(self.request())
+        exported = next(log for log in json.loads((root / 'rapport.json').read_text())['logs'] if log['id'] == value['id'])
+        self.assertEqual(exported['signalAssessment']['state'], 'critical')
+        self.assertNotIn('events', exported)
+        _, _, root, _ = self.export(self.request(scope={'families': ['Batterie']}, options={'format': 'html', 'includeCachedDetails': True}))
+        exported = next(log for log in json.loads((root / 'rapport.json').read_text())['logs'] if log['id'] == value['id'])
+        self.assertEqual(exported['signalAssessment']['state'], 'warning')
+        self.assertEqual(exported['signalAssessment']['eventCount'], 0)
+        self.assertFalse(exported['selectionIncludesFailsafe'])
+        self.assertFalse(exported['selectionIncludesEvents'])
+
+    def test_masked_failsafe_text_does_not_return_as_a_bool_but_keeps_event_scope(self):
+        record = message('Failsafe activated', 'Navigation', 'WARNING')
+        value = self.add('masked-failsafe', 'controller-masked', [record], failsafe=True)
+        key = repository.classification_key(record)
+        _, _, root, _ = self.export(self.request(masks=[key]))
+        exported = next(log for log in json.loads((root / 'rapport.json').read_text())['logs'] if log['id'] == value['id'])
+        self.assertEqual(exported['messages'], [])
+        self.assertEqual(exported['signalAssessment']['occurrenceCount'], 0)
+        self.assertFalse(exported['selectionIncludesFailsafe'])
+        self.assertTrue(exported['selectionIncludesEvents'])
+
+    def test_shared_signal_badge_never_reintroduces_private_primary_text(self):
+        self.add('private-signal', 'private-controller', [message('PRIVATE-SIGNAL-CANARY', level='CRITICAL')])
+        _, _, root, _ = self.export(self.request(options={'format': 'html', 'excludeIdentity': True}))
+        for file in root.iterdir():
+            self.assertNotIn('PRIVATE-SIGNAL-CANARY', file.read_text())
+        log = next(log for log in json.loads((root / 'rapport.json').read_text())['logs'] if log['signalAssessment']['state'] == 'critical')
+        self.assertIsNone(log['signalAssessment']['primaryText'])
 
     def test_masks_and_family_overrides_apply_before_export(self):
         original = self.values[0]['messages'][0]

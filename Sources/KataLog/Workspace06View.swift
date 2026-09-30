@@ -14,6 +14,7 @@ struct Workspace06View: View {
     @State private var page: Page = .history
     @State private var showingFlight = false
     @State private var showingScope = false
+    @State private var showingSources = false
     @State private var identity: DroneIdentityTarget?
     @State private var viewName = ""
     @State private var localError: String?
@@ -100,7 +101,10 @@ struct Workspace06View: View {
                     }.buttonStyle(.plain).listRowBackground(page == item ? Color.primary.opacity(0.08) : Color.clear)
                 } }.listStyle(.sidebar)
                 VStack(alignment: .leading, spacing: 6) {
-                    Label(library.isReadOnly ? "Lecture seule" : "Bibliothèque locale", systemImage: library.isReadOnly ? "lock" : "internaldrive")
+                    Button { showingSources = true } label: {
+                        Label("Bibliothèque locale", systemImage: "internaldrive")
+                    }.buttonStyle(.plain).help(LibraryHelp.sources).accessibilityIdentifier("library.sources")
+                    if library.isReadOnly { Label("Lecture seule", systemImage: "lock") }
                     Text("Vos fichiers restent sur votre Mac.").foregroundStyle(.secondary)
                 }.font(.caption).foregroundStyle(sidebarForeground)
             }.padding(18).navigationSplitViewColumnWidth(min: 205, ideal: 225, max: 260)
@@ -145,6 +149,7 @@ struct Workspace06View: View {
         .sheet(isPresented: $showingScope, onDismiss: { library.loadHistory(); focusedControl = .scope }) { ScopeEditor06(library: library) }
         .sheet(isPresented: $showingFlight, onDismiss: { library.closeFlight(); focusedControl = page == .history ? lastOpenedLogID.map(FocusControl.historyLog) : .refresh }) { FlightSheet06(library: library).preferredColorScheme(theme) }
         .sheet(item: $identity) { DroneNumberEditor(target: $0, store: library.annotations) }
+        .sheet(isPresented: $showingSources) { SourcesImportView(library: library, externalBusy: gcs.isBusy).preferredColorScheme(theme) }
         .sheet(isPresented: Binding(get: { restorePreview != nil }, set: { if !$0 { restorePreview = nil; restoreCandidate = nil } }), onDismiss: { focusedControl = .restore }) { restoreSheet }
         .sheet(isPresented: Binding(get: { diagnosticPreview != nil }, set: { if !$0 { diagnosticPreview = nil } }), onDismiss: { focusedControl = .diagnostic }) { diagnosticSheet }
         .sheet(isPresented: Binding(get: { importSource != nil }, set: { if !$0 { importSource = nil } }), onDismiss: { focusedControl = .importFolder }) {
@@ -239,7 +244,12 @@ struct Workspace06View: View {
                             Image(systemName: log.status == "error" ? "exclamationmark.triangle" : "doc.text").frame(width: 24)
                             VStack(alignment: .leading, spacing: 5) { Text(log.fileName).fontWeight(.medium); Text(log.displayName + " · " + date(log.date)).font(.caption).foregroundStyle(.secondary); Text(String(log.id.prefix(16))).font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary) }
                             Spacer()
-                            VStack(alignment: .trailing, spacing: 5) { Text("\(log.summaryMessageCount ?? log.messages.count) messages"); Text(log.status == "error" ? "Lecture impossible" : log.status == "partial" ? "Lecture partielle" : FlightUIFormat.duration(log.durationSeconds)).foregroundStyle(.secondary) }.font(.caption)
+                            VStack(alignment: .trailing, spacing: 6) {
+                                LogAssessmentBadge(log: log)
+                                Text(log.assessment.reason).lineLimit(2).frame(maxWidth: 290, alignment: .trailing).foregroundStyle(.secondary)
+                                Text(log.analysisQualityLabel).foregroundStyle(.secondary)
+                                Text("\(FlightUIFormat.duration(log.durationSeconds)) enregistrées").foregroundStyle(.secondary)
+                            }.font(.caption)
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 9).contentShape(Rectangle())
                     }.buttonStyle(.plain).focused($focusedControl, equals: .historyLog(log.id)).accessibilityLabel("Ouvrir \(log.fileName), \(log.displayName), \(date(log.date))")
                     Divider()
@@ -250,11 +260,13 @@ struct Workspace06View: View {
         }
     }
     private var metrics: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 135), spacing: 14)], spacing: 14) {
-            metric("Enregistrements", value: totals?.logs ?? 0, note: "Copies identiques dédupliquées")
-            metric("Contrôleurs", value: totals?.droneCount ?? 0, note: "Identités du périmètre")
-            metric("Avec alerte", value: totals?.alertLogs ?? 0, note: "Logs uniques sur \(totals?.validLogs ?? 0) lus")
-            metric("Failsafe", value: totals?.failsafeLogs ?? 0, note: views.state.activeScope.hasMessageFilters ? "Non inclus dans ce filtre de messages" : "État enregistré, distinct des textes")
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 175), spacing: 14)], spacing: 14) {
+            metric("Enregistrements", value: totals.map { $0.logs.formatted() } ?? "—", note: "Copies identiques dédupliquées", help: "Nombre de logs uniques dans la sélection active. Les copies identiques sont dédupliquées par contenu ; les fichiers illisibles restent dans l’historique.")
+            metric("Drones scannés", value: totals.map { $0.scannedDrones.formatted() } ?? "—", note: totals.map { "\($0.provisionalDrones) identités provisoires, comptées à part" } ?? "Identités en cours de lecture", help: LibraryHelp.drones)
+            metric("Durée enregistrée", value: totals.map { FlightUIFormat.duration($0.recordedSeconds) } ?? "—", note: "Inclut le temps au sol", help: LibraryHelp.recordedDuration)
+            metric("Temps de vol cumulé", value: totals?.measuredFlightSeconds.map(FlightUIFormat.duration) ?? "Indisponible", note: totals.flatMap { total in total.flightLogCount.map { "\($0) / \(total.logs) logs avec temps de vol mesuré" } } ?? "Couverture non déterminée", help: LibraryHelp.flightDuration)
+            metric("Avec alerte", value: totals.map { $0.alertLogs.formatted() } ?? "—", note: totals.map { "Logs uniques sur \($0.validLogs) lus" } ?? "Lecture en cours", help: LibraryHelp.alerts)
+            metric("Failsafe", value: totals.map { $0.failsafeLogs.formatted() } ?? "—", note: views.state.activeScope.hasMessageFilters ? "Non inclus dans ce filtre de messages" : "État enregistré, distinct des textes", help: "Nombre de logs où PX4 a enregistré un état failsafe. Ce compte décrit un état du système et ne confirme pas une panne. Un filtre de messages n’inclut pas cet état dans son périmètre.")
         }
     }
     private var alertProfile: some View {
@@ -262,7 +274,7 @@ struct Workspace06View: View {
         let axes = views.state.profileAxes ?? Array(counts.keys.sorted().prefix(8))
         let allFamilies = AlertProfile06.families(counts: counts, selectedAxes: axes)
         return panel {
-            HStack { Text("Profil des alertes textuelles").font(.headline); Spacer(); Menu("Choisir les axes") {
+            HStack { Text("Profil des alertes textuelles").font(.headline); LibraryHelpButton(title: "Profil des alertes", text: LibraryHelp.profile); Spacer(); Menu("Choisir les axes") {
                 ForEach(Array(Set(counts.keys).union(axes)).sorted(), id: \.self) { family in
                     Button((axes.contains(family) ? "✓ " : "") + family) {
                         var selected = axes
@@ -294,7 +306,7 @@ struct Workspace06View: View {
     }
     private var alerts: some View {
         panel {
-            HStack { Text(selectedGroup == nil ? "Messages regroupés" : "Occurrences du groupe").font(.headline); Spacer(); if selectedGroup != nil { Button("Tous les groupes") { selectedGroup = nil; library.loadHistory() } } }
+            HStack { Text(selectedGroup == nil ? "Messages regroupés" : "Occurrences du groupe").font(.headline); LibraryHelpButton(title: "Alertes enregistrées", text: LibraryHelp.alerts); Spacer(); if selectedGroup != nil { Button("Tous les groupes") { selectedGroup = nil; library.loadHistory() } } }
             if let group = selectedGroup {
                 Text(group.title).font(.title3); Text(group.family + " · " + group.level).font(.caption).foregroundStyle(.secondary)
                 Text("\(library.occurrencePage?.total ?? group.messageCount) occurrences dans la sélection").font(.caption)
@@ -334,7 +346,7 @@ struct Workspace06View: View {
     }
     private var registry: some View {
         panel {
-            HStack { Text("\(library.dronePage?.total ?? 0) identités").font(.headline); Spacer(); TextField("Numéro, nom ou identité", text: $registrySearch).textFieldStyle(.roundedBorder).frame(maxWidth: 320).onSubmit { registryCursors = [nil]; library.loadAuxiliary(kind: "drones", search: registrySearch) }; Button("Rechercher") { registryCursors = [nil]; library.loadAuxiliary(kind: "drones", search: registrySearch) }.disabled(busy) }
+            HStack { Text("\(library.dronePage?.total ?? 0) entrées du registre").font(.headline); LibraryHelpButton(title: "Drones scannés", text: LibraryHelp.drones); Spacer(); TextField("Numéro, nom ou identité", text: $registrySearch).textFieldStyle(.roundedBorder).frame(maxWidth: 320).onSubmit { registryCursors = [nil]; library.loadAuxiliary(kind: "drones", search: registrySearch) }; Button("Rechercher") { registryCursors = [nil]; library.loadAuxiliary(kind: "drones", search: registrySearch) }.disabled(busy) }
             Text("Le registre reste global. Un numéro de stock n’est pas une preuve d’identité et ne fusionne pas les contrôleurs.").font(.caption).foregroundStyle(.secondary)
             ForEach(library.dronePage?.drones ?? []) { drone in
                 HStack {
@@ -372,7 +384,7 @@ struct Workspace06View: View {
                 panel { Label("Aucun log enregistré", systemImage: "externaldrive").font(.headline); Text("Importez un dossier ou collectez les logs de vos drones pour consulter les sources et le cache.").foregroundStyle(.secondary) }
             }
             panel {
-                Text("Sauvegarder et retrouver").font(.headline)
+                HStack { Text("Sauvegarder et retrouver").font(.headline); LibraryHelpButton(title: "Sauvegardes", text: "Analyses + réglages conserve la bibliothèque et ses réglages. Sauvegarde complète ajoute les ULog accessibles. La restauration importe une sauvegarde vérifiée et conserve une récupération des données remplacées. Aucune source d’origine n’est supprimée.") }
                 Text("Une sauvegarde analyses + réglages conserve les numéros, les familles, les vues et la collecte. La version complète ajoute les ULog accessibles. Aucune source d’origine n’est supprimée.").font(.callout).foregroundStyle(.secondary)
                 ViewThatFits(in: .horizontal) { HStack { backupButtons }; VStack(alignment: .leading) { backupButtons } }.disabled(mutationBusy || library.isReadOnly || library.isExporting || storage.isWorking)
                 if library.isMaintainingLibrary || storage.isWorking { HStack { ProgressView().controlSize(.small); Text(storage.message ?? "Vérification et traitement…"); Spacer(); Button("Arrêter") { maintenanceTask?.cancel(); storage.cancel() } } }
@@ -381,7 +393,7 @@ struct Workspace06View: View {
                 if let recovery = storage.recoveryURL { Button("Voir le dossier de récupération") { NSWorkspace.shared.activateFileViewerSelecting([recovery]) } }
             }
             panel {
-                Text("Sources et cache").font(.headline)
+                HStack { Text("Sources et cache").font(.headline); LibraryHelpButton(title: "Sources et cache", text: "Retrouver un dossier associe des ULog dont le SHA256 correspond aux analyses conservées. Archiver copie et vérifie les ULog choisis dans un autre dossier. Nettoyer déplace le cache et les anciennes révisions dans une récupération ; le dernier résumé, la dernière analyse détaillée et les ULog restent disponibles."); Spacer(); Button("Sources d’import…") { showingSources = true }.help(LibraryHelp.sources) }
                 Text("Les chemins restent dans l’historique même si une carte SD est retirée. Retrouver des sources vérifie leur contenu par SHA256.").font(.caption).foregroundStyle(.secondary)
                 ViewThatFits(in: .horizontal) { HStack { sourceActions }; VStack(alignment: .leading, spacing: 10) { sourceActions } }.disabled(mutationBusy || library.isReadOnly || storage.isWorking || storage.isLoading)
                 Text("\(selectedStorageLogs.count) logs choisis, y compris sur les autres pages. Le nettoyage déplace leur cache détaillé et leurs anciennes révisions dans un dossier de récupération. Le dernier résumé et la dernière analyse détaillée de chaque log restent dans l’historique. Les ULog sont conservés ; aucun gain disque n’est garanti sans compactage.").font(.caption).foregroundStyle(.secondary)
@@ -413,8 +425,11 @@ struct Workspace06View: View {
     }
     @ViewBuilder private var sourceActions: some View {
         Button("Retrouver un dossier…") { if let folder = selectFolder("Retrouver les sources") { storage.perform(command: "reassociate", folder: folder) } }
+            .help("Cherche des ULog dont le SHA256 correspond aux analyses conservées et associe les chemins retrouvés.")
         Button("Archiver les logs choisis…") { if let folder = selectFolder("Copier les ULog sélectionnés") { storage.perform(command: "archive", logIDs: selectedStorageLogs.sorted(), destination: folder) } }.disabled(selectedStorageLogs.isEmpty)
+            .help("Copie et vérifie les ULog choisis dans un autre dossier. Les originaux sont conservés.")
         Button("Nettoyer cache et anciennes analyses") { storage.perform(command: "clean-cache", logIDs: selectedStorageLogs.sorted()) }.disabled(selectedStorageLogs.isEmpty)
+            .help("Déplace le cache et les anciennes révisions dans une récupération. Le dernier résumé, la dernière analyse détaillée et les ULog restent disponibles.")
     }
     @ViewBuilder private var backupButtons: some View {
         Button("Analyses + réglages…") { backup(includeULog: false) }
@@ -429,7 +444,8 @@ struct Workspace06View: View {
                 if reportPreview.isLoading { ProgressView("Prévisualisation des comptes…").controlSize(.small) }
                 else if let preview = reportPreview.preview {
                     Text(preview.request.scopeDescription).font(.callout).foregroundStyle(.secondary)
-                    Text("\(preview.totals.logs) logs · \(preview.totals.messages) messages · \(preview.totals.droneCount) contrôleurs").font(.headline)
+                    Text("\(preview.totals.logs) logs · \(preview.totals.messages) messages · \(preview.totals.scannedDrones) drones scannés").font(.headline)
+                    Text("\(preview.totals.provisionalDrones) identités provisoires, comptées à part").font(.caption).foregroundStyle(.secondary)
                     Text("Révision \(preview.revision) · vérifiée à \(preview.checkedAt.formatted(date: .omitted, time: .shortened)) · \(preview.request.query.maskedMessageKeys.count) règles de masquage").font(.caption).foregroundStyle(.secondary)
                     if preview.totals.logs == 0 { Text("Cette sélection ne contient aucun log. Choisissez une autre sélection ou la bibliothèque complète.").font(.callout).foregroundStyle(.secondary) }
                 } else if let issue = reportPreview.error {
@@ -463,7 +479,7 @@ struct Workspace06View: View {
                 Picker("Thème", selection: Binding(get: { views.state.theme ?? "system" }, set: { value in edit { try views.setTheme(value) } })) { Text("Système").tag("system"); Text("Clair").tag("light"); Text("Sombre").tag("dark") }.pickerStyle(.segmented).disabled(library.isReadOnly)
             }
             UpdateSettingsView(store: updates, readOnly: library.isReadOnly)
-            panel { Text("Diagnostic local").font(.headline); Text("Versions, système et états de l’app uniquement. Aucun log, texte d’erreur libre, chemin, identité, endpoint GCS ou coordonnée n’est inclus.").font(.callout).foregroundStyle(.secondary); Text("Les comptes de logs, messages et contrôleurs qualifient la sélection active. Les jobs, masquages et vues qualifient l’app ; chaque compte indique son périmètre dans le JSON.").font(.caption).foregroundStyle(.secondary); Button("Prévisualiser le diagnostic") { makeDiagnostic() }.focused($focusedControl, equals: .diagnostic) }
+            panel { Text("Diagnostic local").font(.headline); Text("Versions, système et états de l’app uniquement. Aucun log, texte d’erreur libre, chemin, identité, endpoint GCS ou coordonnée n’est inclus.").font(.callout).foregroundStyle(.secondary); Text("Les comptes de la bibliothèque qualifient la sélection active. Les jobs, masquages et vues qualifient l’app ; chaque compte indique son périmètre dans le JSON.").font(.caption).foregroundStyle(.secondary); Button("Prévisualiser le diagnostic") { makeDiagnostic() }.focused($focusedControl, equals: .diagnostic) }
         }
     }
     private var diagnosticSheet: some View {
@@ -483,7 +499,14 @@ struct Workspace06View: View {
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(.primary.opacity(0.09), lineWidth: 1))
     }
     private func notice(_ text: String, symbol: String) -> some View { Label(text, systemImage: symbol).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
-    private func metric(_ title: String, value: Int, note: String) -> some View { panel { Text(title).font(.caption).foregroundStyle(.secondary); Text(value.formatted()).font(.system(size: 30, weight: .semibold)).monospacedDigit(); Text(note).font(.caption).foregroundStyle(.secondary) } }
+    private func metric(_ title: String, value: Int, note: String) -> some View { metric(title, value: value.formatted(), note: note) }
+    private func metric(_ title: String, value: String, note: String, help: String? = nil) -> some View {
+        panel {
+            HStack(spacing: 4) { Text(title).font(.caption).foregroundStyle(.secondary); if let help { LibraryHelpButton(title: title, text: help) } }
+            Text(value).font(.system(size: value == "Indisponible" ? 21 : 30, weight: .semibold)).monospacedDigit()
+            Text(note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+    }
     private func empty(_ title: String, action: String, perform: @escaping () -> Void) -> some View { VStack(alignment: .leading, spacing: 12) { Text(title).foregroundStyle(.secondary); Button(action, action: perform).disabled(busy) }.padding(.vertical, 25) }
     private func pagination(cursors: Binding<[String?]>, next: String?, action: @escaping (String?) -> Void) -> some View {
         HStack { Button("Précédent") { var stack = cursors.wrappedValue; guard stack.count > 1 else { return }; stack.removeLast(); cursors.wrappedValue = stack; action(stack.last ?? nil) }.disabled(cursors.wrappedValue.count <= 1 || busy); Text("Page \(cursors.wrappedValue.count)").font(.caption).foregroundStyle(.secondary); Spacer(); Button("Suivant") { guard let next else { return }; cursors.wrappedValue.append(next); action(next) }.disabled(next == nil || busy) }

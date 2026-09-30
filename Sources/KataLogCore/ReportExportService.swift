@@ -90,6 +90,10 @@ private struct ReportSummary: Decodable, Sendable {
     var failsafeLogs: Int
     var familyLogCounts: [String: Int]
     var droneCount: Int
+    var scannedDroneCount: Int?
+    var provisionalDroneCount: Int?
+    var flightSeconds: Double?
+    var flightLogCount: Int?
     var rawDataIncluded: Bool
     var detailedCachedLogCount: Int
 }
@@ -317,6 +321,17 @@ public enum ReportExportService {
             text.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
                 .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
         }
+        func help(_ label: String, _ text: String) -> String {
+            "<details class=\"report-help\"><summary title=\"\(h(text))\" aria-label=\"Aide : \(h(label))\">ⓘ</summary><p>\(h(text))</p></details>"
+        }
+        func statLabel(_ label: String, _ text: String) -> String {
+            "<div class=\"stat-label\"><span title=\"\(h(text))\">\(h(label))</span>\(help(label, text))</div>"
+        }
+        let flight = summary.flightSeconds.flatMap { $0.isFinite && $0 >= 0 && (summary.flightLogCount ?? 0) > 0 ? $0 : nil }
+        let flightValue = flight.map { String(format: "%.2f", $0 / 60) + "<em> min</em>" } ?? "Non disponible"
+        let scanned = summary.scannedDroneCount.map(String.init) ?? "Non disponible"
+        let provisional = summary.provisionalDroneCount.map { "\($0) identités provisoires" } ?? "Répartition des identités non disponible"
+        let flightCoverage = summary.flightLogCount.map { "Calculé sur \($0) / \(summary.totalLogs) logs" } ?? "Couverture non disponible"
         let families = summary.familyLogCounts.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }
         var rows = ""
         for (name, count) in families.prefix(200) {
@@ -332,9 +347,9 @@ public enum ReportExportService {
         <section class="hero"><div><p class="eyebrow">KATALOG · RAPPORT CAPTURÉ</p><h1>Les traces de votre flotte.</h1><p class="lede">\(h(summary.scopeDescription))</p></div><div class="meta"><span class="pill">Révision \(prepared.revision)</span><p>\(h(summary.generatedAt))</p></div></section>
         <p class="notice">Le rapport dépasse le budget du document interactif. Cette synthèse est accompagnée des données JSON intégrales de la sélection. Aucun log ni message sélectionné n’a été supprimé pour respecter le budget.</p>
         <p class="muted">\(privacy) Les fichiers ULog originaux restent inchangés. Une alerte n’est pas une panne confirmée.</p>
-        <section class="stats"><div class="stat"><span>Identités drone</span><strong>\(summary.droneCount)</strong></div><div class="stat"><span>Fichiers ULog</span><strong>\(summary.totalLogs)</strong><small>\(summary.validLogs) lisibles</small></div><div class="stat"><span>Messages sélectionnés</span><strong>\(summary.totalMessages)</strong></div><div class="stat"><span>Durée enregistrée</span><strong>\(String(format: "%.2f", summary.recordedSeconds / 60))<em> min</em></strong></div></section>
-        <section class="panel"><p class="eyebrow">PROFIL DES ALERTES TEXTUELLES</p><h2>Les familles présentes</h2><div class="family-bars">\(rows.isEmpty ? "<p>Aucune alerte textuelle repérée.</p>" : rows)</div><p class="muted">\(familyNote)</p><p>\(summary.alertLogs) logs avec alertes · \(summary.failsafeLogs) logs avec failsafe dans le périmètre.</p></section>
-        <section class="panel" style="margin-top:20px"><p class="eyebrow">DONNÉES ET TRAÇABILITÉ</p><h2>Les pièces du rapport</h2><ul class="coverage-list">\(files)<li><a href="manifest.json" download>Manifeste versionné et empreintes SHA256</a></li></ul><p>\(summary.detailedCachedLogCount) logs possèdent des détails déjà présents dans le cache au moment de la capture. Les sources n’ont pas été ouvertes pour enrichir ce rapport.</p><p class="muted">Le document fonctionne hors ligne, en mode clair ou sombre et à l’impression. Les chiffres décrivent la sélection capturée.</p></section></main></body></html>
+        <section class="stats"><div class="stat">\(statLabel("Drones scannés", LibraryHelp.drones))<strong>\(scanned)</strong><small>\(provisional)</small></div><div class="stat">\(statLabel("Fichiers ULog", LibraryHelp.analysisQuality))<strong>\(summary.totalLogs)</strong><small>\(summary.validLogs) lisibles</small></div><div class="stat"><span>Messages sélectionnés</span><strong>\(summary.totalMessages)</strong></div><div class="stat">\(statLabel("Durée enregistrée", LibraryHelp.recordedDuration))<strong>\(String(format: "%.2f", summary.recordedSeconds / 60))<em> min</em></strong><small>Inclut les périodes au sol</small></div><div class="stat">\(statLabel("Temps de vol cumulé", LibraryHelp.flightDuration))<strong>\(flightValue)</strong><small>\(flightCoverage)</small></div></section>
+        <section class="panel"><p class="eyebrow">PROFIL DES ALERTES TEXTUELLES</p><div class="heading-with-help"><h2 title="\(h(LibraryHelp.profile))">Les familles présentes</h2>\(help("Profil des alertes", LibraryHelp.profile))</div><div class="family-bars">\(rows.isEmpty ? "<p>Aucun message d’alerte textuel affiché. La couverture de chaque log reste dans le JSON joint.</p>" : rows)</div><p class="muted">\(familyNote)</p><p>\(summary.alertLogs) logs avec alertes · \(summary.failsafeLogs) logs avec failsafe dans le périmètre.</p></section>
+        <section class="panel" style="margin-top:20px"><p class="eyebrow">DONNÉES ET TRAÇABILITÉ</p><div class="heading-with-help"><h2>Les pièces du rapport</h2>\(help("Sources et pièces du rapport", LibraryHelp.provenance))</div><ul class="coverage-list">\(files)<li><a href="manifest.json" download>Manifeste versionné et empreintes SHA256</a></li></ul><p>\(summary.detailedCachedLogCount) logs possèdent des détails déjà présents dans le cache au moment de la capture. Les sources n’ont pas été ouvertes pour enrichir ce rapport.</p><p class="muted">\(h(LibraryHelp.provenance))</p><p class="muted">Le document fonctionne hors ligne, en mode clair ou sombre et à l’impression. Les chiffres décrivent la sélection capturée.</p></section></main></body></html>
         """
     }
 }

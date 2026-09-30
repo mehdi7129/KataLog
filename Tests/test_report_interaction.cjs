@@ -10,7 +10,7 @@ const script = source.match(/static\s+let\s+script\s*=\s*#"""([\s\S]*?)"""#/);
 assert.ok(script, 'ReportInteraction.swift must expose its static script for browser-free contract tests');
 const context = { module: { exports: {} }, console };
 vm.runInNewContext(script[1], context, { timeout: 1000, filename: 'report-interaction.js' });
-const { selectLogs, statistics, familyCounts, dailyCounts, dayKey, groupCounts, pageWindow } = context.module.exports;
+const { selectLogs, statistics, familyCounts, dailyCounts, dayKey, groupCounts, pageWindow, assessment, assessmentLabel, assessmentTone } = context.module.exports;
 for (const [name, fn] of Object.entries({ selectLogs, statistics, familyCounts, dailyCounts, dayKey, groupCounts })) {
   assert.equal(typeof fn, 'function', `${name} is part of the pure report contract`);
 }
@@ -189,4 +189,65 @@ test('detail pages clamp after a filter shrinks the selection and retain explici
   assert.equal(pageWindow(input,-3).index,0);
   assert.equal(pageWindow(input,Infinity).index,0);
   assert.deepEqual(plain(pageWindow([],8).items),[]);
+});
+
+test('flight duration accepts measured zero, reports coverage, and keeps unknown distinct after filters', () => {
+  const logs=[log('zero',{flightSeconds:0}),log('measured',{flightSeconds:30,messages:[message(0)]}),
+    log('unknown',{flightSeconds:null}),log('negative',{flightSeconds:-1}),log('nonfinite',{flightSeconds:Infinity}),
+    log('failed',{status:'error',flightSeconds:900})];
+  let stats=statistics(selectLogs(logs,filters()));
+  assert.equal(stats.durationSeconds,300);
+  assert.equal(stats.flightSeconds,30);
+  assert.equal(stats.flightLogCount,2);
+  assert.equal(stats.logCount,6,'Coverage denominator includes every selected log');
+  stats=statistics(selectLogs(logs,filters({query:'unknown'})));
+  assert.equal(stats.flightSeconds,null,'Unavailable is not recorded as zero');
+  assert.equal(stats.flightLogCount,0);
+  assert.equal(statistics(selectLogs(logs,filters({level:'ERROR+'}))).flightSeconds,30);
+  assert.equal(statistics(selectLogs([],filters())).flightSeconds,null);
+});
+
+test('scanned drones and provisional identities remain distinct including anonymized overrides', () => {
+  const logs=[log('known'),log('known-copy'),log('card',{droneID:'card:source'}),
+    log('unknown',{droneID:'unknown:source'}),log('shared',{droneID:'drone-0001',identityProvisional:true}),
+    log('assigned',{droneID:'controller-b',identityProvisional:false})];
+  const stats=statistics(selectLogs(logs,filters()));
+  assert.equal(stats.droneCount,5);
+  assert.equal(stats.scannedDroneCount,2);
+  assert.equal(stats.provisionalDroneCount,3);
+  assert.equal(statistics(selectLogs(logs,filters({drone:'drone-0001'}))).scannedDroneCount,0);
+  assert.equal(statistics(selectLogs(logs,filters({drone:'drone-0001'}))).provisionalDroneCount,1);
+});
+
+test('badge follows observed severity independently of reading quality and filtered scope', () => {
+  const logs=[log('mixed',{status:'partial',messages:[message(0),message(1,{level:'WARNING',family:'Batterie',text:'Battery warning'})],
+    signalAssessment:{state:'critical',level:'CRITICAL',primaryText:'Événement PX4 42',occurrenceCount:3,eventCount:1,untranslatedEventCount:1}})];
+  assert.equal(assessment(selectLogs(logs,filters())[0]).state,'critical');
+  const filtered=assessment(selectLogs(logs,filters({family:'Batterie'}))[0]);
+  assert.equal(filtered.state,'warning');
+  assert.equal(filtered.level,'WARNING');
+  assert.equal(filtered.occurrenceCount,1);
+  assert.equal(filtered.eventCount,0);
+  assert.equal(assessmentLabel(filtered),'Avertissement');
+  assert.equal(assessmentTone(filtered),'yellow');
+  assert.equal(logs[0].signalAssessment.state,'critical','Filtering never changes the captured assessment');
+});
+
+test('untranslated PX4 event preserves known external severity without inventing a motive', () => {
+  const event={eventID:42,level:'INFO',internalLevelName:'WARNING',externalLevelName:'CRITICAL',translationStatus:'untranslated',message:'unused private motive'};
+  const item=selectLogs([log('event',{events:[event]})],filters())[0];
+  const signal=assessment(item);
+  assert.equal(signal.state,'critical');assert.equal(signal.level,'CRITICAL');
+  assert.equal(signal.primaryText,'Événement PX4 42');
+  assert.equal(signal.untranslatedEventCount,1);
+  assert.equal(statistics([item]).alertLogCount,0,'Text/failsafe chart totals remain separate from the event badge');
+});
+
+test('absence remains indeterminate for failed, partial, unknown-level and older analysis data', () => {
+  for(const patch of [{status:'error'},{status:'partial'},{}, {events:[],messages:[message(0,{level:'UNKNOWN',isAlert:false})]}]) {
+    assert.equal(assessment(selectLogs([log('limited',patch)],filters())[0]).state,'unknown');
+  }
+  assert.equal(assessment(selectLogs([log('evaluated',{events:[]})],filters())[0]).state,'none');
+  const semantic=assessment(selectLogs([log('alarm',{messages:[message(0,{level:'INFO',text:'[ALARM] observed'})]})],filters({level:'INFO'}))[0]);
+  assert.equal(semantic.state,'warning');assert.equal(semantic.level,'INFO');
 });

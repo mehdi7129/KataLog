@@ -10,6 +10,63 @@ conserve le choix explicite d’une bibliothèque. Recette visuelle et approbati
 restent distinctes des tests du moteur. La bibliothèque de la stable conserve
 son emplacement habituel et les destinations explicites sont préservées.
 
+## Sources, indicateurs et badges — lot de clarté
+
+- **Sources d’import :** liste globale paginée, retrait/restauration persistants,
+  annulation et réactivation par import explicite ou réassociation réussie.
+  Les ULogs, analyses, annotations et chemins de provenance restent conservés.
+  Les actions respectent le verrou écrivain, la lecture seule et les opérations
+  actives. La nouvelle projection **7** se reconstruit sans relire les ULogs ;
+  le parseur reste **1.4.0**.
+- **Indicateurs :** drones scannés avec identités provisoires séparées, durée
+  enregistrée incluant le sol, temps de vol cumulé avec couverture N / M logs.
+  Une durée absente reste indisponible ; zéro mesuré reste zéro. Les agrégats
+  portent sur toute la sélection, indépendamment de la page affichée.
+- **Badges :** Signal critique, Erreur à vérifier, Avertissement, Aucune alerte
+  détectée et Niveau indéterminé. Le motif observé et la qualité de lecture sont
+  distincts. Les événements non traduits conservent leur gravité connue ; un
+  failsafe sans niveau n’invente pas un niveau CRITICAL. Filtres et masques sont
+  appliqués au badge. Le compteur d’alertes conserve son périmètre historique
+  messages textuels/failsafe, explicité dans l’aide.
+- **Aides et rapports :** définitions communes au survol, au clic et au clavier ;
+  rapports HTML/JSON, mode sans JavaScript, filtres dynamiques, anonymisation et
+  impression cohérents. La provenance exportée est distinguée des sources
+  d’import actives dans l’app.
+
+### Preuves du lot
+
+| Contrôle | Résultat | Périmètre |
+|---|---|---|
+| Python autonome | **335 réussis / 336 cas**, 0 échec/erreur/skip inattendu | Le corpus privé de neuf ULogs est absent et annoncé séparément |
+| Swift complet | **230 réussis**, 0 échec/skip | Stores, moteur, export, DOM WebKit et vues natives |
+| Node | **18 réussis**, 0 échec/skip | Recalcul des indicateurs et badges avec les filtres |
+| Conservation et rendu | Retrait/restauration/annulation réels sur fixture, SHA ULog inchangé ; captures natives clair/sombre et rapports JS/sans JS inspectés | Données synthétiques ; fenêtres minimales sources 650×460, workspace/fiche 900×620 |
+| Historique synthétique | 50 000 logs, 5 millions de messages, 500 drones : tous les p95 sous 500 ms ; maximum **350,1 ms**, RSS **169 Mio** | Index préparé en 432,57 s ; cache OS non contrôlé |
+| Liste des sources | 50 000 chemins, 500 dossiers, page 200 : p95 **8,33 ms** | Avant index/range : 1 990 ms ; chemins Unicode, racine, voisins et copies multiples vérifiés |
+| Secrets | Gitleaks 8.30.1 : **0 finding** sur les 206 fichiers du gel publiable | Contrôle complémentaire de contenu ; ne publie pas le dépôt |
+
+Les sous-suites ne sont pas additionnées aux **583 tests réussis** ci-dessus.
+Cette recette ne constitue pas un test matériel simultané de 500 drones et ne
+ferme pas les portes de distribution sur les autres versions de macOS.
+
+### Package de revue 0.6.0 (10)
+
+App et DMG signés Developer ID et acceptés par Apple ; tickets attachés au helper,
+à l’app et au DMG. Les **neuf gates de distribution passent sur macOS 27.0.1**,
+y compris retrait/restauration avec le helper embarqué dans des processus
+distincts, préservation des ULogs et validation des tickets de l’app et du
+helper montés. Le moteur contient les **11 modules** actuels et correspond
+exactement aux SHA de leurs sources. Le contrôle de confidentialité du bundle
+inspecte **178 fichiers / 474 payloads embarqués : 0 finding** ; les 22 binaires
+ARM64 inspectés n’ont aucune dépendance externe à la machine de développement.
+
+| Package notarisé 0.6.0 (10) | Octets | SHA256 |
+|---|---:|---|
+| DMG | 19 051 960 | `2755a628143e6379f30098b3201a09d7deebe75719f354ed5fe5fac33ef8bbf7` |
+| ZIP avec tickets helper/app | 19 407 355 | `1014e4b13ef8b92eee726f930fbca54b88c2fc2cdf1ba1b151addc9a3e7fc182` |
+
+Package local de revue, updater désactivé, aucune release 0.6.0 ni passage public.
+
 ## Suite autorisée et recette physique
 
 - **Décisions enregistrées :** interfaces approuvées, licence **GPL-3.0-only**,

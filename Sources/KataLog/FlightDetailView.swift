@@ -181,24 +181,22 @@ struct FlightDetailView: View {
 
     private func summary(_ log: FlightLog) -> some View {
         FlightPanel {
-            HStack(spacing: 22) {
-                summaryValue(symbol: "clock", value: FlightUIFormat.duration(log.durationSeconds), label: "Durée enregistrée")
-                Divider().frame(height: 36)
-                summaryValue(symbol: "exclamationmark.triangle", value: "\(log.messages.filter(\.isAlert).count)", label: "Messages d’alerte", color: style.amber)
-                Divider().frame(height: 36)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 20)], alignment: .leading, spacing: 18) {
+                summaryValue(symbol: "clock", value: FlightUIFormat.duration(log.durationSeconds), label: "Durée enregistrée", help: LibraryHelp.recordedDuration)
+                summaryValue(symbol: "airplane", value: log.flightSeconds.map(FlightUIFormat.duration) ?? "Indisponible", label: "Temps de vol mesuré", help: LibraryHelp.flightDuration)
+                summaryValue(symbol: "exclamationmark.triangle", value: "\(log.summaryAlertMessageCount ?? log.messages.filter(\.isAlert).count)", label: "Messages d’alerte", color: style.amber, help: "Occurrences de messages d’alerte dans ce log. Une répétition reste une observation enregistrée et ne prouve pas une nouvelle panne. Les événements PX4 et le failsafe sont évalués dans le badge des signaux.")
                 summaryValue(symbol: "antenna.radiowaves.left.and.right", value: log.primaryGNSSCoverage.map { "\(formatted($0.fixedPercent)) %" } ?? "—", label: log.primaryGNSSCoverage.map { "RTK fixé · GNSS \($0.instance) · \($0.observedSeconds.map(FlightUIFormat.duration) ?? "durée inconnue") observés" } ?? "RTK · données indisponibles")
-                Divider().frame(height: 36)
                 summaryValue(symbol: "battery.50percent", value: log.metrics.first { $0.key == "battery.remaining_min" }.map { "\(formatted($0.value)) %" } ?? "—", label: "Charge minimum observée")
             }
         }
     }
 
-    private func summaryValue(symbol: String, value: String, label: String, color: Color? = nil) -> some View {
+    private func summaryValue(symbol: String, value: String, label: String, color: Color? = nil, help: String? = nil) -> some View {
         HStack(spacing: 10) {
             Image(systemName: symbol).font(.system(size: 19)).foregroundStyle(color ?? style.secondary)
             VStack(alignment: .leading, spacing: 5) {
                 Text(value).font(.system(size: 17, weight: .semibold)).monospacedDigit()
-                Text(label).font(.system(size: 10)).foregroundStyle(style.secondary)
+                HStack(spacing: 3) { Text(label).font(.system(size: 10)).foregroundStyle(style.secondary); if let help { LibraryHelpButton(title: label, text: help) } }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -207,6 +205,21 @@ struct FlightDetailView: View {
     private func overview(_ log: FlightLog) -> some View {
         let selected = log.messages.first { $0.id == selectedMessageID }
         return VStack(alignment: .leading, spacing: 18) {
+            FlightPanel {
+                HStack(alignment: .top, spacing: 28) {
+                    VStack(alignment: .leading, spacing: 9) {
+                        HStack { LogAssessmentBadge(log: log); LibraryHelpButton(title: "Niveau des signaux enregistrés", text: LibraryHelp.assessment) }
+                        Text(log.assessment.reason).font(.callout).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                        if log.assessment.untranslatedEventCount > 0 {
+                            Text("\(log.assessment.untranslatedEventCount) événements PX4 sans traduction disponible").font(.caption).foregroundStyle(style.secondary)
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack { Text("Qualité de lecture").font(.caption).foregroundStyle(style.secondary); LibraryHelpButton(title: "Qualité de lecture", text: LibraryHelp.analysisQuality) }
+                        Text(log.analysisQualityLabel).font(.callout.weight(.medium))
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
             HStack(alignment: .top, spacing: 16) {
                 FlightTrackMap(logs: [log], cursorTime: selected?.position == nil ? nil : selected?.timestampSeconds,
                                cursorPosition: selected?.position,
@@ -239,11 +252,11 @@ struct FlightDetailView: View {
                 FlightPanel {
                     VStack(alignment: .leading, spacing: 12) {
                         sectionTitle("Contexte de l’enregistrement")
-                        detailLine("Temps en vol qualifié", log.flightSeconds.map(FlightUIFormat.duration) ?? "Couverture insuffisante ou indisponible")
+                        detailLine("Temps de vol mesuré", log.flightSeconds.map(FlightUIFormat.duration) ?? "Couverture insuffisante ou indisponible")
                         if let observed = log.flightObservedSeconds { detailLine("Vol observé, sans extrapolation", FlightUIFormat.duration(observed)) }
                         if let fraction = log.flightCoverageFraction { detailLine("Couverture du détecteur", "\(formatted(fraction * 100)) % de l’enregistrement") }
                         detailLine("Failsafe observé", log.failsafeObserved ? "Oui" : "Non repéré")
-                        detailLine("Lecture du fichier", log.status == "ok" ? "Réussie" : log.status == "partial" ? "Partielle" : "En erreur")
+                        detailLine("Lecture du fichier", log.analysisQualityLabel)
                         Text("La durée enregistrée inclut le temps au sol. Une alerte enregistrée ne confirme pas à elle seule une panne.")
                             .font(.system(size: 10)).foregroundStyle(style.secondary).fixedSize(horizontal: false, vertical: true)
                     }
@@ -345,7 +358,7 @@ struct FlightDetailView: View {
                     ForEach(visible) { message in
                         FlightPanel(padding: 15) {
                             VStack(alignment: .leading, spacing: 10) {
-                                HStack {
+                        HStack {
                                     levelLabel(message)
                                     Text(message.family).font(.system(size: 10)).foregroundStyle(style.secondary)
                                     Spacer()
@@ -506,7 +519,7 @@ struct FlightDetailView: View {
         VStack(alignment: .leading, spacing: 18) {
             FlightPanel {
                 VStack(alignment: .leading, spacing: 14) {
-                    sectionTitle("Couverture et limites")
+                    HStack { sectionTitle("Couverture et limites"); LibraryHelpButton(title: "Qualité de lecture", text: LibraryHelp.analysisQuality) }
                     if log.metadata["detailCacheStatus"] == "previous" {
                         Label("Dernière analyse conservée · parseur \(log.metadata["detailParserVersion"] ?? "inconnu"). Source nécessaire pour actualiser.", systemImage: "clock.arrow.circlepath").font(.callout).foregroundStyle(style.amber)
                     }
@@ -532,7 +545,8 @@ struct FlightDetailView: View {
             }
             FlightPanel {
                 VStack(alignment: .leading, spacing: 14) {
-                    sectionTitle("Provenance du fichier")
+                    HStack { sectionTitle("Provenance du fichier"); LibraryHelpButton(title: "Sources d’import", text: LibraryHelp.sources) }
+                    if log.isProvisionalIdentity { Label("Identité provisoire · identifiant fiable indisponible dans ce log", systemImage: "questionmark.circle").font(.caption).foregroundStyle(style.secondary) }
                     if let warning = log.annotationWarning { Label(warning, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange) }
                     if let number = log.stockNumber { detailLine("Numéro local", number) }
                     detailLine("Nom source", log.droneName)

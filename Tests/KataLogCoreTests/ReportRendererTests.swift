@@ -194,6 +194,49 @@ final class ReportRendererTests: XCTestCase {
         XCTAssertTrue(html.contains("Détectée &lt;capteur&gt;"))
     }
 
+    func testDurationsAndProvisionalIdentitiesHaveIndependentValuesAndAccessibleHelp() throws {
+        var measured = log("flight", messages: [])
+        measured.flightSeconds = 20
+        var provisional = log("provisional", droneID: "card:source", messages: [])
+        provisional.flightSeconds = 0
+        let unavailable = log("unavailable", messages: [])
+        var failed = log("failed", droneID: "unknown:source", messages: [])
+        failed.status = "error"; failed.flightSeconds = 400
+        let html = ReportRenderer.html(snapshot([measured, provisional, unavailable, failed]))
+        XCTAssertTrue(html.contains("Drones scannés"))
+        XCTAssertTrue(html.contains("id=\"stat-drones\">1</strong>"))
+        XCTAssertTrue(html.contains("id=\"stat-provisional\">2 identités provisoires"))
+        XCTAssertTrue(html.contains("Calculé sur 2 / 4 logs"))
+        XCTAssertTrue(html.contains("Temps de vol cumulé"))
+        XCTAssertTrue(html.contains("aria-label=\"Aide : Durée enregistrée\""))
+        XCTAssertTrue(html.contains("<details class=\"report-help\"><summary title="))
+        XCTAssertTrue(html.contains(".detail-pagination, .report-help { display: none !important; }"))
+        let logs = try XCTUnwrap(try payload(in: html)["logs"] as? [[String: Any]])
+        XCTAssertTrue(logs.first { $0["id"] as? String == "unavailable" }?["flightSeconds"] is NSNull)
+        XCTAssertEqual(logs.first { $0["id"] as? String == "provisional" }?["flightSeconds"] as? Double, 0)
+        XCTAssertEqual(logs.first { $0["id"] as? String == "provisional" }?["identityProvisional"] as? Bool, true)
+        XCTAssertTrue(ReportRenderer.html(snapshot([unavailable])).contains("id=\"stat-flight\">Non disponible"))
+    }
+
+    func testBadgeIsDistinctFromReadingQualityAndJSONRetainsSameAssessment() throws {
+        var partial = log("partial", messages: [message("warning", level: "WARNING")])
+        partial.status = "partial"
+        partial.events = [PX4Event(id: "raw", eventID: .integer(42), timeSeconds: nil,
+            level: "INFO", message: nil, argumentsHex: "00ff", definitionSource: nil,
+            internalLevelName: "WARNING", externalLevelName: "CRITICAL", translationStatus: "untranslated")]
+        let html = ReportRenderer.html(snapshot([partial]))
+        XCTAssertTrue(html.contains("class=\"log-assessment red\""))
+        XCTAssertTrue(html.contains("Signal critique</span>"))
+        XCTAssertTrue(html.contains("Lecture partielle</span>"))
+        XCTAssertTrue(html.contains("Événement PX4 42"))
+        let decoded = try AnalysisService.decode(ReportRenderer.json(snapshot([partial])))
+        XCTAssertEqual(decoded.logs[0].signalAssessment, partial.assessment)
+        XCTAssertEqual(decoded.logs[0].signalAssessment?.untranslatedEventCount, 1)
+        let old = log("old", messages: [])
+        XCTAssertTrue(ReportRenderer.html(snapshot([old])).contains("Niveau indéterminé</span>"))
+        XCTAssertFalse(ReportRenderer.html(snapshot([old])).contains("Aucune alerte détectée</span>"))
+    }
+
     private func rawPayload(in html: String) throws -> String {
         let expression = try NSRegularExpression(pattern: #"<script\b[^>]*\bid\s*=\s*["']report-data["'][^>]*>([\s\S]*?)</script\s*>"#, options: .caseInsensitive)
         let match = try XCTUnwrap(expression.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)), "A report-data JSON script is required for offline interactivity.")
