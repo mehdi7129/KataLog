@@ -23,9 +23,9 @@ un fonctionnement universel sans bug ou une release.
 | Migration legacy validée | 1 |
 | SDK update exercé, avec limites de phase | 2 |
 | Backend validé, UI en preview | 6 |
-| Implémenté, gates UI/distribution/CI distincts | 17 |
+| Implémenté, gates UI/distribution/CI distincts | 16 |
 | Preview avec recette visuelle restante | 3 |
-| Qualification externe | 8 |
+| Qualification externe | 9 |
 | Décision explicite requise | 3 |
 | Intégration finale en cours | 0 |
 | **Total d’IDs uniques** | **117** |
@@ -63,6 +63,7 @@ ne devient courant simplement parce que le numéro du parseur a changé.
 | ALL Python public final | **301 réussis + 1 absence explicite du corpus privé sur 302**, 0 échec/erreur/skip inattendu | Gate autonome ; absence privée annoncée séparément |
 | ALL Swift final | **208/208 réussis, 0 échec/skip** | Copie de sources figée ; ne remplace pas une recette GUI, VoiceOver ou matérielle |
 | ALL Node final | **13/13 réussis** | Interactions DOM sur fixtures ; navigateur et print restent distincts |
+| CI distante, tentative sur `377d8af` | CI hébergée indisponible : 4 jobs refusés avant allocation de runner ; **0 étape exécutée**, aucun test ni compilation démarré | Aucune qualification distante de macOS15/27 |
 | Captures synthétiques de revue | 30 captures, dont historique sombre, stockage et rapport clair | La conformité observée reste une revue locale ; approbation utilisateur des nouveaux écrans distincte |
 | Corpus source privé | 9 originaux : SHA256, taille et mtime inchangés | Copies locales stables utilisées pour les tests ; aucun original publié |
 | Tests autonomes | Fixtures ULog, dictionnaires, topics, paramètres, queues et rapports inventés | Le test privé annonce son absence quand son dossier n’est pas fourni ; aucun gate critique dépend de ce dossier |
@@ -468,9 +469,20 @@ Preuves : [test_publication_guard.py](../Tests/test_publication_guard.py),
 [LibraryIntegrationTests](../Tests/KataLogAppTests/LibraryIntegrationTests.swift)
 et les suites liées par lot ci-dessus. Les 523 tests uniques et le moteur
 reconstruit sont validés. Le package local de revue possède ses sept gates
-réussis et l’audit final précommit est validé. Le résultat de CI distante reste
-à consigner après son exécution ; les 175 tests de l’audit 0.5.2 restent
+réussis et l’audit final précommit est validé. La tentative de CI distante est
+consignée ci-dessous sans exécution de tests ; les 175 tests de l’audit 0.5.2 restent
 historiques.
+
+### Tentative de CI distante
+
+Le [run 36671218490](https://github.com/mehdi7129/KataLog/actions/runs/36671218490)
+de la PR privée, sur le commit `377d8af`, s’est terminé en échec **avant toute
+allocation de runner**. La CI hébergée était indisponible : chacun des quatre
+jobs possède un nom de runner vide et une liste d’étapes vide. **Aucun test distant,
+build ou package n’a été exécuté.** Aucun défaut du code ou du workflow n’a donc
+été reproduit par cette tentative, et aucun succès macOS15/27 en CI n’est
+revendiqué. L8-01 reste une qualification externe : l’exécution distante doit
+être rejouée lorsque la CI hébergée est disponible.
 
 ### Critères à fermer séparément
 
@@ -488,8 +500,8 @@ historiques.
 | Download/remplacement updater sur volume de test plein | L7-07 | Callback ENOSPC download validé ; attestation postquit de conservation/app utilisable validée, erreur GUI non observée |
 | Package local de revue | L8-13 | App preview Developer ID, DMG/ZIP et sept gates validés ; aucun acte de publication |
 | Hygiène des sources, historique de base et assets | L8-09 | Audit final précommit validé ; aucune publication |
-| CI distante | L8-01 | Résultat à consigner après exécution |
-| Documentation et matrice de preuves | L8-12 | Consolidation logicielle terminée ; résultat de CI distinct et à ajouter après exécution |
+| CI distante | L8-01 | Tentative observée : CI hébergée indisponible, quatre jobs refusés avant runner, zéro étape ; exécution distante restante |
+| Documentation et matrice de preuves | L8-12 | Consolidation logicielle terminée ; tentative CI et absence d’exécution consignées |
 | Licence, hébergementfeed, release et visibilité | L7-01, L8-08/14 | Décisions explicites ; aucun changement public effectué |
 
 ## Reproduire les gates autonomes

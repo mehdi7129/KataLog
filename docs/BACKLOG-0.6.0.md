@@ -12,8 +12,10 @@ public exécute 302 cas : 301 réussissent et l’absence du corpus privé est
 annoncée séparément, sans skip inattendu. Les sous-suites et les recettes du
 helper/SDK ne sont pas ajoutées à ces totaux. Le helper est reconstruit sur les
 sources gelées. Le package preview Developer ID 0.6.0 (8) possède sept gates
-locaux réussis et l’audit final précommit est validé. La CI distante, la
-notarisation et le parcours quarantiné ont leurs portes séparées.
+locaux réussis et l’audit final précommit est validé. La CI hébergée était
+indisponible lors de la tentative observée : quatre jobs refusés avant runner, zéro étape exécutée,
+aucun test ou build distant. La notarisation et le parcours quarantiné ont leurs
+portes séparées.
 L’installation 0.5.2 reste inchangée.
 
 Ce document transforme le [plan de version](PLAN-0.6.0.md) en tâches avec
@@ -269,7 +271,7 @@ de vol : accès limité aux logs de la flotte explicitement autorisée.
 
 | ID | P | Tâche et responsabilité | Dépendances | Recette / critère de sortie | État |
 |---|---|---|---|---|---|
-| L8-01 | P1 | Définir et lancer CI autonome multi-langage ; `.github/workflows` proposés, Tests | L0-06, L1-04 | Python/Swift/Node sur fixtures synthétiques ; synthétique package smoke ; privés signalés séparément, aucun skip masquer gate critique ; pas de secrets dans logs/artifacts | Implémenté · CI distante attendue |
+| L8-01 | P1 | Définir et lancer CI autonome multi-langage ; `.github/workflows` proposés, Tests | L0-06, L1-04 | Python/Swift/Node sur fixtures synthétiques ; synthétique package smoke ; privés signalés séparément, aucun skip masquer gate critique ; pas de secrets dans logs/artifacts | Qualification externe · CI hébergée indisponible avant runner, zéro étape |
 | L8-02 | P1 | Exécuter corpus privé de non-régression localement ; QA local | S, L2..L6 | SHA/taille/mtime originaux identiques ; exacts messages/IDs/agrégats ; résultats privés conservés localement ; aucune fixture originale publiée | Validé privé · neuf SHA préservés |
 | L8-03 | P1 | Recette complète clavier/VoiceOver native et web ; QA accessibilité | L0-10, L4/L6 UI | Import→scope→groupe→fiche→identifier→export et collecte/update : labels/focus/raccourcis, statut live, aucun trap ; graphes équivalent textuel, états non portés par couleur seule | Qualification externe · VoiceOver |
 | L8-04 | P1 | Vérifier contrastes, tailles, thèmes et layout réels ; QA/design | L4-15, L6-04 | Clair/sombre/Système, petit espace utile/texte agrandi ; contenu et boutons accessibles ; focus visible et cibles adéquates ; preuves écran synthétiques | Preview · captures/recette GUI |
@@ -280,7 +282,7 @@ de vol : accès limité aux logs de la flotte explicitement autorisée.
 | L8-09 | P1 | Auditer arbre/history/assets/surfaces GitHub publiables ; outils publication/release | L8-08, code final | Guard + secrets scan + revue images/metadonnées/historique/branches/tags/CI/reports ; apps/DMG/ZIP/PYZ inspectés ; aucune donnée personnelle ; archive historique reste privée | Validé ciblé · audit final précommit, aucune publication |
 | L8-10 | P1 | Recette version finale signée/notarisée ; QA distribution | L1-02/06, L7-03/06, L8-09 | macOS 15 réel et27, app téléchargée/quarantinée, DMG drag-copy/eject/launch et update ; sig/Gatekeeper/tickets vérifiés sur fichiers livrés | Qualification externe · package final |
 | L8-11 | P1 | Faire recette matérielle finale et consigner limites ; QA GCS | GCS-10, app finale | Deux drones réels si disponibles, collecte/recovery/cache/cancel/update ; matériel indisponible déclaré ; aucune qualification500 annoncée par extrapolation | Qualification externe · matériel |
-| L8-12 | P1 | Mettre à jour docs, changelog et matrice de preuves ; documentation/release | Tous tickets de livraison | README install/update, contrats/migrations/storage/GCS/export, versions/tests/mesures/limites cohérents ; aucune checklist future présentée comme feature actuelle | Validé ciblé · documentation consolidée, résultat CI distinct |
+| L8-12 | P1 | Mettre à jour docs, changelog et matrice de preuves ; documentation/release | Tous tickets de livraison | README install/update, contrats/migrations/storage/GCS/export, versions/tests/mesures/limites cohérents ; aucune checklist future présentée comme feature actuelle | Validé ciblé · documentation consolidée, tentative CI sans exécution consignée |
 | L8-13 | P1 | Préparer livraison et revue finale sans publier ; release | L8-01..12 | Assets finaux, SHA/notices/appcast/notes et verdict de gates reviewables ; pas de défaut bloquant ouvert ; listing de limites explicite et chemins privés absents | Validé ciblé · package de revue sept gates, publication distincte |
 | L8-14 | P1 | Publier uniquement après instruction explicite puis vérifier accès anonyme ; release | L8-13, autorisation publication | Visibilité/feed/release décidés séparément ; source/assets propres, download anonyme, SHA/signatures/install/update cohérents ; historique archive privé intact | Décision requise · aucune publication |
 
@@ -332,4 +334,4 @@ sont pas des compromis de performance.
 - Port Intel, Windows ou mobile : pas implicites dans cette roadmap macOS
   Apple Silicon ; décision et banc séparés si demandés.
 
-**Prochaines portes :** consigner la CI distante, approuver les nouveaux écrans, puis exécuter les recettes externes disponibles. Le package local de revue et l’audit final précommit sont validés. Le feed, la licence, la release et la visibilité du dépôt nécessitent leurs décisions explicites. La branche de développement et les tests ne modifient pas l’installation utilisateur.
+**Prochaines portes :** relancer la CI distante lorsque la CI hébergée est disponible, approuver les nouveaux écrans, puis exécuter les recettes externes disponibles. Le package local de revue et l’audit final précommit sont validés. Le feed, la licence, la release et la visibilité du dépôt nécessitent leurs décisions explicites. La branche de développement et les tests ne modifient pas l’installation utilisateur.

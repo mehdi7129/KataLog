@@ -224,14 +224,17 @@ Le YAML CI a été validé localement. Il décrit les suites autonomes et un
 packaging ad hoc sur les runners macOS 15 et macOS 27. Ces jobs ne publient pas
 d’asset, n’utilisent pas de corpus privé et ne contactent pas une flotte réelle.
 
-**Les jobs réseau de cette candidate n’ont pas encore été exécutés.** Un minimum
+La [tentative de CI sur la PR privée](https://github.com/mehdi7129/KataLog/actions/runs/36671218490)
+a été refusée par GitHub avant allocation des runners : les quatre jobs sont
+en échec avec zéro étape exécutée. Aucun résultat distant n’est donc attribué
+à cette candidate. Les conditions du service doivent être rétablies avant relance.
+Un minimum
 macOS déclaré et une inspection Mach-O ne remplacent pas une recette réelle sur
 cette version. Le Mac local fournit macOS 27 ; macOS 15 doit encore être testé
 sur son runner ou un Mac approprié.
 
 ## Contrôles restant ouverts
 
-- Suites globales exécutées sur les mêmes sources que le package final.
 - Recette visuelle et interaction Quit dans le bundle final.
 - Mise à jour de KataLog via le futur endpoint HTTPS ; installation et relaunch SDK déjà testés sur des bundles synthétiques.
 - Notarisation, quarantaine de téléchargement et Gatekeeper de cette version.
