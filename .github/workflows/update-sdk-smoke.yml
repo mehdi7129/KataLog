@@ -1,0 +1,73 @@
+name: Sparkle SDK installation smoke
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: update-sdk-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  update-sdk:
+    if: ${{ github.event.repository.visibility == 'public' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            major: '15'
+          - os: xcode-27
+            major: '27'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      KATALOG_UPDATE_EXPECT_MAJOR: ${{ matrix.major }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.13'
+      - name: Verify runner
+        run: |
+          platform_version="$(/usr/bin/sw_vers -productVersion)"
+          test "${platform_version%%.*}" = "$KATALOG_UPDATE_EXPECT_MAJOR"
+          test "$(/usr/bin/uname -m)" = arm64
+      - name: Resolve pinned Sparkle SDK
+        run: swift package --scratch-path /tmp/katalog-update-sdk resolve
+      - name: Installation, relaunch and rejected updates
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess, tempfile
+
+          sdk = pathlib.Path('/tmp/katalog-update-sdk/artifacts/sparkle/Sparkle')
+          reports = pathlib.Path(tempfile.mkdtemp(prefix='katalog-update-sdk-reports-', dir='/tmp'))
+          recipes = [
+              ('success', []),
+              ('tampered-feed', ['--tamper', 'feed']),
+              ('tampered-archive', ['--tamper', 'archive']),
+              ('interrupted-download', ['--failure', 'interrupted-download']),
+              ('missing-asset', ['--failure', 'missing-asset']),
+          ]
+          results = []
+          for name, arguments in recipes:
+              report = reports / (name + '.json')
+              completed = subprocess.run([
+                  'python3', 'tools/test-update-install.py', '--sdk', str(sdk),
+                  '--summary', str(report), *arguments,
+              ])
+              try:
+                  result = json.loads(report.read_text())
+              except (OSError, ValueError):
+                  result = {}
+              passed = completed.returncode == 0 and result.get('passed') is True
+              results.append((name, passed))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('## Sparkle 2.10.0 SDK installation smoke\n\n')
+              summary.write('| Recipe | Result |\n| --- | --- |\n')
+              for name, passed in results:
+                  summary.write('| %s | %s |\n' % (name, 'PASS' if passed else 'FAIL'))
+              summary.write('\nDisposable ad hoc apps and signing key; synthetic data; signed loopback HTTP only.\n')
+              summary.write('This job exercises SDK mechanics; production HTTPS and public release qualification are separate.\n')
+          raise SystemExit(0 if all(passed for _, passed in results) else 1)
+          PY

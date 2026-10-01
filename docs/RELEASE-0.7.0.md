@@ -39,9 +39,29 @@ ni l’application installée ni la bibliothèque réelle.
 
 ## Publication et validation externe
 
-- Dernière passe sur le commit exact, l’archive source, les assets et les métadonnées GitHub avant passage public.
-- CI gratuite sur runners standard, après publication du code.
-- Archives disponibles avant publication du flux signé ; vérification HTTPS anonyme des octets, signatures et URLs.
+Le [run public de référence](https://github.com/mehdi7129/KataLog/actions/runs/36874585226)
+du code de release termine avec ses quatre jobs réussis :
+
+| Runner | Qualification |
+| --- | --- |
+| macOS 15 | 303 tests Swift, 344 tests Python et 18 tests JavaScript réussis ; package autonome vérifié |
+| macOS 26 | 303 tests Swift, 344 tests Python et 18 tests JavaScript réussis |
+| macOS 27 | Package autonome vérifié sur le runner standard `xcode-27` |
+
+Les runners GitHub standard sont gratuits pour ce dépôt public.
+Le corpus privé demeure exclu de la CI ; aucun log de flotte réelle n’y est envoyé.
+Les modifications de compatibilité Swift 6.1 préservent les calculs et les actions
+de l’interface ; les rendus de référence restent identiques.
+
+L’audit couvre le commit exact, l’archive source, les assets, les refs et l’historique,
+les métadonnées GitHub et les logs de CI. Aucune donnée opérationnelle privée
+ni secret réel n’a été confirmé. Les deux détections gitleaks sur des noms de
+métriques synthétiques sont des faux positifs classés. L’identité publique du
+certificat Developer ID reste présente dans les composants signés.
+Voir [le périmètre et les limites de l’audit](PUBLICATION.md).
+
+Les archives sont publiées avant le flux signé. Leurs téléchargements HTTPS
+anonymes sont contrôlés par SHA-256 et les signatures Sparkle sont vérifiées.
 
 Les rapports détaillés, captures et données du poste restent hors du dépôt.
 
