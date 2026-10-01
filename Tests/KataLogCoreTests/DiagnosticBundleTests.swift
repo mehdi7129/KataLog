@@ -133,7 +133,13 @@ final class DiagnosticBundleTests: XCTestCase {
     }
 
     func testCancellationAfterStagingStartsRemovesPartialArchive() async throws {
-        let initialProcessCount = EngineOperations.activeProcessCount
+        // A previous stream's cancelled reader may still be draining. Start
+        // from an idle registry instead of comparing against a transient count.
+        let drainDeadline = Date().addingTimeInterval(1.5)
+        while EngineOperations.activeProcessCount > 0, Date() < drainDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(EngineOperations.activeProcessCount, 0, "Earlier helpers must finish cleanup before this export starts.")
         let directory = try directory()
         let source = directory.appendingPathComponent("large.ulg")
         let writer = FileManager.default.createFile(atPath: source.path, contents: nil)
@@ -159,7 +165,7 @@ final class DiagnosticBundleTests: XCTestCase {
         do { _ = try await task.value; XCTFail("Cancellation after staging must abort export.") } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
         XCTAssertEqual(try Data(contentsOf: target), previous)
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path).sorted(), ["diagnostic.zip", "large.ulg"])
-        XCTAssertEqual(EngineOperations.activeProcessCount, initialProcessCount)
+        XCTAssertEqual(EngineOperations.activeProcessCount, 0, "The cancelled export must leave no helper registered.")
     }
 
     func testCompletedExportAtomicallyReplacesPreviousFile() async throws {
