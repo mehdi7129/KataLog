@@ -591,7 +591,7 @@ final class LibraryStore: ObservableObject {
 
     /// Library-wide changes run under the stable writer lease with imports,
     /// collection persistence and annotation edits quiescent.
-    func performMaintenance<T>(allowOwnedExport: Bool = false, allowOwnedQuery: Bool = false, _ operation: () async throws -> T) async throws -> T {
+    func performMaintenance<T: Sendable>(allowOwnedExport: Bool = false, allowOwnedQuery: Bool = false, _ operation: () async throws -> T) async throws -> T {
         guard !isReadOnly, !isMaintainingLibrary, !isImporting, (!isExporting || allowOwnedExport),
               !isLoading, (!isQuerying || allowOwnedQuery), !isLoadingFlight, !hasExternalActivity() else {
             throw AnalysisError.engine("Terminez ou arrêtez les opérations en cours avant de modifier ou sauvegarder la bibliothèque.")
