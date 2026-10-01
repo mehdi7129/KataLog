@@ -19,11 +19,11 @@ review indépendante.
 
 ## Passage à 0.8.0
 
-La version **0.8.0 (build 18)** est en validation avant publication. Une fois
-le package et le flux publiés, les utilisateurs de 0.7.0 pourront la rechercher
-depuis l’app ; les autres pourront utiliser le DMG. Le
-[suivi de qualification](RELEASE-0.8.0.md) distingue les vérifications obtenues
-et celles encore en cours.
+Le package **0.8.0 (build 18)** est qualifié.
+Les utilisateurs de 0.7.0
+peuvent rechercher les versions publiées depuis l’app ; les autres utilisent
+le DMG. Le [suivi de qualification](RELEASE-0.8.0.md) précise les tests locaux,
+la CI et les contrôles du package final.
 
 La mise à jour conserve la bibliothèque stable, les identifications et les dossiers
 choisis. Les logs existants apparaissent dans **Sans client** : ils ne sont pas

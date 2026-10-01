@@ -1,6 +1,6 @@
 # Distribution macOS hors App Store
 
-La version ciblée est **0.8.0 (build 18)**, en validation avant publication.
+La version **0.8.0 (build 18)** est qualifiée pour la distribution stable.
 Elle conserve l’installation autonome par DMG et le flux Sparkle stable signé
 introduit en 0.7.0. Voir [la recette 0.8.0](RELEASE-0.8.0.md). Toute publication
 exige la validation de l’historique, des métadonnées GitHub et des assets.

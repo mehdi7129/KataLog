@@ -1,8 +1,9 @@
 # KataLog 0.8.0 — recette de release
 
-Version **0.8.0**, build **18**. État : **en validation avant publication**.
-La Preview et sa direction visuelle ont été approuvées. Le package stable,
-sa notarisation, la CI et la publication sont qualifiés séparément ci-dessous.
+Version **0.8.0**, build **18**, préparée le 1er octobre 2026.
+État : **package stable qualifié**. La Preview et sa
+direction visuelle ont été approuvées. Les résultats du package, de la CI et
+des contrôles de publication sont distingués ci-dessous.
 
 ## Nouveautés
 
@@ -59,26 +60,74 @@ package stable final.
 
 | Contrôle | Résultat |
 | --- | --- |
-| Swift complet, Core et app | 323 tests réussis, aucun échec ni test ignoré |
+| Swift complet, Core et app, local | 323 tests réussis, aucun échec ni test ignoré |
+| Adaptations des tests aux runners | 9 tests révisés réussis localement ; code applicatif inchangé |
+| Arrêt du moteur et libération des verrous | 17 tests réussis ; 8 répétitions du cas d’annulation réussies |
+| Isolation de l’export de diagnostic | 32 tests groupés réussis ; 4 répétitions du contexte client et diagnostic réussies |
 | Python autonome | 371 tests réussis ; 1 test de corpus privé externe non exécuté |
 | Interactions JavaScript des rapports | 18 tests réussis |
-| Banc SDK de mise à jour, macOS 27.0.1 | 5 recettes réussies ; six fichiers de données synthétiques conservés |
-| Build stable | 0.8.0, build 18, construit |
-| Notarisation de l’app | Acceptée par Apple ; stapling et DMG en cours |
-| DMG final et moteur embarqué | À compléter après contrôle des assets finaux |
-| Confidentialité du commit et des archives | À compléter après contrôle du contenu exact |
-| CI publique sur le commit de release | À compléter après résultat des jobs |
-| Assets GitHub, SHA-256 et flux Sparkle | À compléter après publication et téléchargement anonyme |
+| Banc SDK de mise à jour | 5 recettes réussies sur macOS 15 et 5 sur macOS 27 |
+| Build stable | 0.8.0, build 18, moteur autonome embarqué |
+| Signature et notarisation | Developer ID ; app et DMG acceptés par Apple ; tickets app, helper et DMG validés |
+| Distribution finale | 9 contrôles réussis |
+| Installation locale | Copie depuis le DMG, éjection puis lancement graphique réussis |
+| Contrats clients dans le moteur final | 4 groupes de vérifications réussis |
+| Confidentialité des sources et du bundle | Aucun finding dans les périmètres inspectés |
 
-Le banc SDK utilise des applications jetables, une clé de test et un serveur
-loopback. Ses cinq recettes couvrent installation/relancement, flux modifié,
-archive modifiée, téléchargement interrompu et archive absente. L’app installée
-et la bibliothèque réelle ne sont pas remplacées par ce banc.
+Le moteur final est exercé avec des données synthétiques : attribution des logs,
+déduplication, cache et changements de client, sans accès à une flotte réelle.
+La recette de distribution inspecte aussi les signatures, les dépendances
+embarquées et le contenu des archives Python. Les preuves détaillées restent
+locales ; elles ne sont pas distribuées avec l’app.
+
+Le [banc SDK de mise à jour](https://github.com/mehdi7129/KataLog/actions/runs/36919535988)
+a réussi ses cinq cas sur macOS 15 et sur macOS 27. Il utilise des applications
+jetables, une clé de test et un serveur loopback. Les recettes couvrent
+installation/relancement, flux modifié, archive modifiée, téléchargement
+interrompu et archive absente. Les six fichiers de données synthétiques sont
+conservés ; l’app installée et la bibliothèque réelle ne sont pas remplacées.
+
+## Traçabilité et CI
+
+Le code applicatif et les entrées de build du package correspondent au commit
+`8c4e6cd`. Les commits `416f32f`, `5afc5c3` et `003a8bd` ajustent uniquement les tests :
+taille d’écran réelle, attente d’initialisation et attente du nettoyage asynchrone
+du moteur. La vérification de l’arrêt et de la libération du verrou conserve une
+borne totale de 1,5 seconde. Ces changements ne modifient ni les sources de l’app
+ni les entrées du packaging. La suite complète locale ci-dessus précède ces
+ajustements ; les groupes ciblés ont ensuite été rejoués avec succès. L’export de
+diagnostic démarre avec un registre de processus vide et doit le laisser vide.
+
+La [CI finale sur `003a8bd`](https://github.com/mehdi7129/KataLog/actions/runs/36925137172)
+est entièrement réussie : 323 tests Swift sans échec ni test ignoré, 371 tests
+Python réussis et 18 tests JavaScript réussis sur chacun des runners macOS 15
+et 26. Le test nécessitant le corpus privé externe est explicitement exclu.
+Les packages autonomes ARM64 passent sur macOS 15 et macOS 27.
+
+Les changements de documentation de release suivent ces commits sans modifier
+le code du package. Le tag `v0.8.0` identifie les sources correspondantes
+et leur documentation finale.
+
+## Contrôles de publication
+
+La qualification locale du package ne prouve pas que les assets GitHub ou le
+flux public ont déjà été publiés. La publication doit suivre cet ordre :
+
+1. Confirmer la réussite du dernier run CI et taguer les sources correspondantes.
+2. Publier le DMG, le ZIP issu du même bundle final, l’archive des sources et
+   leurs checksums sur la release `v0.8.0`.
+3. Télécharger les assets sans authentification et comparer leurs SHA-256.
+4. Publier le flux Sparkle signé après les archives qu’il référence, puis vérifier
+   le flux HTTPS, la signature du feed et celle du ZIP avec les outils officiels.
+5. Contrôler les métadonnées et logs GitHub rendus publics par cette publication.
+
+Les résultats de publication sont consignés dans la
+[recette tenue à jour](https://github.com/mehdi7129/KataLog/blob/main/docs/RELEASE-0.8.0.md).
 
 Les rapports détaillés, bibliothèques de test et captures locales restent hors
-du dépôt public. Les résultats finaux doivent correspondre au commit tagué et
-aux octets des assets distribués ; aucun résultat CI ou statut de notarisation
-n’est déduit du seul succès de compilation.
+Git. Aucun résultat CI, notarisation ou téléchargement public n’est déduit du
+seul succès de compilation. Le [périmètre de confidentialité](PUBLICATION.md)
+distingue les sources, les assets et les surfaces GitHub.
 
 ## Limites
 

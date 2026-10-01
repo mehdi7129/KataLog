@@ -1,7 +1,7 @@
 # Clients et interface Bento
 
-Cette évolution est destinée à **0.8.0 (build 18)**. La Preview est validée ;
-le statut du package stable et de sa publication figure dans la
+Cette évolution fait partie de **0.8.0 (build 18)**. La Preview et le package
+stable disposent de validations distinctes, détaillées dans la
 [recette de release](RELEASE-0.8.0.md).
 
 ## Contrat produit

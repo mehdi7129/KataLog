@@ -1,6 +1,6 @@
 # KataLog — bibliothèque locale de logs PX4
 
-**0.8.0 (build 18) — en validation avant publication** · macOS · SwiftUI · Apple Silicon · GPL-3.0-only
+**0.8.0 (build 18)** · macOS · SwiftUI · Apple Silicon · GPL-3.0-only
 
 KataLog rassemble l’historique de votre flotte : logs PX4, alertes filtrables,
 trajectoires Apple Maps, courbes et rapports. Interface **bento monochrome**,
@@ -28,10 +28,11 @@ thèmes **clair / sombre / système**, données conservées sur votre Mac.
 [Notes et qualification](docs/RELEASE-0.8.0.md) ·
 [Installation et mises à jour](docs/UPDATING.md)
 
-La release et ses installateurs sont **en validation**. La recette de la Preview
-est disponible dans [VALIDATION-CLIENTS-BENTO.md](docs/VALIDATION-CLIENTS-BENTO.md) ;
-les résultats finaux du package, de la CI et de la publication sont consignés
-séparément dans les notes 0.8.0. La Preview conserve une bibliothèque indépendante.
+Le package stable et la CI sont qualifiés. La recette et
+le suivi de la CI finale sont consignés dans les
+[notes 0.8.0](docs/RELEASE-0.8.0.md). La
+[validation de la Preview](docs/VALIDATION-CLIENTS-BENTO.md) conserve ses résultats
+séparément. La Preview utilise une bibliothèque indépendante.
 
 Les mises à jour signées depuis l’app sont disponibles depuis 0.7.0 via
 **Réglages → Rechercher une mise à jour**. Vous choisissez quand installer et
@@ -87,7 +88,7 @@ options privées distinctes. Cette fonctionnalité est disponible à partir de l
 
 ### Installer une release
 
-Le package **0.8.0** prévu pour publication est un **DMG** avec **KataLog.app** et un lien
+Le package **0.8.0** est un **DMG** avec **KataLog.app** et un lien
 **Applications** : ouvrir le DMG, glisser KataLog dans Applications, éjecter,
 puis lancer l’app. Le moteur ARM64 est embarqué ; aucun App Store, Terminal,
 Homebrew ni Python séparé n’est requis pour utiliser l’app.
@@ -96,7 +97,7 @@ Homebrew ni Python séparé n’est requis pour utiliser l’app.
 Les minima des composants natifs sont contrôlés au packaging. L’exécution sur
 macOS 15 demande une recette sur cette version ; le test macOS 27 ne la remplace pas.
 La [recette 0.8.0](docs/RELEASE-0.8.0.md) distingue les résultats obtenus,
-les vérifications encore en cours et les limites de qualification.
+le périmètre de chaque vérification et les limites de qualification.
 
 Les archives sont proposées sur la
 [page Releases](https://github.com/mehdi7129/KataLog/releases).
@@ -356,9 +357,9 @@ Le dépôt public contient les sources et des fixtures synthétiques. Les logs, 
 coordonnées, bibliothèques, réglages locaux et preuves opérationnelles n'en font
 pas partie. Les anciens commits et assets restent dans une archive privée distincte ; voir [la préparation publique](docs/PUBLICATION.md).
 
-La distribution autonome **0.8.0** est préparée sous forme de **DMG signé et
-notarisé**, à ouvrir pour glisser **KataLog dans Applications**, sans App Store
-ni installation séparée de Python. Son statut final figure dans la recette de release.
+La distribution autonome **0.8.0** utilise un **DMG signé et notarisé**, à ouvrir
+pour glisser **KataLog dans Applications**, sans App Store ni installation séparée
+de Python. La qualification figure dans la recette de release.
 Le moteur de la base 0.5.1 reste externe ; son ancien ZIP est conservé séparément en privé.
 
 ## Limites et couverture

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.8.0 — en validation
+## 0.8.0 — 2026-10-01
 
 - Clients locaux personnalisables ; attribution des nouveaux logs à l’import et
   à la collecte, réattribution en lot, périmètre client partagé entre statistiques,
@@ -20,8 +20,8 @@
 - Compatibilité des anciennes bibliothèques en lecture seule, cache géographique
   alimenté depuis les sources accessibles, exports partagés sans identité client.
 
-Version **0.8.0**, build **18**. L’acceptation visuelle de la Preview précède la
-qualification du package stable. État, résultats finaux et limites :
+Version **0.8.0**, build **18**. Le package stable est qualifié ; le suivi de
+la CI finale et de la publication reste séparé de la Preview. Résultats et limites :
 [RELEASE-0.8.0.md](docs/RELEASE-0.8.0.md).
 
 ## 0.7.0 — 2026-10-01
