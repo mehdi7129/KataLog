@@ -30,6 +30,9 @@ def main():
     environment = dict(os.environ)
     environment['KATALOG_TEST_PYTHON'] = sys.executable
     environment['KATALOG_PYTHON'] = sys.executable
+    # The native gate includes real AppKit window controls and independent
+    # detail sessions. Hosted macOS runners provide the required GUI session.
+    environment['KATALOG_TEST_NATIVE_WINDOWS'] = '1'
     arguments = args.swift_arguments
     if arguments[:1] == ['--']: arguments = arguments[1:]
     result = subprocess.run(['swift', 'test', *arguments], env=environment,

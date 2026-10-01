@@ -198,7 +198,7 @@ struct FleetMapView: View {
     }
 }
 
-struct MapSearchPlace: Identifiable {
+struct MapSearchPlace: Identifiable, Sendable {
     let id = UUID()
     let title: String
     let subtitle: String
@@ -212,7 +212,6 @@ final class MapPlaceSearchStore: ObservableObject {
     @Published private(set) var isSearching = false
     @Published private(set) var error: String?
     private var operation: MKLocalSearch?
-    private var task: Task<Void, Never>?
     private var generation = UUID()
 
     static func coordinate(_ query: String) -> CLLocationCoordinate2D? {
@@ -243,24 +242,28 @@ final class MapPlaceSearchStore: ObservableObject {
         request.resultTypes = [.address, .pointOfInterest]
         let search = MKLocalSearch(request: request)
         operation = search; isSearching = true
-        task = Task { [weak self] in
-            do {
-                let response = try await search.start()
-                guard !Task.isCancelled, let self, expected == generation else { return }
-                results = response.mapItems.prefix(6).map {
-                    .init(title: $0.name ?? query, subtitle: $0.placemark.title ?? "",
-                          latitude: $0.placemark.coordinate.latitude, longitude: $0.placemark.coordinate.longitude)
+        // Older SDKs do not make MKLocalSearch.Response Sendable. Extract value
+        // types inside the callback before handing the result to the main actor.
+        let completion: @Sendable (MKLocalSearch.Response?, Error?) -> Void = { [weak self] response, error in
+            let failed = error != nil || response == nil
+            let places: [MapSearchPlace] = response?.mapItems.prefix(6).map {
+                .init(title: $0.name ?? query, subtitle: $0.placemark.title ?? "",
+                      latitude: $0.placemark.coordinate.latitude, longitude: $0.placemark.coordinate.longitude)
+            } ?? []
+            Task { @MainActor [weak self] in
+                guard let self, expected == self.generation else { return }
+                if failed {
+                    self.error = "Lieu indisponible. Vérifiez le réseau ou saisissez directement des coordonnées GPS."
+                } else {
+                    self.results = places
+                    if places.isEmpty { self.error = "Aucun lieu trouvé. Précisez la ville ou saisissez des coordonnées." }
                 }
-                if results.isEmpty { error = "Aucun lieu trouvé. Précisez la ville ou saisissez des coordonnées." }
-                isSearching = false; operation = nil; task = nil
-            } catch {
-                guard !Task.isCancelled, let self, expected == generation else { return }
-                self.error = "Lieu indisponible. Vérifiez le réseau ou saisissez directement des coordonnées GPS."
-                isSearching = false; operation = nil; task = nil
+                self.isSearching = false; self.operation = nil
             }
         }
+        search.start(completionHandler: completion)
     }
-    func cancel() { generation = UUID(); operation?.cancel(); operation = nil; task?.cancel(); task = nil; isSearching = false }
+    func cancel() { generation = UUID(); operation?.cancel(); operation = nil; isSearching = false }
     func clear() { cancel(); results = []; error = nil }
 }
 

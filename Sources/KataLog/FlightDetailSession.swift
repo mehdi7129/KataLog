@@ -37,8 +37,8 @@ final class FlightDetailSession: ObservableObject {
         clientSubscription = library.clients.$isWorking.removeDuplicates().dropFirst().sink { [weak self] working in
             guard !working else { return }
             Task { @MainActor [weak self] in
-                guard let self, isActive else { return }
-                load()
+                guard let self, self.isActive else { return }
+                self.load()
             }
         }
     }
