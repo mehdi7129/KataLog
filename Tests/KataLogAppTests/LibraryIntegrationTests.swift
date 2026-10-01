@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import XCTest
 @testable import KataLog
 @testable import KataLogCore
@@ -35,21 +36,30 @@ final class LibraryIntegrationTests: XCTestCase {
     func testTerminationCancelsReaderAndPreventsLateSnapshotReplacement() async throws {
         let root = try directory(), engine = root.appendingPathComponent("slow-reader.py")
         try """
-        import time,sys
+        import time,sys,os
         from pathlib import Path
-        Path(sys.argv[sys.argv.index('--database')+1]+'.started').write_text('started')
+        Path(sys.argv[sys.argv.index('--database')+1]+'.started').write_text(str(os.getpid()))
         time.sleep(20)
         """.write(to: engine, atomically: true, encoding: .utf8)
         FileManager.default.createFile(atPath: root.appendingPathComponent("library.sqlite").path, contents: Data())
         let library = LibraryStore(storageDirectory: root, engine: engine)
+        defer { library.prepareForTermination() }
         let started = root.appendingPathComponent("library.sqlite.started")
         let deadline = Date().addingTimeInterval(3)
-        while !FileManager.default.fileExists(atPath: started.path), Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
-        XCTAssertTrue(FileManager.default.fileExists(atPath: started.path))
+        var startedPID: pid_t?
+        while startedPID == nil, Date() < deadline {
+            startedPID = (try? String(contentsOf: started, encoding: .utf8)).flatMap(Int32.init)
+            if startedPID == nil { try await Task.sleep(for: .milliseconds(20)) }
+        }
+        let readerPID = try XCTUnwrap(startedPID, "The fixture reader must report its PID before cancellation.")
         library.prepareForTermination()
         let stopped = Date().addingTimeInterval(2)
-        while EngineOperations.activeProcessCount > 0, Date() < stopped { try await Task.sleep(for: .milliseconds(20)) }
-        XCTAssertEqual(EngineOperations.activeProcessCount, 0)
+        // The shared registry can include helpers from other stores. Verify
+        // cancellation of this library's exact reader process.
+        while Darwin.kill(readerPID, 0) == 0, Date() < stopped { try await Task.sleep(for: .milliseconds(20)) }
+        let probe = Darwin.kill(readerPID, 0), probeError = errno
+        XCTAssertEqual(probe, -1)
+        XCTAssertEqual(probeError, ESRCH)
         XCTAssertFalse(library.hasActiveWork)
         XCTAssertTrue(library.snapshot.logs.isEmpty)
     }

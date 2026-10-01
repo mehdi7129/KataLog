@@ -1,13 +1,19 @@
 # KataLog — bibliothèque locale de logs PX4
 
-**0.6.0 (build 14)** · macOS · SwiftUI · Apple Silicon · GPL-3.0-only
+**0.7.0 (build 17)** · macOS · SwiftUI · Apple Silicon · GPL-3.0-only
 
 KataLog rassemble l’historique de votre flotte : logs PX4, alertes filtrables,
 trajectoires Apple Maps, courbes et rapports. Interface **bento monochrome**,
 thèmes **clair / sombre / système**, données conservées sur votre Mac.
 
-### Ce qui change en 0.6.0
+### Ce qui change en 0.7.0
 
+- Dix onglets remaniés en **bento noir/blanc**, boutons compacts, icônes cohérentes
+  et choix du thème conservé. Les fonctions et la bibliothèque restent disponibles.
+- Mises à jour signées depuis l’app, recherche automatique facultative et
+  installation confirmée par l’utilisateur.
+- Diagnostic local KataLog/GCS, export prévisualisé et données privées exclues par défaut.
+- Progression globale de collecte et changement de dossier corrigés.
 - **Tout collecter** inscrit les nouveaux drones visibles sur la GCS dans le
   registre, puis récupère leurs logs. Aucun ajout un par un ni numéro de stock
   préalable n’est nécessaire. Les copies déjà vérifiées sont réutilisées.
@@ -21,12 +27,13 @@ thèmes **clair / sombre / système**, données conservées sur votre Mac.
 - Navigation compacte ; Alertes, Stockage, Collecte et Rapports simplifiés pour
   garder leurs actions accessibles jusque dans une fenêtre de 900×620.
 
-[Télécharger la release](https://github.com/mehdi7129/KataLog/releases/tag/v0.6.0) ·
-[Notes et validation](docs/RELEASE-0.6.0.md) · [Installation et mises à jour](docs/UPDATING.md)
+[Télécharger la release](https://github.com/mehdi7129/KataLog/releases/tag/v0.7.0) ·
+[Notes et validation](docs/RELEASE-0.7.0.md) · [Installation et mises à jour](docs/UPDATING.md)
 
-Le dépôt reste privé jusqu’à une décision explicite de publication publique.
-Les mises à jour de cette version se font par DMG ; le moteur Sparkle est embarqué,
-mais son flux distant reste désactivé tant qu’un endpoint public n’est pas qualifié.
+La version 0.7.0 active les mises à jour signées depuis
+**Réglages → Rechercher une mise à jour**. Une option permet de rechercher
+automatiquement les nouvelles versions ; vous choisissez quand installer et
+redémarrer. Les utilisateurs de 0.6.x installent cette première mise à jour par DMG.
 
 ## Prise en main
 
@@ -57,13 +64,13 @@ les valeurs et types ; elle n’attribue pas une cause de panne.
 Le parseur courant est **1.4.0**, avec projection SQLite **7**. Les anciennes
 analyses sont conservées et leur recalcul est explicite.
 
-### En développement : diagnostic complet
+### Diagnostic local
 
-Dans **Réglages → Diagnostic local**, la branche de développement propose une
+Dans **Réglages → Diagnostic local**, KataLog propose une
 prévisualisation avant export ZIP : état de l’app, chronologie locale et, à votre
 demande, journaux de la GCS. Les données restent sur le Mac. Les messages GCS
 libres sont retirés par défaut ; les journaux bruts et les ULogs choisis sont deux
-options privées distinctes. Cette fonctionnalité n’est pas dans la release 0.6.0.
+options privées distinctes. Cette fonctionnalité est disponible à partir de la release 0.7.0.
 
 [Contenu, limites et recette du diagnostic](docs/DIAGNOSTICS.md).
 
@@ -71,8 +78,7 @@ options privées distinctes. Cette fonctionnalité n’est pas dans la release 0
 
 ### Installer une release
 
-**Le dépôt reste privé tant que la publication publique n’est pas décidée.**
-Le package **0.6.0** est un **DMG** avec **KataLog.app** et un lien
+Le package **0.7.0** est un **DMG** avec **KataLog.app** et un lien
 **Applications** : ouvrir le DMG, glisser KataLog dans Applications, éjecter,
 puis lancer l’app. Le moteur ARM64 est embarqué ; aucun App Store, Terminal,
 Homebrew ni Python séparé n’est requis pour utiliser l’app.
@@ -80,7 +86,7 @@ Homebrew ni Python séparé n’est requis pour utiliser l’app.
 **Compatibilité : Mac Apple Silicon, macOS 15 minimum, recette locale sur macOS 27.**
 Les minima des composants natifs sont contrôlés au packaging. L’exécution sur
 macOS 15 demande une recette sur cette version ; le test macOS 27 ne la remplace pas.
-La [recette 0.6.0](docs/RELEASE-0.6.0.md) consigne les tests réalisés et
+La [recette 0.7.0](docs/RELEASE-0.7.0.md) consigne les tests réalisés et
 les limites de qualification.
 
 Les archives sont proposées sur la
@@ -91,9 +97,11 @@ pas réutilisés dans cette distribution. Pour compiler depuis les sources, voir
 
 ### Mettre à jour une app déjà installée
 
-Les versions 0.5.1 et 0.5.2 n’ont pas d’updater. Son premier passage à une version avec Sparkle
-sera manuel : terminer/arrêter les imports et la collecte, quitter KataLog,
-remplacer l'app depuis le nouveau DMG, puis la rouvrir.
+Les versions antérieures à 0.7.0 n’activent pas le flux public. Installez 0.7.0
+une première fois par DMG : terminer/arrêter les imports et la collecte, quitter
+KataLog, remplacer l’app depuis le nouveau DMG, puis la rouvrir. Ensuite, utilisez
+**Réglages → Rechercher une mise à jour** et le dialogue **Installer et redémarrer**.
+Le choix de recherche automatique est conservé au redémarrage.
 
 Le remplacement du bundle conserve la bibliothèque, les numéros de drones,
 les classements et réglages dans `~/Library/Application Support/KataLog/`.
@@ -279,8 +287,9 @@ reconnu comme le même drone physique.
 
 ## Validation
 
-Les résultats du package 0.6.0 figurent dans la
-[recette de release](docs/RELEASE-0.6.0.md). Le
+Les résultats du package 0.7.0 figurent dans la
+[recette de release](docs/RELEASE-0.7.0.md). La
+[recette 0.6.0](docs/RELEASE-0.6.0.md) et le
 [suivi d’implémentation](docs/IMPLEMENTATION-0.6.0.md) conserve les étapes
 antérieures, avec la version testée et les limites de chaque preuve. Le benchmark synthétique porte sur
 50 000 logs, 5 millions de messages et 500 identités ; ce n’est pas le parsing
@@ -323,11 +332,11 @@ des utilisateurs ne font pas partie des sources du logiciel.
 
 ## Confidentialité et distribution publique
 
-Le projet prépare un dépôt public. Les logs, CSV de stock, identifiants réels,
+Le dépôt public contient les sources et des fixtures synthétiques. Les logs, CSV de stock, identifiants réels,
 coordonnées, bibliothèques, réglages locaux et preuves opérationnelles n'en font
 pas partie. Les anciens commits et assets restent dans une archive privée distincte ; voir [la préparation publique](docs/PUBLICATION.md).
 
-La distribution autonome **0.6.0** utilise un **DMG signé et notarisé**, à ouvrir pour glisser
+La distribution autonome **0.7.0** utilise un **DMG signé et notarisé**, à ouvrir pour glisser
 **KataLog dans Applications**, sans App Store ni installation séparée de Python.
 Le moteur de la base 0.5.1 reste externe ; son ancien ZIP est conservé séparément en privé.
 
@@ -352,7 +361,8 @@ Le moteur de la base 0.5.1 reste externe ; son ancien ZIP est conservé séparé
   collecte radio simultanée de 500 appareils. Voir la recette de release pour
   distinguer les essais logiciels, locaux et matériels.
 - macOS 15 est le minimum déclaré ; la recette locale est exécutée sur macOS 27.
-  Le flux de mise à jour automatique est désactivé ; utiliser le DMG.
+  Le flux signé 0.7.0 permet la mise à jour depuis l’app ; la recherche automatique
+  est facultative. Une première installation par DMG est nécessaire depuis 0.6.x.
 
 ## Moteur Python pour le développement
 

@@ -44,17 +44,22 @@ struct ImportOptions06: View {
     let canApply: () -> Bool
     let onApply: (URL?) throws -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var scheme
     @State private var copy = false
     @State private var archiveDirectory = ""
     @State private var error: String?
+    private var palette: Palette { Palette(dark: scheme == .dark) }
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Importer et conserver").font(.title2.weight(.semibold))
-            Text(source.path).font(.caption.monospaced()).textSelection(.enabled)
-            Picker("Conservation des sources", selection: $copy) {
-                Text("Référencer les fichiers").tag(false)
-                Text("Copier vers mes archives").tag(true)
-            }.pickerStyle(.segmented)
+            Text(source.path).font(.caption.monospaced()).foregroundStyle(palette.secondary).textSelection(.enabled)
+            HStack(spacing: 8) {
+                conservationButton("Référencer les fichiers", copies: false)
+                conservationButton("Copier vers mes archives", copies: true)
+                Spacer()
+            }
+            BentoPanel(palette: palette) {
+            VStack(alignment: .leading, spacing: 12) {
             if copy {
                 Text("Copies vérifiées par taille et SHA-256 pendant l’import. Attendez sa fin et vérifiez le bilan avant de retirer la carte SD. Les sources d’origine restent conservées.").font(.callout).foregroundStyle(.secondary)
                 HStack { Text(archiveDirectory.isEmpty ? "Aucun dossier d’archives choisi" : archiveDirectory).font(.caption.monospaced()).textSelection(.enabled); Spacer(); Button("Choisir le dossier…") { chooseArchiveDirectory() } }
@@ -62,11 +67,20 @@ struct ImportOptions06: View {
             } else {
                 Text("Les ULog restent à leur emplacement actuel. Leur résumé reste consultable après retrait de la carte SD ; recalcul et nouvelles courbes nécessitent une source accessible.").font(.callout).foregroundStyle(.secondary)
             }
+            }
+            }
             if let error { Label(error, systemImage: "exclamationmark.triangle").font(.callout) }
             Spacer(minLength: 0)
-            HStack { Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction); Spacer(); Button(copy ? "Copier et analyser" : "Analyser") { apply() }.keyboardShortcut(.defaultAction).disabled(!canApply() || (copy && archiveDirectory.isEmpty)) }
-        }.padding(26).frame(width: 660, height: 390).background(Color(nsColor: .windowBackgroundColor))
+            HStack { Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction); Spacer(); Button(copy ? "Copier et analyser" : "Analyser") { apply() }.buttonStyle(WorkspaceActionButtonStyle(palette: palette, prominent: true)).keyboardShortcut(.defaultAction).disabled(!canApply() || (copy && archiveDirectory.isEmpty)) }
+        }.padding(24).frame(width: 700, height: 480).foregroundStyle(palette.primary).background(palette.background)
+        .buttonStyle(WorkspaceActionButtonStyle(palette: palette)).tint(palette.primary)
         .onAppear { archiveDirectory = initialState.archiveDirectory ?? ""; copy = initialCopy }
+    }
+    private func conservationButton(_ title: String, copies: Bool) -> some View {
+        Button(title) { copy = copies }
+            .buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(copy == copies ? palette.primary : .clear, lineWidth: 1))
+            .accessibilityAddTraits(copy == copies ? .isSelected : [])
     }
     private func chooseArchiveDirectory() {
         let panel = NSOpenPanel(); panel.title = "Choisir mon dossier d’archives ULog"

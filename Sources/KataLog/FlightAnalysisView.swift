@@ -4,7 +4,7 @@ import SwiftUI
 import KataLogCore
 import UniformTypeIdentifiers
 
-/// Isolated analysis composition. Production navigation is connected only after visual approval.
+/// Recorded series and their context share the log sheet's bento composition.
 struct FlightAnalysisView: View {
     let log: FlightLog
     @ObservedObject var study: FlightStudyStore
@@ -22,6 +22,7 @@ struct FlightAnalysisView: View {
     @State private var showTable = false
 
     private var style: FlightUIStyle { FlightUIStyle(colorScheme) }
+    private var palette: Palette { Palette(dark: colorScheme == .dark) }
     private var fields: [TelemetryField] { log.telemetryCatalogue ?? [] }
     private var extractableFields: [TelemetryField] { fields.filter(\.extractable) }
     private var series: [TelemetrySeries] { study.response?.series ?? [] }
@@ -50,6 +51,7 @@ struct FlightAnalysisView: View {
             }.padding(24)
         }
         .foregroundStyle(style.primary).background(style.background)
+        .buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true)).tint(palette.primary)
         .task(id: log.id) {
             study.reset()
             restoreSelection()
@@ -63,7 +65,7 @@ struct FlightAnalysisView: View {
     private var heading: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Analyse").font(.system(size: 28, weight: .semibold)).tracking(-0.6)
+                Text("Courbes et chronologie").font(.system(size: 20, weight: .semibold)).tracking(-0.4)
                 Spacer()
                 Text("4 courbes maximum · 2 048 points au total")
                     .font(.system(size: 11)).foregroundStyle(style.secondary)

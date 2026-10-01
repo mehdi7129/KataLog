@@ -22,12 +22,12 @@ struct DiagnosticView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("Diagnostic complet").font(.system(size: 24, weight: .semibold)).tracking(-0.8)
+                    Text("Diagnostic local").font(.system(size: 24, weight: .semibold)).tracking(-0.8)
                     Text("KataLog, GCS et logs de drones · vérifiez le contenu avant de l’exporter.")
                         .font(.system(size: 12)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 8)
-                Image(systemName: "waveform.path.ecg").font(.system(size: 22, weight: .medium))
+                BentoIcon(symbol: "waveform.path.ecg", size: 22)
                     .frame(width: 46, height: 46).background(palette.raised, in: RoundedRectangle(cornerRadius: 12))
                     .accessibilityHidden(true)
             }.padding(24)
@@ -127,7 +127,7 @@ struct DiagnosticView: View {
             }
             Divider().overlay(palette.border)
             Toggle("Inclure les journaux GCS bruts", isOn: $store.includePrivateGCS)
-                .font(.system(size: 12)).disabled(store.serviceFiles.isEmpty || store.isExporting)
+                .toggleStyle(.checkbox).font(.system(size: 12)).disabled(store.serviceFiles.isEmpty || store.isExporting)
                 .accessibilityIdentifier("diagnostic.private-gcs")
             Text(store.includePrivateGCS
                  ? "Données privées incluses : les textes bruts peuvent contenir des identités, adresses, positions et détails de votre infrastructure."
@@ -143,7 +143,7 @@ struct DiagnosticView: View {
             Text("Ajoutez les ULogs utiles à ce problème. Les fichiers sont copiés dans le diagnostic, sans import ni modification des originaux.")
                 .font(.system(size: 12)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
             Toggle("Joindre des ULogs privés", isOn: $store.includeULogs)
-                .font(.system(size: 12)).disabled(store.isExporting)
+                .toggleStyle(.checkbox).font(.system(size: 12)).disabled(store.isExporting)
                 .accessibilityIdentifier("diagnostic.private-ulogs")
             if store.includeULogs {
                 Button(store.selectedULogs.isEmpty ? "Choisir les ULogs…" : "Modifier la sélection…", systemImage: "plus") { chooseULogs() }
@@ -161,7 +161,7 @@ struct DiagnosticView: View {
                 Text("Les ULogs contiennent les données brutes du drone, dont ses identifiants et éventuellement ses positions.")
                     .font(.system(size: 11)).foregroundStyle(palette.amber).fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("Aucun ULog joint par défaut. Vous choisissez précisément les fichiers à partager.")
+                Text("Aucun ULog joint par défaut. Les ULogs bruts peuvent contenir des identifiants et des positions ; vous choisissez précisément les fichiers à partager.")
                     .font(.system(size: 11)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -219,9 +219,7 @@ struct DiagnosticView: View {
             HStack {
                 Text("Contenu du ZIP").font(.system(size: 14, weight: .semibold))
                 Spacer()
-                Text(store.privateDataRequested ? "Données privées" : "Sans données privées")
-                    .font(.system(size: 10, weight: .medium)).foregroundStyle(store.privateDataRequested ? palette.amber : palette.mint)
-                    .padding(.horizontal, 9).padding(.vertical, 5).background(palette.raised, in: Capsule())
+                BentoStatus(label: store.privateDataRequested ? "Pièces privées incluses" : "Sans pièces brutes privées", color: store.privateDataRequested ? palette.amber : palette.mint)
             }
             if let preview = store.preview {
                 Text("\(preview.eventCount) événements KataLog · \(preview.gcsSourceCount) services GCS · \(store.privateULogs.count) ULogs choisis")
@@ -285,9 +283,9 @@ struct DiagnosticView: View {
     }
 
     private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 13, content: content).frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20).background(palette.card, in: RoundedRectangle(cornerRadius: 17))
-            .overlay(RoundedRectangle(cornerRadius: 17).stroke(palette.border, lineWidth: 1))
+        BentoPanel(palette: palette) {
+            VStack(alignment: .leading, spacing: 14, content: content)
+        }
     }
 
     private func metric(_ title: String, value: String) -> some View {

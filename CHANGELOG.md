@@ -1,6 +1,18 @@
 # Changelog
 
-## 0.6.0 — en préparation, non publiée
+## 0.7.0 — 2026-10-01
+
+- Refonte native des dix onglets en bento monochrome, clair/sombre, boutons et icônes cohérents.
+- Navigation des fiches unifiée ; détails techniques accessibles à la demande.
+- Flux Sparkle stable signé, recherche depuis l’app et recherche automatique facultative conservée.
+- Installation et redémarrage confirmés ; attente pendant les opérations et blocage en lecture seule.
+- Diagnostic KataLog/GCS prévisualisé avant export, journaux privés uniquement sur choix explicite.
+- Progression globale de collecte et changement de destination actualisés.
+- Sources correspondantes, installation par DMG et bibliothèque conservée.
+
+La qualification et ses limites sont consignées dans [RELEASE-0.7.0.md](docs/RELEASE-0.7.0.md).
+
+## 0.6.0 — 2026-09-30
 
 - Identité stable entre résumé et fiche ; ancienne analyse conservée sans source ; durée de vol et GNSS qualifiés par couverture.
 - Projections SQLite version 7, requêtes paginées et scope partagé ; annotations, masquages, recherche Unicode et tri intégrés aux agrégats.

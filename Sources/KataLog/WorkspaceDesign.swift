@@ -1,19 +1,30 @@
 import SwiftUI
 
-/// The original workspace palette, shared with the paginated workspace.
+/// Shared colors for the native workspace and its collection screens.
 struct Palette {
     let dark: Bool
     var background: Color { Color(hex: dark ? 0x0B0B0B : 0xF7F7F5) }
     var sidebar: Color { Color(hex: dark ? 0x111111 : 0xEEEEEC) }
     var card: Color { Color(hex: dark ? 0x191919 : 0xFFFFFF) }
-    var raised: Color { Color(hex: dark ? 0x222222 : 0xF2F2EF) }
-    var border: Color { Color(hex: dark ? 0x303030 : 0xE1E1DC) }
-    var primary: Color { Color(hex: dark ? 0xF3F3F1 : 0x171717) }
-    var secondary: Color { Color(hex: dark ? 0xA4A4A4 : 0x666666) }
-    var muted: Color { Color(hex: dark ? 0x929292 : 0x6B6B6B) }
-    var mint: Color { Color(hex: dark ? 0x8BC4AC : 0x397E61) }
-    var amber: Color { Color(hex: dark ? 0xE3B771 : 0x956019) }
-    var red: Color { Color(hex: dark ? 0xE49089 : 0xB34840) }
+    var raised: Color { Color(hex: dark ? 0x202020 : 0xF4F4F2) }
+    var border: Color { Color(hex: dark ? 0x30302E : 0xE3E3DF) }
+    var buttonBorder: Color { Color(hex: dark ? 0x444441 : 0xD6D6D1) }
+    var hover: Color { Color(hex: dark ? 0x272725 : 0xF2F2EF) }
+    var active: Color { Color(hex: dark ? 0x2B2B29 : 0xDEDED9) }
+    var primary: Color { Color(hex: dark ? 0xF3F3F1 : 0x1B1B1B) }
+    var secondary: Color { Color(hex: dark ? 0xA4A4A0 : 0x71716D) }
+    var muted: Color { Color(hex: dark ? 0x81817B : 0x8A8A84) }
+    var mint: Color { Color(hex: dark ? 0x9BCBBC : 0x427C6F) }
+    var amber: Color { Color(hex: dark ? 0xDFB577 : 0x976613) }
+    var red: Color { Color(hex: dark ? 0xE2968D : 0xB45148) }
+}
+
+enum BentoTokens {
+    static let cardRadius: CGFloat = 18
+    static let buttonRadius: CGFloat = 12
+    static let cardPadding: CGFloat = 24
+    static let spacing: CGFloat = 18
+    static let sidebarWidth: CGFloat = 230
 }
 
 enum WorkspaceAppearance {
@@ -41,18 +52,113 @@ enum WorkspaceAppearance {
 struct WorkspaceActionButtonStyle: ButtonStyle {
     let palette: Palette
     var prominent = false
-    @Environment(\.isEnabled) private var isEnabled
+    var compact = false
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        WorkspaceButtonSurface(label: configuration.label, palette: palette,
+                               prominent: prominent, compact: compact,
+                               selected: false, isPressed: configuration.isPressed)
+    }
+}
+
+private struct WorkspaceButtonSurface<Label: View>: View {
+    let label: Label
+    let palette: Palette
+    let prominent: Bool
+    let compact: Bool
+    let selected: Bool
+    let isPressed: Bool
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var hovering = false
+
+    private var fill: Color {
+        if prominent { return palette.primary }
+        if isEnabled && isPressed { return palette.active }
+        if isEnabled && hovering { return palette.hover }
+        return selected ? palette.raised : palette.card
+    }
+
+    private var border: Color {
+        if prominent || selected { return palette.primary }
+        return isEnabled && hovering ? palette.muted : palette.buttonBorder
+    }
+
+    var body: some View {
+        label
             .font(.system(size: 12, weight: .medium))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(minHeight: 38)
-            .foregroundStyle(prominent ? palette.background : palette.primary)
-            .background(prominent ? palette.primary : palette.card, in: RoundedRectangle(cornerRadius: 9))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(prominent ? .clear : palette.border, lineWidth: 1))
-            .opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
+            .padding(.horizontal, compact ? 11 : 15)
+            .padding(.vertical, compact ? 6 : 9)
+            .frame(minHeight: compact ? 32 : 38)
+            .foregroundStyle(prominent ? palette.card : palette.primary)
+            .background(fill, in: RoundedRectangle(cornerRadius: BentoTokens.buttonRadius))
+            .overlay {
+                RoundedRectangle(cornerRadius: BentoTokens.buttonRadius)
+                    .strokeBorder(border, lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: BentoTokens.buttonRadius))
+            .opacity(isEnabled ? (prominent && (isPressed || hovering) ? 0.86 : 1) : 0.45)
+            .onHover { hovering = $0 }
+    }
+}
+
+private enum WorkspaceThemeOption: String, CaseIterable, Identifiable {
+    case system, light, dark
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .system: "Système"
+        case .light: "Clair"
+        case .dark: "Sombre"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .system: "desktopcomputer"
+        case .light: "sun.max"
+        case .dark: "moon"
+        }
+    }
+}
+
+private struct WorkspaceThemeChoiceStyle: ButtonStyle {
+    let palette: Palette
+    let selected: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        WorkspaceButtonSurface(label: configuration.label, palette: palette,
+                               prominent: false, compact: false,
+                               selected: selected, isPressed: configuration.isPressed)
+    }
+}
+
+/// Independent appearance choices retain the ordinary native button behavior.
+struct WorkspaceThemeChoices: View {
+    @Binding var selection: String
+    let palette: Palette
+
+    var body: some View {
+        HStack(spacing: 9) {
+            ForEach(WorkspaceThemeOption.allCases) { option in
+                let selected = WorkspaceAppearance.selection(for: selection) == option.rawValue
+                Button {
+                    selection = option.rawValue
+                } label: {
+                    HStack(spacing: 8) {
+                        BentoIcon(symbol: option.symbol, size: 14)
+                        Text(option.label)
+                        BentoIcon(symbol: "checkmark", size: 10)
+                            .opacity(selected ? 1 : 0)
+                    }
+                }
+                .buttonStyle(WorkspaceThemeChoiceStyle(palette: palette, selected: selected))
+                .accessibilityLabel(option.label)
+                .accessibilityValue(selected ? "Sélectionné" : "")
+                .accessibilityAddTraits(selected ? .isSelected : [])
+                .accessibilityIdentifier("appearance.choice.\(option.rawValue)")
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 }
 
@@ -62,6 +168,7 @@ struct WorkspaceThemeControl: View {
     let palette: Palette
     @Environment(\.colorScheme) private var systemScheme
     @Environment(\.isEnabled) private var isEnabled
+    @State private var hovering = false
 
     private var dark: Bool {
         (WorkspaceAppearance.colorScheme(for: selection) ?? systemScheme) == .dark
@@ -73,8 +180,8 @@ struct WorkspaceThemeControl: View {
             Button {
                 selection = WorkspaceAppearance.toggledSelection(for: selection, systemScheme: systemScheme)
             } label: {
-                Image(systemName: dark ? "sun.max" : "moon")
-                    .font(.system(size: 14)).frame(width: 32, height: 30)
+                BentoIcon(symbol: dark ? "sun.max" : "moon", size: 14)
+                    .frame(width: 32, height: 32)
             }
             .buttonStyle(.plain)
             .help(actionLabel)
@@ -82,12 +189,21 @@ struct WorkspaceThemeControl: View {
             .accessibilityIdentifier("appearance.toggle")
 
             Menu {
-                Button("Système") { selection = "system" }
-                Button("Clair") { selection = "light" }
-                Button("Sombre") { selection = "dark" }
+                ForEach(WorkspaceThemeOption.allCases) { option in
+                    Button {
+                        selection = option.rawValue
+                    } label: {
+                        if WorkspaceAppearance.selection(for: selection) == option.rawValue {
+                            Label(option.label, systemImage: "checkmark")
+                        } else {
+                            Text(option.label)
+                        }
+                    }
+                    .accessibilityIdentifier("appearance.menu.\(option.rawValue)")
+                }
             } label: {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .medium)).frame(width: 16, height: 30)
+                BentoIcon(symbol: "chevron.down", size: 8)
+                    .frame(width: 17, height: 32)
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
@@ -95,10 +211,96 @@ struct WorkspaceThemeControl: View {
             .accessibilityLabel("Choisir le thème")
             .accessibilityIdentifier("appearance.menu")
         }
-        .foregroundStyle(palette.secondary)
-        .background(palette.raised, in: RoundedRectangle(cornerRadius: 7))
+        .foregroundStyle(palette.primary)
+        .background(isEnabled && hovering ? palette.hover : palette.card,
+                    in: RoundedRectangle(cornerRadius: BentoTokens.buttonRadius))
+        .overlay {
+            RoundedRectangle(cornerRadius: BentoTokens.buttonRadius)
+                .strokeBorder(isEnabled && hovering ? palette.muted : palette.buttonBorder, lineWidth: 1)
+        }
         .opacity(isEnabled ? 1 : 0.45)
+        .onHover { hovering = $0 }
         .fixedSize()
+    }
+}
+
+/// Regular SF Symbols share one size; the drone is a four-rotor outline.
+struct BentoIcon: View {
+    let symbol: String
+    var size: CGFloat = 18
+
+    var body: some View {
+        Group {
+            if symbol == "drone" {
+                BentoDroneShape()
+                    .stroke(style: StrokeStyle(lineWidth: size * 1.65 / 24,
+                                               lineCap: .round, lineJoin: .round))
+            } else {
+                Image(systemName: symbol)
+                    .font(.system(size: size, weight: .regular))
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct BentoDroneShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let scale = min(rect.width, rect.height) / 24
+        let origin = CGPoint(x: rect.midX - 12 * scale, y: rect.midY - 12 * scale)
+        var path = Path()
+        path.addRoundedRect(in: CGRect(x: 9, y: 9, width: 6, height: 6), cornerSize: CGSize(width: 2, height: 2))
+        for (start, end) in [
+            (CGPoint(x: 9.5, y: 9.5), CGPoint(x: 6.5, y: 6.5)),
+            (CGPoint(x: 14.5, y: 9.5), CGPoint(x: 17.5, y: 6.5)),
+            (CGPoint(x: 9.5, y: 14.5), CGPoint(x: 6.5, y: 17.5)),
+            (CGPoint(x: 14.5, y: 14.5), CGPoint(x: 17.5, y: 17.5))
+        ] {
+            path.move(to: start)
+            path.addLine(to: end)
+        }
+        for center in [CGPoint(x: 5.5, y: 5.5), CGPoint(x: 18.5, y: 5.5),
+                       CGPoint(x: 5.5, y: 18.5), CGPoint(x: 18.5, y: 18.5)] {
+            path.addEllipse(in: CGRect(x: center.x - 3, y: center.y - 3, width: 6, height: 6))
+        }
+        return path.applying(CGAffineTransform(a: scale, b: 0, c: 0, d: scale,
+                                              tx: origin.x, ty: origin.y))
+    }
+}
+
+struct BentoPanel<Content: View>: View {
+    let palette: Palette
+    private let content: Content
+
+    init(palette: Palette, @ViewBuilder content: () -> Content) {
+        self.palette = palette
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(BentoTokens.cardPadding)
+            .background(palette.card, in: RoundedRectangle(cornerRadius: BentoTokens.cardRadius))
+            .overlay {
+                RoundedRectangle(cornerRadius: BentoTokens.cardRadius)
+                    .strokeBorder(palette.border, lineWidth: 1)
+            }
+    }
+}
+
+/// A status stays plain text with a colored dot, without a button surface.
+struct BentoStatus: View {
+    let label: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle().fill(color).frame(width: 6, height: 6).accessibilityHidden(true)
+            Text(label).font(.system(size: 11)).foregroundStyle(color)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 

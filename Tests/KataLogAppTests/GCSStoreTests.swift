@@ -175,10 +175,11 @@ def emit(event,**kw): print(json.dumps(dict(event=event,**kw)),flush=True)
 ids=['0102030405060708090A0B0C','1112131415161718191A1B1C']
 if cmd=='discover':
     emit('connection',connected=True)
-    while True:
+    while root.exists():
         visible=ids[1:] if mode=='offline' else (ids+[ids[0]] if mode=='duplicate' else ids)
         if mode=='invalid-uuid': visible=['not-a-drone-uuid']
         emit('drones',drones=[dict(uuid=u,time_usec=time.time()*1e6,arming_state=2 if mode=='armed' and u==ids[0] else 1) for u in visible]);time.sleep(.15)
+    sys.exit(0)
 u=arg('--uuid')
 paths=['/fs/microsd/log/2026-09-01/a.ulg','/fs/microsd/log/2026-09-01/b.ulg']
 if cmd=='inventory':
@@ -371,11 +372,15 @@ else:
             try await waitUntil { store.canCollectAll }
             let expected: Set<String> = mode == "duplicate" ? [first, second] : [second]
             store.collectAll()
+            // Admission and inventory are the proof here. Keep transfers paused
+            // so fixture download delays cannot obscure membership assertions.
+            store.pauseQueue()
             XCTAssertEqual(store.allowedUUIDs, expected)
-            try await waitUntil { !store.isBusy && store.batchProgress.completedCount == expected.count * 2 }
+            try await waitUntil { !store.isBusy && store.completedInventoryUUIDs == expected }
             XCTAssertEqual(Set(store.queue.map(\.droneUUID)), expected)
             XCTAssertEqual(store.queue.count, expected.count * 2)
             XCTAssertEqual(store.expectedInventoryUUIDs, expected)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("trace.jsonl").path))
         }
     }
 

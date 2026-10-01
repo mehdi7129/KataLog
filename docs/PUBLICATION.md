@@ -6,17 +6,27 @@ L'ancien historique, ses tags et sa release sont isolés dans une archive GitHub
 **privée distincte**. Ce dépôt repart de sources nettoyées avec un historique
 neuf et une identité d'auteur `noreply`, sans ancien tag ni asset.
 
-La visibilité reste privée pendant la préparation de la distribution publique.
-L'app et ses futures archives doivent être reconstruites et auditées avant livraison.
-Les fichiers utilisateur et les originaux restent conservés localement.
+La publication publique utilise cette base nettoyée et des distributions
+reconstruites, signées, notarisées et auditées. Les fichiers utilisateur et les
+originaux restent conservés localement ; les rapports détaillés restent privés.
 
 La revue du 30 septembre couvre aussi les surfaces GitHub : historique,
 auteurs noreply, branches, PR, runs et annotations. Deux anciennes entrées de
 runs ont été sauvegardées en privé puis supprimées avec autorisation explicite ;
-leurs check-runs ne sont plus accessibles. Le dernier run est skipped sans
-runner ni étape. Il faut refaire cette revue avant le passage public et après
+leurs check-runs ne sont plus accessibles. Les runs antérieurs à la publication
+sont skipped sans runner ni étape. Il faut refaire cette revue avant chaque publication et après
 tout nouveau contenu GitHub. L’absence de données dans l’arbre source ne suffit
 pas à qualifier les métadonnées, pièces jointes, assets ou logs de CI.
+
+La revue du 1er octobre reprend tous les commits et blobs des refs annoncées,
+y compris les refs de pull requests ; auteurs, messages et tags, images et
+métadonnées, archives sources et distributions existantes. Elle couvre aussi les
+PR/comments/reviews, releases, runs/annotations/artifacts Actions, paramètres
+publics et social preview GitHub. Aucun secret réel ni donnée opérationnelle
+privée n’a été confirmé dans ce périmètre. Les faux positifs du scanner sont
+classés en privé ; les derniers assets et le commit de release sont revérifiés.
+Les ProjectsV2 ont une visibilité indépendante ; leur contenu n’est pas qualifié
+par cet audit avec les permissions API disponibles.
 
 ## Ce qui entre dans le dépôt public
 
@@ -90,8 +100,9 @@ fichiers ; voir [GitHub — visibilité](https://docs.github.com/en/repositories
 
 ## Installation utilisateur cible
 
-La distribution autonome 0.6.0 se font **hors App Store** : télécharger le DMG, l'ouvrir,
+La distribution autonome 0.7.0 se fait **hors App Store** : télécharger le DMG, l'ouvrir,
 glisser KataLog dans Applications, éjecter puis lancer. Le moteur est embarqué.
-Un futur appcast public signé permettra les updates Sparkle sans compte GitHub utilisateur ;
-ce flux reste désactivé dans la release 0.6.0.
+Un appcast public signé permet les updates Sparkle sans compte GitHub utilisateur
+à partir de la release 0.7.0. Les versions 0.6.x nécessitent une première installation
+par DMG ; leur flux était désactivé.
 Voir le [plan 0.6.0](PLAN-0.6.0.md) et la [procédure de release](RELEASING.md).

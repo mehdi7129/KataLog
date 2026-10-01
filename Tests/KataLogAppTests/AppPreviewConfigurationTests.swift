@@ -19,7 +19,7 @@ final class AppPreviewConfigurationTests: XCTestCase {
     }
 
     func testApprovedStableWorkspaceKeepsTheInstalledLibraryAndExplicitDestination() {
-        for version in ["0.6.0", "0.6.1", "0.10.0", "1.0.0"] {
+        for version in ["0.6.0", "0.6.1", "0.7.0", "0.10.0", "1.0.0"] {
             let installed = AppPreviewConfiguration(environment: ["KATALOG_LIBRARY_DIR": "/synthetic-selected"],
                                                     reviewBuild: false, releaseVersion: version)
             XCTAssertTrue(installed.showReviewUI, version)

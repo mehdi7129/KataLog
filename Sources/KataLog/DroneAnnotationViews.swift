@@ -30,11 +30,15 @@ struct DroneNumberEditor: View {
     let target: DroneIdentityTarget
     @ObservedObject var store: DroneAnnotationStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var scheme
     @State private var number = ""
     @State private var error: String?
+    private var palette: Palette { Palette(dark: scheme == .dark) }
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Identifier ce drone").font(.title2.weight(.semibold))
+            BentoPanel(palette: palette) {
+            VStack(alignment: .leading, spacing: 12) {
             Text("Le numéro est enregistré localement pour cette identité. Deux contrôleurs portant le même numéro restent distincts.")
                 .font(.callout).foregroundStyle(.secondary)
             Text(target.key).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
@@ -46,17 +50,20 @@ struct DroneNumberEditor: View {
             TextField("Numéro du drone", text: $number).textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("identity.number")
             Text("32 caractères maximum · les zéros initiaux sont conservés").font(.caption).foregroundStyle(.secondary)
+            }
+            }
             if let error { Label(error, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.orange).accessibilityIdentifier("identity.error") }
             HStack {
                 Button("Retirer le numéro") { save(nil) }.disabled(store.state.stockNumbers[target.key] == nil && target.stockNumber == nil)
                     .accessibilityIdentifier("identity.reset")
                 Spacer()
                 Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Enregistrer") { save(number) }.keyboardShortcut(.defaultAction)
+                Button("Enregistrer") { save(number) }.buttonStyle(WorkspaceActionButtonStyle(palette: palette, prominent: true)).keyboardShortcut(.defaultAction)
                     .accessibilityIdentifier("identity.save")
             }
         }
-        .padding(26).frame(width: 540)
+        .padding(24).frame(width: 620).foregroundStyle(palette.primary).background(palette.background)
+        .buttonStyle(WorkspaceActionButtonStyle(palette: palette)).tint(palette.primary)
         .onAppear { number = store.state.stockNumbers[target.key] ?? target.stockNumber ?? "" }
     }
     private func save(_ value: String?) {
@@ -87,13 +94,17 @@ private struct MessageFamilyEditor: View {
     @ObservedObject var store: DroneAnnotationStore
     let families: [String]
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var scheme
     @State private var family = ""
     @State private var custom = false
     @State private var error: String?
+    private var palette: Palette { Palette(dark: scheme == .dark) }
     private var choices: [String] { Set(families + Array(store.state.familyOverrides.values) + [message.family, message.sourceFamily ?? message.family]).sorted() }
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Classer ces messages").font(.title2.weight(.semibold))
+            BentoPanel(palette: palette) {
+            VStack(alignment: .leading, spacing: 12) {
             Text(message.text).font(.system(.caption, design: .monospaced)).textSelection(.enabled).lineLimit(5)
             Text("S’applique au même texte et au même niveau dans tous les logs, présents et futurs. Seuls les espaces sont normalisés. Le texte et la sévérité source sont conservés.")
                 .font(.callout).foregroundStyle(.secondary)
@@ -106,17 +117,20 @@ private struct MessageFamilyEditor: View {
                 Button("Autre famille…") { custom = true; family = "" }.accessibilityIdentifier("classification.other")
             }
             Text("Détection d’origine : \(message.sourceFamily ?? message.family) · 48 caractères maximum").font(.caption).foregroundStyle(.secondary)
+            }
+            }
             if let error { Label(error, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.orange) }
             HStack {
                 Button("Rétablir la détection") { save(nil) }.disabled(store.state.familyOverride(for: message) == nil)
                     .accessibilityIdentifier("classification.reset")
                 Spacer()
                 Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Enregistrer") { save(family) }.keyboardShortcut(.defaultAction)
+                Button("Enregistrer") { save(family) }.buttonStyle(WorkspaceActionButtonStyle(palette: palette, prominent: true)).keyboardShortcut(.defaultAction)
                     .disabled(family.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("classification.save")
             }
         }
-        .padding(26).frame(width: 580)
+        .padding(24).frame(width: 660).foregroundStyle(palette.primary).background(palette.background)
+        .buttonStyle(WorkspaceActionButtonStyle(palette: palette)).tint(palette.primary)
         .onAppear { family = message.family }
     }
     private func save(_ value: String?) {

@@ -4,16 +4,20 @@ import KataLogCore
 struct ScopeEditor06: View {
     @ObservedObject var library: LibraryStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var scheme
     @State private var scope = SelectionScope()
     @State private var search = ""
     @State private var error: String?
     @State private var registryCursors: [String?] = [nil]
+    private var palette: Palette { Palette(dark: scheme == .dark) }
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack { Text("Explorer la bibliothèque").font(.title2.weight(.semibold)); Spacer(); Button("Tout réinitialiser") { scope = .init() } }
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    GroupBox("Drones · \(scope.droneKeys.count) identités sélectionnées") {
+                    BentoPanel(palette: palette) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Drones · \(scope.droneKeys.count) identités sélectionnées").font(.system(size: 14, weight: .semibold))
                         VStack(alignment: .leading, spacing: 12) {
                             HStack { TextField("Numéro, nom ou identité", text: $search).onSubmit { findDrones() }; Button("Rechercher") { findDrones() }.disabled(library.isQuerying) }
                             ForEach(library.dronePage?.drones ?? []) { drone in
@@ -22,16 +26,22 @@ struct ScopeEditor06: View {
                             HStack { Button("Précédent") { guard registryCursors.count > 1 else { return }; registryCursors.removeLast(); library.loadAuxiliary(kind: "drones", cursor: registryCursors.last ?? nil, search: search) }.disabled(registryCursors.count <= 1 || library.isQuerying); Spacer(); Text("Page \(registryCursors.count)").font(.caption); Button("Suivant") { guard let cursor = library.dronePage?.nextCursor else { return }; registryCursors.append(cursor); library.loadAuxiliary(kind: "drones", cursor: cursor, search: search) }.disabled(library.dronePage?.nextCursor == nil || library.isQuerying) }
                             Text("Aucune sélection = tous les contrôleurs. Les choix des autres pages sont conservés.").font(.caption).foregroundStyle(.secondary)
                             ForEach(scope.droneKeys.filter { key in !(library.dronePage?.drones ?? []).contains { $0.id == key } }, id: \.self) { key in HStack { Text(key).font(.system(.caption, design: .monospaced)); Spacer(); Button("Retirer") { scope.droneKeys.removeAll { $0 == key } } } }
-                        }.padding(8)
+                        }
                     }
-                    GroupBox("Période") {
+                    }
+                    BentoPanel(palette: palette) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Période").font(.system(size: 14, weight: .semibold))
                         VStack(alignment: .leading, spacing: 10) {
                             HStack { TextField("Début · AAAA-MM-JJ", text: optional($scope.dateFrom)); Text("→"); TextField("Fin · AAAA-MM-JJ", text: optional($scope.dateTo)) }
                             Toggle("Inclure les dates inconnues", isOn: $scope.includeUnknownDates)
                             Text("Jours enregistrés dans la source. Aucun fuseau horaire n’est inventé pour les dates issues des dossiers.").font(.caption).foregroundStyle(.secondary)
-                        }.padding(8)
+                        }
                     }
-                    GroupBox("Messages") {
+                    }
+                    BentoPanel(palette: palette) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Messages").font(.system(size: 14, weight: .semibold))
                         VStack(alignment: .leading, spacing: 12) {
                             TextField("Texte, titre ou famille", text: $scope.search)
                             HStack {
@@ -46,21 +56,26 @@ struct ScopeEditor06: View {
                             Text("Une recherche de messages exige une occurrence correspondante. Un état failsafe sans texte reste une mesure distincte.").font(.caption).foregroundStyle(.secondary)
                             if !scope.families.isEmpty { Text("Familles : " + scope.families.joined(separator: ", ")).font(.caption) }
                             if !scope.levels.isEmpty { Text("Niveaux : " + scope.levels.joined(separator: ", ")).font(.caption) }
-                        }.padding(8)
+                        }
                     }
-                    GroupBox("Enregistrements") {
+                    }
+                    BentoPanel(palette: palette) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Enregistrements").font(.system(size: 14, weight: .semibold))
                         VStack(alignment: .leading, spacing: 12) {
                             TextField("Fichier, SHA, drone ou chemin", text: $scope.logSearch)
                             HStack { Toggle("Lecture complète", isOn: selection("ok", values: $scope.statuses)); Toggle("Lecture partielle", isOn: selection("partial", values: $scope.statuses)); Toggle("Erreur de lecture", isOn: selection("error", values: $scope.statuses)) }
                             Text("Aucun statut sélectionné = tous. Les erreurs de lecture restent consultables.").font(.caption).foregroundStyle(.secondary)
-                        }.padding(8)
+                        }
+                    }
                     }
                     if library.isReadOnly { Label("Lecture seule : cette sélection reste temporaire et ne modifie pas les réglages enregistrés.", systemImage: "lock").font(.caption).foregroundStyle(.secondary) }
                 }
             }.textFieldStyle(.roundedBorder)
             if let error = error ?? library.queryError { Label(error, systemImage: "exclamationmark.triangle").font(.callout) }
-            HStack { Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction); Spacer(); Button("Appliquer la sélection") { apply() }.keyboardShortcut(.defaultAction).disabled(library.isMaintainingLibrary || library.isImporting || library.isQuerying) }
-        }.padding(26).frame(width: 680, height: 580).background(Color(nsColor: .windowBackgroundColor))
+            HStack { Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction); Spacer(); Button("Appliquer la sélection") { apply() }.buttonStyle(WorkspaceActionButtonStyle(palette: palette, prominent: true)).keyboardShortcut(.defaultAction).disabled(library.isMaintainingLibrary || library.isImporting || library.isQuerying) }
+        }.padding(24).frame(width: 720, height: 620).foregroundStyle(palette.primary).background(palette.background)
+        .buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true)).tint(palette.primary)
         .onAppear { scope = library.views.state.activeScope; findDrones() }
         .task { await library.loadCatalogue() }
     }
