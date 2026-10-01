@@ -1,58 +1,67 @@
 # KataLog — bibliothèque locale de logs PX4
 
-**0.7.0 (build 17)** · macOS · SwiftUI · Apple Silicon · GPL-3.0-only
+**0.8.0 (build 18) — en validation avant publication** · macOS · SwiftUI · Apple Silicon · GPL-3.0-only
 
 KataLog rassemble l’historique de votre flotte : logs PX4, alertes filtrables,
 trajectoires Apple Maps, courbes et rapports. Interface **bento monochrome**,
 thèmes **clair / sombre / système**, données conservées sur votre Mac.
 
-### Ce qui change en 0.7.0
+### Ce qui change en 0.8.0
 
-- Dix onglets remaniés en **bento noir/blanc**, boutons compacts, icônes cohérentes
-  et choix du thème conservé. Les fonctions et la bibliothèque restent disponibles.
-- Mises à jour signées depuis l’app, recherche automatique facultative et
-  installation confirmée par l’utilisateur.
-- Diagnostic local KataLog/GCS, export prévisualisé et données privées exclues par défaut.
-- Progression globale de collecte et changement de dossier corrigés.
-- **Tout collecter** inscrit les nouveaux drones visibles sur la GCS dans le
-  registre, puis récupère leurs logs. Aucun ajout un par un ni numéro de stock
-  préalable n’est nécessaire. Les copies déjà vérifiées sont réutilisées.
-- Bibliothèque paginée, filtres et vues enregistrées ; agrégats calculés sur
-  toute la sélection, indépendamment de la page affichée.
-- Sources d’import retirables et restaurables sans supprimer fichiers ou analyses.
-- Drones scannés, durée enregistrée, temps de vol cumulé et couverture explicités.
-  Les badges décrivent les signaux observés ; ils ne certifient pas une panne.
-- Événements PX4, courbes à la demande, révisions d’analyse, sauvegarde/restauration
-  et rapports HTML/JSON cohérents avec les explications de l’app.
-- Navigation compacte ; Alertes, Stockage, Collecte et Rapports simplifiés pour
-  garder leurs actions accessibles jusque dans une fenêtre de 900×620.
+- **Clients locaux** nommés librement : votre organisation ou les clients dont vous
+  suivez les drones. Attribution à l’import ou à la collecte, réattribution en lot,
+  statistiques et rapports limités au client choisi.
+- **Bento simplifié** : boutons sans cadre permanent, survol et focus visibles,
+  thème clair/sombre en un clic, activité récente défilante et cartes alignées.
+- **Carte par proximité** : ville, adresse ou coordonnées, avec rayon. La recherche
+  porte sur les trajectoires complètes disponibles avant la limite d’affichage.
+- **Une fenêtre macOS par log**, déplaçable et redimensionnable, avec commandes
+  natives. Les outils PX4 spécialisés sont regroupés dans le mode avancé facultatif.
+- **Collecte sans inscription manuelle** : les drones éligibles connectés à la GCS
+  sont acceptés lors de la collecte. Chaque travail conserve son client destinataire.
+- **Nettoyage explicite** : retrait groupé des sources, bibliothèque vidable et
+  réinitialisation globale avec confirmation, en conservant tous les fichiers `.ulg`.
+- Diagnostic GCS guidé : récupération des journaux avant activation de leur
+  inclusion privée dans un export.
 
-[Télécharger la release](https://github.com/mehdi7129/KataLog/releases/tag/v0.7.0) ·
-[Notes et validation](docs/RELEASE-0.7.0.md) · [Installation et mises à jour](docs/UPDATING.md)
+[Release 0.8.0](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.0) ·
+[Notes et qualification](docs/RELEASE-0.8.0.md) ·
+[Installation et mises à jour](docs/UPDATING.md)
 
-La version 0.7.0 active les mises à jour signées depuis
-**Réglages → Rechercher une mise à jour**. Une option permet de rechercher
-automatiquement les nouvelles versions ; vous choisissez quand installer et
-redémarrer. Les utilisateurs de 0.6.x installent cette première mise à jour par DMG.
+La release et ses installateurs sont **en validation**. La recette de la Preview
+est disponible dans [VALIDATION-CLIENTS-BENTO.md](docs/VALIDATION-CLIENTS-BENTO.md) ;
+les résultats finaux du package, de la CI et de la publication sont consignés
+séparément dans les notes 0.8.0. La Preview conserve une bibliothèque indépendante.
+
+Les mises à jour signées depuis l’app sont disponibles depuis 0.7.0 via
+**Réglages → Rechercher une mise à jour**. Vous choisissez quand installer et
+redémarrer. Les utilisateurs de 0.6.x peuvent passer directement à la dernière
+release par DMG. L’historique 0.7.0 est conservé dans le [changelog](CHANGELOG.md).
 
 ## Prise en main
 
 1. Ouvrir le DMG, glisser **KataLog.app** dans Applications, éjecter, puis lancer.
    Une installation existante retrouve sa bibliothèque ; une nouvelle commence vide.
-2. Importer un dossier en choisissant **Référencer les fichiers** ou **Copier
-   vers mes archives**. Le second mode vérifie taille et SHA-256 avant l’analyse ;
-   son dossier est conservé au redémarrage. Attendre le bilan avant de retirer la carte SD.
-3. Dans **Historique**, choisir le périmètre : drones, période, recherche,
-   familles et niveaux. Les agrégats portent sur tout ce périmètre ; les listes
-   sont paginées à 200 entrées. Les vues enregistrées conservent les filtres.
-4. Dans **Alertes**, personnaliser les familles, les axes du profil et les
-   masquages réversibles. **Événements PX4** conserve les événements bruts et
-   annonce les dictionnaires manquants ; la traduction exige celui du firmware exact.
-5. Ouvrir une fiche pour consulter **Courbes et chronologie**, **Événements PX4**
-   et **Révisions**. Les quatre courbes partagent 2 048 points ; leurs lacunes et
-   réductions sont annoncées. Une ancienne analyse reste consultable sans sa source.
+2. Dans **Tous les clients → Créer ou gérer les clients…**, créer votre
+   organisation ou vos clients. Ce classement est facultatif : les anciens logs
+   restent dans **Sans client** jusqu’à une attribution explicite.
+3. **Importer** un dossier, choisir son client destinataire, puis **Référencer
+   les fichiers** ou **Copier vers mes archives**. Le second mode vérifie taille
+   et SHA-256 avant l’analyse ; son dossier est conservé au redémarrage. Attendre
+   le bilan avant de retirer la carte SD. Un doublon conserve son client initial.
+4. Dans **Historique**, filtrer les logs du client choisi : drones, période,
+   recherche, familles et niveaux. Les agrégats portent sur tout ce périmètre,
+   indépendamment des pages de 200 entrées. L’attribution à un client peut être
+   modifiée en lot. Dans **Alertes**, personnaliser familles et masquages réversibles.
+5. Ouvrir un log dans sa fenêtre macOS pour consulter sa synthèse, ses messages,
+   sa carte et ses courbes. Les quatre courbes partagent 2 048 points ; lacunes
+   et réductions sont annoncées. Les outils PX4 spécialisés et les révisions
+   sont accessibles en mode avancé dans les réglages.
 6. **Stockage** propose sauvegarde analyses/réglages ou complète, restauration
-   vérifiée, réassociation des sources par SHA et récupération des caches nettoyés.
+   vérifiée, réassociation des sources par SHA et retrait groupé des sources.
+   Dans **Réglages**, **Vider la bibliothèque** et **Réinitialiser KataLog** sont
+   deux actions distinctes pour tous les clients, avec confirmation. Les fichiers
+   `.ulg` restent sur disque ; [les éléments effacés sont explicités](docs/CLIENTS-BENTO.md#nettoyage).
 7. **Rapports** permet de vérifier le périmètre et les exclusions avant export.
    Les données intégrales sont conservées même si un HTML de plus de 10 Mio
    doit être remplacé par une synthèse et un manifeste.
@@ -78,7 +87,7 @@ options privées distinctes. Cette fonctionnalité est disponible à partir de l
 
 ### Installer une release
 
-Le package **0.7.0** est un **DMG** avec **KataLog.app** et un lien
+Le package **0.8.0** prévu pour publication est un **DMG** avec **KataLog.app** et un lien
 **Applications** : ouvrir le DMG, glisser KataLog dans Applications, éjecter,
 puis lancer l’app. Le moteur ARM64 est embarqué ; aucun App Store, Terminal,
 Homebrew ni Python séparé n’est requis pour utiliser l’app.
@@ -86,8 +95,8 @@ Homebrew ni Python séparé n’est requis pour utiliser l’app.
 **Compatibilité : Mac Apple Silicon, macOS 15 minimum, recette locale sur macOS 27.**
 Les minima des composants natifs sont contrôlés au packaging. L’exécution sur
 macOS 15 demande une recette sur cette version ; le test macOS 27 ne la remplace pas.
-La [recette 0.7.0](docs/RELEASE-0.7.0.md) consigne les tests réalisés et
-les limites de qualification.
+La [recette 0.8.0](docs/RELEASE-0.8.0.md) distingue les résultats obtenus,
+les vérifications encore en cours et les limites de qualification.
 
 Les archives sont proposées sur la
 [page Releases](https://github.com/mehdi7129/KataLog/releases).
@@ -97,8 +106,8 @@ pas réutilisés dans cette distribution. Pour compiler depuis les sources, voir
 
 ### Mettre à jour une app déjà installée
 
-Les versions antérieures à 0.7.0 n’activent pas le flux public. Installez 0.7.0
-une première fois par DMG : terminer/arrêter les imports et la collecte, quitter
+Les versions antérieures à 0.7.0 n’activent pas le flux public. Installez la
+nouvelle release une première fois par DMG : terminer/arrêter les imports et la collecte, quitter
 KataLog, remplacer l’app depuis le nouveau DMG, puis la rouvrir. Ensuite, utilisez
 **Réglages → Rechercher une mise à jour** et le dialogue **Installer et redémarrer**.
 Le choix de recherche automatique est conservé au redémarrage.
@@ -143,15 +152,19 @@ restent dans une archive distincte et ne sont pas distribuées ici.
 
 ### Carte et fiche d’un log
 
-1. Ouvrir **Carte**. Si les fichiers ont été importés avec une ancienne version,
-   cliquer **Actualiser les analyses** : KataLog relit les copies locales avec le
-   parseur **1.4.0**, sans les télécharger à nouveau ni dupliquer l’historique.
-2. Choisir le drone et rechercher un fichier ou une date. La carte affiche les
-   **80 logs géolocalisés les plus récents** du périmètre, avec un aperçu de
-   **256 points maximum par log** ; la limite est affichée et la liste conserve
-   les autres enregistrements. Les coupures de données séparent les trajectoires.
-3. Ouvrir un log depuis la carte ou l’historique. La fiche charge ses détails à
-   la demande : carte jusqu’à **4 096 points**, chronologie des alertes, tous les
+1. Ouvrir **Carte**, sélectionner un client si nécessaire, puis saisir une ville,
+   une adresse ou des coordonnées et choisir un rayon. Un log correspond dès
+   qu’une portion valide de sa trajectoire traverse cette zone. La recherche
+   porte sur tout le périmètre client, avant la limite d’affichage de la carte.
+2. La recherche utilise les trajectoires complètes disponibles ; celles d’une
+   ancienne bibliothèque sont mises en cache à partir des sources accessibles.
+   Les logs qui n’ont pas pu être vérifiés sont annoncés. La carte affiche les
+   **80 logs géolocalisés les plus récents** du périmètre avec un aperçu de
+   **256 points maximum par log** ; ces aperçus ne limitent pas la recherche.
+   Les coupures de données séparent les trajectoires et ne sont jamais reliées.
+3. Ouvrir un log depuis la carte ou l’historique. Sa fenêtre macOS peut être
+   déplacée, agrandie et fermée indépendamment ; rouvrir le même log ramène sa
+   fenêtre au premier plan. Elle charge ses détails à la demande : carte jusqu’à **4 096 points**, chronologie des alertes, tous les
    messages texte filtrables, mesures, paramètres et inventaire des topics.
 4. Une alerte positionnable peut être sélectionnée sur la carte ; le repère
    utilise un échantillon GPS réel situé à deux secondes au plus du message,
@@ -168,8 +181,9 @@ Voir le [contrat d’import et des détails](docs/IMPORT-CONTRACT.md).
 
 ### Rapport HTML interactif
 
-Depuis **Rapports**, exporter la bibliothèque en HTML, puis ouvrir le fichier dans
-un navigateur. **Exporter ce log** utilise la même présentation pour une seule
+Depuis **Rapports**, exporter la sélection ou tous les logs du client choisi en
+HTML, puis ouvrir le fichier dans un navigateur. Choisir **Tous les clients**
+avant l’export pour couvrir la bibliothèque entière. **Exporter ce log** utilise la même présentation pour une seule
 fiche. Le rapport est autonome : styles, données et interactions sont embarqués,
 sans connexion à KataLog, à la GCS ou à un service de graphiques.
 
@@ -199,14 +213,17 @@ filtres du rapport HTML.
 ### Collecter depuis une GCS
 
 1. Ouvrir **Collecte GCS**, saisir son adresse IP ou hostname, puis **Connecter**.
-2. Cliquer **Tout collecter** : les drones éligibles visibles sur cette GCS sont
-   enregistrés automatiquement, puis leurs nouveaux logs sont récupérés. Leur UUID
-   complet reste dans le registre, même sans log ; le numéro de stock est facultatif.
+2. Choisir le **Client destinataire** des nouveaux logs dans les options de
+   collecte, puis **Tout collecter**. Les drones éligibles visibles sur cette GCS
+   sont acceptés automatiquement ; aucun ajout un par un ni numéro de stock
+   préalable n’est nécessaire. Leur identité reste dans le registre, même sans log.
 3. Les appareils explicitement armés, hors ligne ou sans UUID valide sont exclus.
-   Un échec d’enregistrement bloque le départ. Pour choisir les fichiers d’un
-   drone : l’ajouter à **Ma flotte**, **Voir les logs**, puis **Collecter la sélection**.
+   Pour choisir les fichiers d’un drone, ouvrir directement **Voir les logs**,
+   puis **Collecter la sélection**. Les contrôles d’identité restent appliqués.
 4. **Analyser après collecte**, activé par défaut, ajoute les fichiers vérifiés à
-   la bibliothèque existante. Le cache et l’import évitent les copies inutiles.
+   la bibliothèque existante. Chaque travail garde le client destinataire choisi
+   à sa création, même si la sélection change ensuite. Les doublons déjà analysés
+   conservent leur attribution. Le cache et l’import évitent les copies inutiles.
 
 La barre **Progression globale** suit le lot courant : octets, fichiers vérifiés,
 attentes et erreurs. Jusqu’à **2 drones distincts** transfèrent leurs logs en
@@ -255,14 +272,15 @@ firmware 4.1.5. Voir le [contrat et la recette](docs/GCS-COLLECTION.md).
   identités provisoires explicites si l’UUID manque.
 - Déduplication SHA256, cache des fichiers inchangés et historique persistant.
 - Conservation des messages texte, y compris les messages taggés et INFO/DEBUG.
-- Recherche ; filtres drone, famille et niveau ; mode « Alertes ».
+- Clients locaux, attribution par log à l’import/collecte ou en lot ; filtres
+  client, drone, famille et niveau, recherche et mode « Alertes ».
 - Radar du **nombre de logs affectés** par famille : les répétitions d’un même
   message dans un log ne gonflent pas ce compteur.
 - Regroupement des textes identiques de même niveau, inspecteur, historique et
   accès au fichier source dans le Finder.
 - Mesures disponibles GNSS/RTK par récepteur, batterie, durées, failsafe et dropouts.
-- Carte Apple Maps avec trajectoires segmentées, points isolés, fond plan/satellite
-  et ouverture de la fiche depuis la carte ou l’historique.
+- Carte Apple Maps avec trajectoires segmentées, points isolés, fond plan/satellite,
+  recherche par proximité et ouverture d’une fenêtre indépendante par log.
 - Fiche chargée à la demande : messages filtrables, mesures, GPS, paramètres
   initiaux et changements horodatés, topics/instances/champs, couverture et sources.
 - Exports HTML autonomes et JSON : toute la bibliothèque, messages, métadonnées,
@@ -287,10 +305,12 @@ reconnu comme le même drone physique.
 
 ## Validation
 
-Les résultats du package 0.7.0 figurent dans la
-[recette de release](docs/RELEASE-0.7.0.md). La
+La qualification du package 0.8.0 est suivie dans la
+[recette de release](docs/RELEASE-0.8.0.md). La
+[validation de la Preview](docs/VALIDATION-CLIENTS-BENTO.md) et la
+[recette 0.7.0](docs/RELEASE-0.7.0.md) conservent leurs résultats distincts. La
 [recette 0.6.0](docs/RELEASE-0.6.0.md) et le
-[suivi d’implémentation](docs/IMPLEMENTATION-0.6.0.md) conserve les étapes
+[suivi d’implémentation](docs/IMPLEMENTATION-0.6.0.md) conservent les étapes
 antérieures, avec la version testée et les limites de chaque preuve. Le benchmark synthétique porte sur
 50 000 logs, 5 millions de messages et 500 identités ; ce n’est pas le parsing
 de 50 000 ULogs ni une qualification de 500 drones physiques.
@@ -336,8 +356,9 @@ Le dépôt public contient les sources et des fixtures synthétiques. Les logs, 
 coordonnées, bibliothèques, réglages locaux et preuves opérationnelles n'en font
 pas partie. Les anciens commits et assets restent dans une archive privée distincte ; voir [la préparation publique](docs/PUBLICATION.md).
 
-La distribution autonome **0.7.0** utilise un **DMG signé et notarisé**, à ouvrir pour glisser
-**KataLog dans Applications**, sans App Store ni installation séparée de Python.
+La distribution autonome **0.8.0** est préparée sous forme de **DMG signé et
+notarisé**, à ouvrir pour glisser **KataLog dans Applications**, sans App Store
+ni installation séparée de Python. Son statut final figure dans la recette de release.
 Le moteur de la base 0.5.1 reste externe ; son ancien ZIP est conservé séparément en privé.
 
 ## Limites et couverture
@@ -350,7 +371,8 @@ Le moteur de la base 0.5.1 reste externe ; son ancien ZIP est conservé séparé
   n’est pas assimilée à zéro. Les dates GPS sont UTC, les dates de chemins restent
   sans fuseau lorsqu’aucune information fiable ne permet de le déterminer.
 - Les vues sont paginées. Les rapports permettent de choisir la sélection ou
-  toute la bibliothèque ; leur périmètre est annoncé avant génération.
+  tous les logs du client choisi ; **Tous les clients** couvre la bibliothèque
+  entière. Le périmètre est annoncé avant génération.
 - Le cache ne remplace pas les ULogs pour recalculer une analyse ou lire toutes
   les séries. Conserver les originaux ou utiliser l’archivage vérifié à l’import.
 - La collecte accepte deux UUID en parallèle, un fichier par UUID. Un arrêt agit
@@ -361,7 +383,7 @@ Le moteur de la base 0.5.1 reste externe ; son ancien ZIP est conservé séparé
   collecte radio simultanée de 500 appareils. Voir la recette de release pour
   distinguer les essais logiciels, locaux et matériels.
 - macOS 15 est le minimum déclaré ; la recette locale est exécutée sur macOS 27.
-  Le flux signé 0.7.0 permet la mise à jour depuis l’app ; la recherche automatique
+  Le flux signé disponible depuis 0.7.0 permet la mise à jour depuis l’app ; la recherche automatique
   est facultative. Une première installation par DMG est nécessaire depuis 0.6.x.
 
 ## Moteur Python pour le développement

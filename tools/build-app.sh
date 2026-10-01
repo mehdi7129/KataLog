@@ -7,8 +7,8 @@ build_dir="${KATALOG_BUILD_DIR:-/private/tmp/katalog-swift-build}"
 configuration="${KATALOG_CONFIGURATION:-release}"
 sign_identity="${KATALOG_SIGN_IDENTITY:--}"
 output_dir="${KATALOG_DIST_DIR:-$project_dir/dist}"
-version="${KATALOG_VERSION:-0.7.0}"
-build_number="${KATALOG_BUILD_NUMBER:-17}"
+version="${KATALOG_VERSION:-0.8.0}"
+build_number="${KATALOG_BUILD_NUMBER:-18}"
 update_channel="${KATALOG_UPDATE_CHANNEL:-disabled}"
 update_feed_url="${KATALOG_UPDATE_FEED_URL:-}"
 update_public_key="${KATALOG_UPDATE_PUBLIC_KEY:-}"
@@ -22,8 +22,8 @@ if [[ "$ui_preview_build" != 0 && "$ui_preview_build" != 1 ]]; then
     exit 1
 fi
 if [[ "$ui_preview_build" == 1 ]]; then
-    if [[ "${output_dir%/}" != */0.6-staging || "$version" != 0.6.0 || "$update_channel" != disabled ]]; then
-        printf 'La preview UI est réservée à la candidate 0.6.0 sous 0.6-staging, avec mises à jour désactivées.\n' >&2
+    if [[ ( "${output_dir%/}" != */preview-staging && ( "${output_dir%/}" != */0.6-staging || "$version" != 0.6.0 ) ) || "$update_channel" != disabled ]]; then
+        printf 'La preview UI est réservée à un dossier preview-staging (ou 0.6-staging historique), avec mises à jour désactivées.\n' >&2
         exit 1
     fi
     app_name='KataLog Preview.app'
@@ -162,8 +162,8 @@ cat > "$app_path/Contents/Info.plist" <<'PLIST'
   <key>CFBundleName</key><string>KataLog</string>
   <key>CFBundleDisplayName</key><string>KataLog</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.7.0</string>
-  <key>CFBundleVersion</key><string>17</string>
+  <key>CFBundleShortVersionString</key><string>0.8.0</string>
+  <key>CFBundleVersion</key><string>18</string>
   <key>KatalogBundledEngineRequired</key><true/>
   <key>CFBundleIconFile</key><string>KataLog</string>
   <key>NSLocalNetworkUsageDescription</key><string>KataLog se connecte à votre GCS pour découvrir votre flotte et récupérer ses logs.</string>
@@ -177,6 +177,9 @@ PLIST
 /usr/bin/plutil -replace CFBundleVersion -string "$build_number" "$app_path/Contents/Info.plist"
 if [[ "$ui_preview_build" == 1 ]]; then
     /usr/bin/plutil -insert KataLogUIReviewPreview -bool true "$app_path/Contents/Info.plist"
+    if [[ "${output_dir%/}" == */preview-staging ]]; then
+        /usr/bin/plutil -insert KataLogPreviewLibraryComponent -string "KataLogPreview-$version" "$app_path/Contents/Info.plist"
+    fi
     /usr/bin/plutil -replace CFBundleIdentifier -string com.mehdiguiard.katalog.preview06 "$app_path/Contents/Info.plist"
     /usr/bin/plutil -replace CFBundleName -string 'KataLog Preview' "$app_path/Contents/Info.plist"
     /usr/bin/plutil -replace CFBundleDisplayName -string 'KataLog Preview' "$app_path/Contents/Info.plist"

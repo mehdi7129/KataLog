@@ -77,9 +77,13 @@ struct ImportOptions06: View {
         .onAppear { archiveDirectory = initialState.archiveDirectory ?? ""; copy = initialCopy }
     }
     private func conservationButton(_ title: String, copies: Bool) -> some View {
-        Button(title) { copy = copies }
+        Button { copy = copies } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "checkmark").opacity(copy == copies ? 1 : 0)
+                Text(title)
+            }
+        }
             .buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(copy == copies ? palette.primary : .clear, lineWidth: 1))
             .accessibilityAddTraits(copy == copies ? .isSelected : [])
     }
     private func chooseArchiveDirectory() {

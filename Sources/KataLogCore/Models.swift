@@ -49,6 +49,8 @@ public struct FlightLog: Codable, Identifiable, Sendable {
     public var droneID: String
     public var droneName: String
     public var stockNumber: String? = nil
+    public var clientID: String? = nil
+    public var clientName: String? = nil
     /// Local linkage derived from unique observed metadata, never written into source metadata.
     public var annotationGCSUUID: String? = nil
     public var annotationWarning: String? = nil

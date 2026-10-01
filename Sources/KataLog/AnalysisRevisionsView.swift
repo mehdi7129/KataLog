@@ -49,6 +49,7 @@ final class AnalysisRevisionsStore: ObservableObject {
 struct AnalysisRevisionsView: View {
     @ObservedObject var library: LibraryStore
     let logID: String
+    var currentLog: FlightLog? = nil
     @StateObject private var store = AnalysisRevisionsStore()
     @State private var offset = 0
     @State private var comparisonLimit = 200
@@ -91,7 +92,7 @@ struct AnalysisRevisionsView: View {
                             Text(revision.kind == "detail" ? "Fiche historique conservée" : "Résumé historique · données détaillées non incluses").font(.callout)
                             Text("Log : \(log.date.isEmpty ? "date inconnue" : log.date) · \(log.fileName)").font(.caption).textSelection(.enabled)
                             Text("Empreinte de l’analyse : \(revision.analysisSHA256)").font(.caption.monospaced()).textSelection(.enabled)
-                            if let current = library.selectedFlight { comparison(previous: log, current: current) }
+                            if let current = currentLog ?? library.selectedFlight, current.id == logID { comparison(previous: log, current: current) }
                             RecordedMetadataView(log: log)
                             DisclosureGroup("Messages conservés · \(log.messages.count)") {
                                 LazyVStack(alignment: .leading, spacing: 10) {

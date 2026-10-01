@@ -15,6 +15,8 @@ private struct GCSTransferSource: Hashable, Sendable {
 
 @MainActor
 final class GCSStore: ObservableObject {
+    @Published private(set) var collectionClientID: String?
+    var collectionClientName: String { library?.clients.scopeLabel(for: collectionClientID ?? "") ?? "Sans client" }
     @Published var host: String
     @Published private(set) var isConnected = false
     @Published private(set) var isConnecting = false
@@ -180,6 +182,7 @@ final class GCSStore: ObservableObject {
             }
         }
         host = state.host
+        collectionClientID = state.collectionClientID
         allowedUUIDs = Set(state.allowedUUIDs.filter(GCSIdentity.isValid).map { $0.uppercased() })
         if let saved = try? JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: legacyStateURL)) { legacyTransfers = saved.queue }
         if FileManager.default.fileExists(atPath: queueDatabaseURL.path) {
@@ -215,6 +218,31 @@ final class GCSStore: ObservableObject {
         }
     }
 
+    func chooseCollectionClient(_ id: String) {
+        guard permitMutation(), !isBusy else { return }
+        guard id.isEmpty || library?.clients.profiles.contains(where: { $0.id == id }) == true else {
+            errorMessage = "Ce client n’existe plus. Choisissez un destinataire."; return
+        }
+        collectionClientID = id; persist()
+    }
+
+    /// Called while the library owns its maintenance gate. No original is touched.
+    func resetForApplication() throws {
+        guard !isBusy else { throw AnalysisError.engine("Arrêtez la collecte avant la réinitialisation.") }
+        discoveryTask?.cancel(); discoveryTask = nil
+        inventoryTask?.cancel(); inventoryTask = nil
+        pendingAttachmentReconnect = false; reconnect = false
+        isConnected = false; isConnecting = false; connectedHost = nil
+        queueRepository = nil; repositoryWritable = false
+        try LibraryStore.removeConfigurationFiles(in: stateURL.deletingLastPathComponent(), names: [
+            "gcs-settings.json", "gcs-collection.json", "gcs-queue.sqlite", "gcs-queue.sqlite-wal",
+            "gcs-queue.sqlite-shm", "fleet.json"
+        ])
+        try loadRestoredCollectionState()
+        collectionClientID = nil; isQueuePaused = false
+        errorMessage = nil; statusMessage = nil; configurationDirty = true
+    }
+
     func attach(library: LibraryStore) {
         guard self.library == nil else { return }
         self.library = library
@@ -222,6 +250,8 @@ final class GCSStore: ObservableObject {
         library.willMaintainLibrary = { [weak self] in try self?.flushPersistedStateForMaintenance() }
         library.willRestoreLibrary = { [weak self] in try self?.preparePersistedStorageForRestore() }
         library.didRestoreLibrary = { [weak self] in try self?.reloadPersistedStateAfterRestore() }
+        library.resetCollectionState = { [weak self] in try self?.resetForApplication() }
+        library.clientDidDelete = { [weak self] id in try await self?.removeClientAttribution(id) }
         recordFleetObservations([])
         // A first launch can attach while the index is being prepared. Preserve
         // this pending initialization so the app-owned destination and queue are
@@ -249,6 +279,17 @@ final class GCSStore: ObservableObject {
         guard pendingAttachmentReconnect, !isMaintenanceBlocked else { return }
         pendingAttachmentReconnect = false
         if reconnect { connect() }
+    }
+
+    private func removeClientAttribution(_ id: String) async throws {
+        guard !isBusy else { throw AnalysisError.engine("Arrêtez la collecte avant de supprimer ce client.") }
+        if let repository = queueRepository {
+            try await Task.detached { try repository.removeClientAttribution(id) }.value
+        }
+        for index in queue.indices where queue[index].clientID == id {
+            queue[index].clientID = nil; dirtyTransferIDs.insert(queue[index].id)
+        }
+        if collectionClientID == id { collectionClientID = ""; configurationDirty = true }
     }
 
     /// Called before the maintenance flag is raised, so backups include the latest discovery settings.
@@ -308,6 +349,7 @@ final class GCSStore: ObservableObject {
         queue = state.queue; dirtyTransferIDs = Set(queue.map(\.id))
         rebuildQueueIndexes()
         host = state.host
+        collectionClientID = state.collectionClientID
         allowedUUIDs = Set(state.allowedUUIDs.filter(GCSIdentity.isValid).map { $0.uppercased() })
         fleetObservations = makeFleetObservationStore()
         fleetObservationRevision = fleetObservations.state.revision
@@ -446,7 +488,15 @@ final class GCSStore: ObservableObject {
     }
 
     func selectDrone(_ uuid: String) {
-        guard allowedUUIDs.contains(uuid), !isBusy else { return }
+        guard permitMutation(), !isBusy else { return }
+        if !allowedUUIDs.contains(uuid) {
+            guard let drone = collectableDrones.first(where: { $0.uuid == uuid }) else { return }
+            let admitted = allowedUUIDs.union([uuid])
+            do {
+                try fleetObservations.register([drone], authorized: admitted) { try saveState(authorizing: admitted) }
+                allowedUUIDs = admitted; fleetObservationRevision = fleetObservations.state.revision
+            } catch { errorMessage = error.localizedDescription; return }
+        }
         selectedUUID = uuid; selectedFileIDs = []; files = []
         refreshInventory()
     }
@@ -592,7 +642,7 @@ final class GCSStore: ObservableObject {
         inventoryErrors = inventoryFailures.sorted { $0.key < $1.key }.map { "\($0.key.prefix(8))… : \($0.value)" }
     }
     @discardableResult
-    func enqueue(_ candidates: [GCSLogFile], uuid: String, host: String, destination: String) async throws -> Int {
+    func enqueue(_ candidates: [GCSLogFile], uuid: String, host: String, destination: String, clientID: String? = nil) async throws -> Int {
         let batchID = currentBatchID, shouldImport = autoImport
         let snapshot = snapshotOverride?() ?? library?.snapshot ?? .empty
         var previousJobs: [GCSTransferSource: GCSTransfer] = [:]
@@ -618,7 +668,7 @@ final class GCSStore: ObservableObject {
                     previous = item
                 } else { previous = try repository?.matchingTransfer(uuid: uuid, path: file.path, size: file.size, destination: destination) }
                 var job = GCSTransfer(droneUUID: uuid, remotePath: file.path, size: file.size, host: host, destination: destination)
-                job.batchID = batchID
+                job.batchID = batchID; job.clientID = clientID
                 if file.isDownloaded { job.localPath = file.localPath; job.sha256 = file.sha256 }
                 if let previous { job.id = previous.id; job.remoteBusyUntil = previous.remoteBusyUntil }
                 jobs.append(job)
@@ -658,12 +708,13 @@ final class GCSStore: ObservableObject {
         recordInventory(uuid: uuid)
         let candidates = files.filter { selectedFileIDs.contains($0.id) }
         let currentHost = connectedHost ?? host, destination = downloadDirectory.path
+        let clientID = collectionClientID ?? ""
         isBusy = true; statusMessage = "Préparation de la collecte…"
         inventoryTask = Task { [weak self] in
             guard let self else { return }
             defer { inventoryTask = nil; updateBusy(); persist(); runQueue() }
             do {
-                let added = try await enqueue(candidates, uuid: uuid, host: currentHost, destination: destination)
+                let added = try await enqueue(candidates, uuid: uuid, host: currentHost, destination: destination, clientID: clientID)
                 selectedFileIDs = []; isQueuePaused = false; statusMessage = "\(added) logs ajoutés à la collecte"
             } catch is CancellationError { statusMessage = "Préparation de la collecte arrêtée." }
             catch { errorMessage = error.localizedDescription }
@@ -690,6 +741,7 @@ final class GCSStore: ObservableObject {
             return
         }
         let destination = downloadDirectory.path
+        let clientID = collectionClientID ?? ""
         beginBatchIfNeeded(); isQueuePaused = false; isBusy = true; isScanningFleet = true; errorMessage = nil
         expectedInventoryUUIDs.formUnion(fleet)
         // A new read invalidates the previous coverage for those devices until it succeeds.
@@ -710,7 +762,7 @@ final class GCSStore: ObservableObject {
                     let cached = Set(items.filter(\.isDownloaded).map { GCSTransferSource(uuid: uuid, file: $0, destination: destination).cacheIdentity })
                     try self.prepareQueueStorage()
                     self.cachedFileCount = try self.queueRepository?.recordCachedFiles(batchID: self.currentBatchID, identities: cached) ?? 0
-                    try await self.enqueue(items, uuid: uuid, host: currentHost, destination: destination)
+                    try await self.enqueue(items, uuid: uuid, host: currentHost, destination: destination, clientID: clientID)
                     if self.selectedUUID == uuid { self.files = items; self.selectedFileIDs = [] }
                     self.persist()
                 } catch {
@@ -865,7 +917,7 @@ final class GCSStore: ObservableObject {
                 let collectedFile = URL(fileURLWithPath: local)
                 let result: FleetSnapshot
                 if let importOverride { result = try await importOverride(collectedFile) }
-                else if let library { result = try await library.importCollectedFolder(collectedFile, expectedLogID: queue[index].sha256) }
+                else if let library { result = try await library.importCollectedFolder(collectedFile, expectedLogID: queue[index].sha256, clientID: job.clientID) }
                 else { throw AnalysisError.unavailable("La bibliothèque doit être ouverte pour analyser le fichier collecté.") }
                 try Task.checkCancellation()
                 guard let log = result.logs.first(where: { $0.id == queue[index].sha256 }), log.status != "error",
@@ -972,6 +1024,7 @@ final class GCSStore: ObservableObject {
         let dirty = dirtyTransfers
         _ = try queueRepository?.saveTransfers(dirty)
         var state = GCSCollectionState(downloadDirectory: downloadDirectory.path)
+        state.collectionClientID = collectionClientID
         state.host = host; state.allowedUUIDs = proposed ?? allowedUUIDs; state.autoImport = autoImport
         state.reconnect = reconnect; state.queue = []; state.queueStorageVersion = 1
         state.currentBatchID = currentBatchID; state.cachedFileCount = cachedFileCount; state.queuePaused = isQueuePaused; state.inventoryBusyUntil = inventoryBusyUntil
@@ -1027,7 +1080,7 @@ final class GCSStore: ObservableObject {
         do { try saveState() }
         catch { errorMessage = "Impossible d’enregistrer la file de collecte : \(error.localizedDescription)" }
     }
-    private func stopForTermination() {
+    func stopForTermination() {
         isQueuePaused = true
         if let uuid = activeInventoryUUID { inventoryBusyUntil[uuid] = Date().addingTimeInterval(21) }
         discoveryTask?.cancel(); inventoryTask?.cancel(); refreshTask?.cancel()

@@ -150,6 +150,11 @@ final class WorkspacePreviewTests: XCTestCase {
 
     private func renderWorkspace(_ fixture: Fixture, page: Workspace06View.Page, name: String,
                                  width: CGFloat, height: CGFloat, scheme: ColorScheme) async throws -> NSSize {
+        let sortOverride: String? = page == .overview ? "recent" : nil
+        if fixture.library.historySortOverride != sortOverride {
+            fixture.library.historySortOverride = sortOverride
+            fixture.library.loadHistory()
+        }
         // Workspace appearance is persistent and takes precedence over the host.
         // Set the selected mode explicitly so a light capture cannot render dark.
         try fixture.library.views.setTheme(scheme == .dark ? "dark" : "light")
@@ -173,6 +178,31 @@ final class WorkspacePreviewTests: XCTestCase {
         }
         XCTAssertFalse(FileManager.default.fileExists(atPath: f.noNetworkMarker.path))
         XCTAssertFalse(f.gcs.isConnected)
+    }
+
+    func testClientMenusRemainCompactAndTruncateLongNames() async throws {
+        let f = try await fixture(count: 1)
+        let longName = String(String(repeating: "Organisation de démonstration ", count: 5).prefix(120))
+        XCTAssertEqual(longName.count, 120)
+        let profile = try await f.library.clients.create(name: longName)
+        for clientID in [nil, Optional(profile.id)] {
+            try f.library.views.chooseClient(clientID)
+            try await settle(f.library)
+            let controller = NSHostingController(rootView: ClientScopeControl(library: f.library, palette: Palette(dark: true)))
+            let fitting = controller.sizeThatFits(in: CGSize(width: 1440, height: 44))
+            XCTAssertLessThanOrEqual(fitting.width, 280, "The client selector must not stretch across the toolbar.")
+            for scheme in [ColorScheme.dark, .light] {
+                let name = clientID == nil ? "all" : "long-name"
+                _ = try await renderWorkspace(f, page: .overview, name: "client-menu-\(name)-\(scheme)",
+                    width: 900, height: 620, scheme: scheme)
+                let destination = ClientDestinationPicker(clients: f.library.clients,
+                    selection: .constant(clientID ?? ""))
+                let size = try await render(destination.padding(20), name: "client-destination-\(name)-\(scheme)",
+                    width: 350, height: 90, scheme: scheme)
+                XCTAssertLessThanOrEqual(size.width, 350)
+            }
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: f.noNetworkMarker.path))
     }
 
     func testBlockedReadAndCancellationRenderRecoverableStatesAtMinimumWindow() async throws {
@@ -554,6 +584,26 @@ final class WorkspacePreviewTests: XCTestCase {
                 XCTAssertLessThanOrEqual(fitting.width, 900.5); XCTAssertLessThanOrEqual(fitting.height, 620.5)
             }
         }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: f.noNetworkMarker.path))
+    }
+
+    func testClientReviewWindowsFitBothThemesWithoutChangingAttribution() async throws {
+        let f = try await fixture(count: 3)
+        let client = try await f.library.clients.create(name: "Organisation de démonstration")
+        XCTAssertEqual(f.library.clients.profiles.map(\.id), [client.id])
+        var scope = SelectionScope(); scope.clientID = ""
+        for scheme in [ColorScheme.dark, .light] {
+            let manager = try await render(ClientManagementView(library: f.library),
+                name: "clients-management-\(scheme)", width: 640, height: 490, scheme: scheme)
+            XCTAssertLessThanOrEqual(manager.width, 640.5)
+            XCTAssertLessThanOrEqual(manager.height, 490.5)
+            let assignment = try await render(ClientAssignmentView(library: f.library, scope: scope, logCount: 3),
+                name: "clients-assignment-\(scheme)", width: 560, height: 340, scheme: scheme)
+            XCTAssertLessThanOrEqual(assignment.width, 560.5)
+            XCTAssertLessThanOrEqual(assignment.height, 340.5)
+        }
+        // Opening a review window must not assign existing logs or trigger a collection.
+        XCTAssertTrue(f.library.snapshot.logs.allSatisfy { $0.clientID == nil })
         XCTAssertFalse(FileManager.default.fileExists(atPath: f.noNetworkMarker.path))
     }
 }

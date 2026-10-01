@@ -2,8 +2,7 @@ import AppKit
 import SwiftUI
 import KataLogCore
 
-/// Read-only drone access. Bulk collection also registers the connected devices
-/// explicitly selected by the operator's “Tout collecter” action.
+/// Connected devices are admitted automatically when their logs are requested.
 struct GCSCollectionView: View {
     @ObservedObject var store: GCSStore
     @ObservedObject var library: LibraryStore
@@ -16,8 +15,7 @@ struct GCSCollectionView: View {
 
     private var palette: Palette { .init(dark: dark) }
     private var mutationsBlocked: Bool { store.isReadOnly || store.isMaintenanceBlocked }
-    private var fleet: [GCSDrone] { store.drones.filter { store.allowedUUIDs.contains($0.uuid) } }
-    private var unknown: [GCSDrone] { store.drones.filter { !store.allowedUUIDs.contains($0.uuid) && $0.isOnline } }
+    private var fleet: [GCSDrone] { store.drones.filter(\.isOnline) }
     private var visibleFleet: [GCSDrone] {
         fleet.filter { droneSearch.isEmpty || [$0.uuid, library.annotations.displayName(forGCSUUID: $0.uuid)].contains { $0.localizedCaseInsensitiveContains(droneSearch) } }
     }
@@ -31,7 +29,7 @@ struct GCSCollectionView: View {
     }
     private var canReadSelectedDrone: Bool {
         guard let drone = selectedDrone else { return false }
-        return !mutationsBlocked && store.isConnected && drone.isOnline && drone.armed != true && store.allowedUUIDs.contains(drone.uuid)
+        return !mutationsBlocked && store.isConnected && drone.isOnline && drone.armed != true
     }
     private var activeTransfer: GCSTransfer? {
         store.queue.first { ["downloading", "importing"].contains($0.state) }
@@ -42,28 +40,15 @@ struct GCSCollectionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             header
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 18) {
-                    networkCard.frame(minWidth: 330, maxWidth: .infinity)
-                    destinationCard.frame(minWidth: 330, maxWidth: .infinity)
-                }
-                VStack(alignment: .leading, spacing: 18) {
-                    networkCard
-                    destinationCard
-                }
+            BentoColumns(firstMinimum: 330, secondMinimum: 330) {
+                networkCard
+                destinationCard
             }
             messages
             batchProgressCard
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 18) {
-                    TimelineView(.periodic(from: .now, by: 2)) { _ in fleetCard }
-                        .frame(minWidth: 430, maxWidth: .infinity)
-                    optionsCard.frame(width: 320)
-                }
-                VStack(alignment: .leading, spacing: 18) {
-                    TimelineView(.periodic(from: .now, by: 2)) { _ in fleetCard }
-                    optionsCard
-                }
+            BentoColumns(firstMinimum: 430, secondMinimum: 320, secondWidth: 350) {
+                TimelineView(.periodic(from: .now, by: 2)) { _ in fleetCard }
+                optionsCard
             }
             if store.selectedUUID != nil {
                 card {
@@ -89,6 +74,8 @@ struct GCSCollectionView: View {
             .foregroundStyle(palette.secondary)
         }
         .sheet(item: $editingIdentity) { target in DroneNumberEditor(target: target, store: library.annotations) }
+        .onAppear { updateClientDestination() }
+        .onChange(of: library.views.state.activeScope.clientID) { _, _ in updateClientDestination() }
     }
 
     private var header: some View {
@@ -109,8 +96,12 @@ struct GCSCollectionView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Collecte GCS").font(.system(size: 28, weight: .semibold)).tracking(-1)
                 .foregroundStyle(palette.primary)
-            Text("Tous les drones connectés, même ceux qui ne sont pas encore enregistrés.")
+            Text("Drones connectés à cette GCS.")
                 .font(.system(size: 12)).foregroundStyle(palette.secondary)
+            Text("Nouveaux logs → " + store.collectionClientName)
+                .font(.system(size: 11, weight: .medium)).foregroundStyle(palette.secondary)
+                .help("Le client destinataire se choisit dans Options de collecte. Les logs déjà connus gardent leur attribution.")
+                .accessibilityIdentifier("gcs.clientDestination")
         }
     }
 
@@ -327,7 +318,9 @@ struct GCSCollectionView: View {
     }
 
     private var optionsCard: some View {
-        card {
+        card(padding: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
             title("Options de collecte")
             Text("Les fichiers existants sont vérifiés avant transfert.")
                 .font(.system(size: 11)).foregroundStyle(palette.secondary)
@@ -344,6 +337,15 @@ struct GCSCollectionView: View {
                     .accessibilityIdentifier("gcs.autoImport")
             }
             rule.padding(.vertical, 3)
+            ClientDestinationPicker(clients: library.clients, selection: Binding(
+                get: { store.collectionClientID ?? "" },
+                set: { store.chooseCollectionClient($0) }
+            ))
+            .disabled(store.isBusy || mutationsBlocked)
+            Text("Les nouveaux logs seront attribués à ce client. Les fichiers déjà connus conservent leur attribution.")
+                .font(.system(size: 10)).foregroundStyle(palette.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            rule.padding(.vertical, 3)
             collectionFact("Déjà collectés", value: "\(store.cachedFileCount) logs vérifiés")
             collectionFact("Réessais automatiques", value: "\(GCSQueuePolicy.maxAttempts) tentatives maximum")
             collectionFact("Fichiers originaux", value: "Conservés sur les drones")
@@ -358,6 +360,8 @@ struct GCSCollectionView: View {
             } label: {
                 Text("Éviter les doublons du navigateur").font(.system(size: 11)).foregroundStyle(palette.secondary)
             }
+                }.padding(20)
+            }.frame(height: 540)
         }
     }
 
@@ -382,48 +386,45 @@ struct GCSCollectionView: View {
 
     private var fleetCard: some View {
         card(padding: 0) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 12) {
-                    fleetHeading
-                    Spacer(minLength: 8)
-                    if !fleet.isEmpty { searchField("Numéro ou UUID", text: $droneSearch).frame(width: 170) }
-                }
-                VStack(alignment: .leading, spacing: 12) {
-                    fleetHeading
-                    if !fleet.isEmpty { searchField("Numéro ou UUID", text: $droneSearch) }
-                }
-            }
-            .padding(20)
-            if fleet.isEmpty && unknown.isEmpty {
-                emptyState(symbol: "drone", title: store.allowedUUIDs.isEmpty ? "Votre flotte commence ici" : "Aucun drone de la flotte visible",
-                           detail: store.allowedUUIDs.isEmpty
-                            ? (store.isConnected ? "Cliquez sur « Tout collecter » : les nouveaux drones disponibles seront ajoutés à votre bibliothèque et leurs logs récupérés." : "Connectez votre GCS, puis cliquez sur « Tout collecter » pour enregistrer les drones et récupérer leurs logs.")
-                            : "Vos \(store.allowedUUIDs.count) appareils sont enregistrés. Ils apparaîtront dès leur connexion à la GCS.")
-            } else if visibleFleet.isEmpty && !fleet.isEmpty {
-                emptyState(symbol: "magnifyingglass", title: "Aucun drone correspondant", detail: "Modifiez votre recherche pour retrouver un drone.")
-            } else {
-                LazyVStack(spacing: 0) {
-                    ForEach(visibleFleet) { drone in
-                        rule
-                        fleetRow(drone)
+            VStack(alignment: .leading, spacing: 0) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 12) {
+                        fleetHeading
+                        Spacer(minLength: 8)
+                        if !fleet.isEmpty { searchField("Numéro ou identifiant", text: $droneSearch).frame(width: 170) }
+                    }
+                    VStack(alignment: .leading, spacing: 12) {
+                        fleetHeading
+                        if !fleet.isEmpty { searchField("Numéro ou identifiant", text: $droneSearch) }
+                    }
+                }.padding(20)
+                ScrollView {
+                    if fleet.isEmpty {
+                        emptyState(symbol: "drone", title: "Aucun drone connecté",
+                            detail: store.isConnected ? "Les drones apparaissent automatiquement dès leur connexion à cette GCS." : "Connectez votre GCS pour retrouver les drones disponibles.")
+                    } else if visibleFleet.isEmpty {
+                        emptyState(symbol: "magnifyingglass", title: "Aucun drone correspondant", detail: "Modifiez votre recherche pour retrouver un drone.")
+                    } else {
+                        LazyVStack(spacing: 0) {
+                            ForEach(visibleFleet) { drone in
+                                rule
+                                fleetRow(drone)
+                            }
+                        }
                     }
                 }
-            }
-            if !unknown.isEmpty {
                 rule
-                unknownCard.padding(20)
-            }
-            rule
-            Text("Aucun ajout manuel obligatoire. Le numéro de stock peut être renseigné plus tard. Les appareils signalés armés sont exclus.")
-                .font(.system(size: 10)).foregroundStyle(palette.secondary)
-                .fixedSize(horizontal: false, vertical: true).padding(20)
+                Text("Collecte automatique des appareils connectés. Le numéro de stock est facultatif. Les appareils signalés armés sont exclus.")
+                    .font(.system(size: 10)).foregroundStyle(palette.secondary)
+                    .fixedSize(horizontal: false, vertical: true).padding(20)
+            }.frame(height: 540)
         }
     }
 
     private var fleetHeading: some View {
         VStack(alignment: .leading, spacing: 6) {
-            title("Drones disponibles")
-            Text("\(store.drones.filter(\.isOnline).count) connectés · les nouveaux appareils sont ajoutés lors de la collecte")
+            title("Drones connectés")
+            Text("\(fleet.count) appareils détectés automatiquement")
                 .font(.system(size: 11)).foregroundStyle(palette.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -475,7 +476,6 @@ struct GCSCollectionView: View {
         .contextMenu {
             Button("Copier l’UUID") { copy(drone.uuid) }
             Button("Modifier le numéro…") { editingIdentity = identityTarget(drone.uuid) }
-            Button("Retirer de ma flotte") { store.setAllowed(uuid: drone.uuid, allowed: false) }.disabled(store.isBusy || mutationsBlocked)
         }
     }
 
@@ -703,42 +703,10 @@ struct GCSCollectionView: View {
         }
     }
 
-    private var unknownCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Appareils non enregistrés · \(unknown.count)")
-                .font(.system(size: 12, weight: .semibold)).foregroundStyle(palette.primary)
-            Text(store.newCollectableDroneCount > 0
-                 ? "Inclus dans « Tout collecter » · ajout automatique à la bibliothèque, sans numéro de stock requis."
-                 : "Les drones signalés armés seront disponibles après désarmement.")
-                .font(.system(size: 10)).foregroundStyle(palette.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            ForEach(unknown) { drone in
-                HStack(alignment: .top, spacing: 12) {
-                    droneBadge
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(library.annotations.displayName(forGCSUUID: drone.uuid))
-                            .font(.system(size: 12, weight: .medium)).help(drone.uuid)
-                        statusDot(drone.armed == true ? "Armé · collecte bloquée" : "Ajout automatique à la collecte",
-                                  color: drone.armed == true ? palette.amber : palette.secondary)
-                        droneTelemetry(drone)
-                        ViewThatFits(in: .horizontal) {
-                            HStack(spacing: 8) { unknownActions(drone) }
-                            VStack(alignment: .leading, spacing: 8) { unknownActions(drone) }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .contextMenu { Button("Copier l’UUID") { copy(drone.uuid) } }
-            }
-        }
-        .accessibilityIdentifier("gcs.unregistered")
-    }
-
-    @ViewBuilder private func unknownActions(_ drone: GCSDrone) -> some View {
-        action("Identifier", symbol: "pencil") { editingIdentity = identityTarget(drone.uuid) }
-            .accessibilityIdentifier("gcs.identifyUnknown.\(drone.uuid)")
-        action("Ajouter à ma flotte", symbol: "plus") { store.setAllowed(uuid: drone.uuid, allowed: true) }
-            .disabled(store.isBusy || mutationsBlocked).accessibilityIdentifier("gcs.allow.\(drone.uuid)")
+    private func updateClientDestination() {
+        guard !store.isBusy else { return }
+        // The visible picker makes Sans client explicit when browsing all clients.
+        store.chooseCollectionClient(library.views.state.activeScope.clientID ?? "")
     }
 
     private func card<Content: View>(padding: CGFloat = 20, @ViewBuilder content: () -> Content) -> some View {

@@ -246,6 +246,16 @@ public final class GCSQueueRepository: @unchecked Sendable {
 
     public func forgetPayloads(except ids: Set<String>) { lock.lock(); defer { lock.unlock() }; encoded = encoded.filter { ids.contains($0.key) } }
 
+    /// Deleting a client also releases destinations in persisted jobs beyond the visible page.
+    public func removeClientAttribution(_ clientID: String) throws {
+        lock.lock(); defer { lock.unlock() }
+        guard !readOnly else { throw AnalysisError.engine("La file de collecte est ouverte en lecture seule.") }
+        let statement = try prepare("UPDATE transfers SET payload=CAST(json_remove(payload,'$.clientID') AS BLOB) WHERE json_extract(payload,'$.clientID')=?")
+        defer { sqlite3_finalize(statement) }
+        bind(clientID, at: 1, to: statement)
+        try step(statement); encoded = [:]
+    }
+
     private func add(_ item: GCSTransfer, direction: Double, values: inout [Double]) {
         let p = GCSBatchProgress(transfers: [item])
         let delta = [Double(p.totalCount), Double(p.completedCount), Double(p.failedCount), Double(p.activeCount), Double(p.pendingCount), Double(p.stoppedCount),

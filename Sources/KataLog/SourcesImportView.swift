@@ -8,6 +8,7 @@ struct SourcesImportView: View {
     @StateObject private var sources: SourcesImportStore
     @State private var includeRemoved = false
     @State private var offsets = [0]
+    @State private var confirmingRetireAll = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var scheme
     private var palette: Palette { Palette(dark: scheme == .dark) }
@@ -36,6 +37,13 @@ struct SourcesImportView: View {
                     .disabled(sources.isLoading || sources.isWorking)
                 Button("Actualiser", systemImage: "arrow.clockwise") { sources.load(includeRemoved: includeRemoved) }
                     .disabled(sources.isLoading || sources.isWorking)
+            }
+            HStack {
+                Text("Tous les clients · Références de dossiers uniquement").font(.caption).foregroundStyle(palette.secondary)
+                Spacer()
+                Button("Retirer toutes les sources…", systemImage: "folder.badge.minus") { confirmingRetireAll = true }
+                    .disabled(!sources.canMutate || externalBusy || (sources.page?.activeCount ?? 0) == 0)
+                    .accessibilityIdentifier("sources.retireAll")
             }
             if library.isReadOnly {
                 Label("Bibliothèque en lecture seule. Le retrait et la restauration sont indisponibles.", systemImage: "lock")
@@ -97,6 +105,12 @@ struct SourcesImportView: View {
         .onChange(of: sources.currentOffset) { _, offset in if offset == 0 { offsets = [0] } }
         .onChange(of: sources.errorMessage) { _, error in
             if error != nil, let index = offsets.firstIndex(of: sources.currentOffset) { offsets = Array(offsets.prefix(index + 1)) }
+        }
+        .confirmationDialog("Retirer toutes les sources du suivi ?", isPresented: $confirmingRetireAll, titleVisibility: .visible) {
+            Button("Retirer toutes les sources", role: .destructive) { sources.retireAll() }
+            Button("Annuler", role: .cancel) {}
+        } message: {
+            Text("Le suivi de tous les dossiers sera désactivé, pour tous les clients. Les analyses et les fichiers .ulg restent conservés. Vous pourrez restaurer les références en affichant les sources retirées. Pour effacer aussi les analyses, utilisez « Vider la bibliothèque » dans Stockage.")
         }
     }
 

@@ -1,8 +1,9 @@
 # Distribution macOS hors App Store
 
-La version 0.7.0 (17) conserve l’installation autonome par DMG et active le flux
-Sparkle stable signé. Voir [la recette](RELEASE-0.7.0.md). Toute publication exige la
-validation de l’historique, des métadonnées GitHub et des assets.
+La version ciblée est **0.8.0 (build 18)**, en validation avant publication.
+Elle conserve l’installation autonome par DMG et le flux Sparkle stable signé
+introduit en 0.7.0. Voir [la recette 0.8.0](RELEASE-0.8.0.md). Toute publication
+exige la validation de l’historique, des métadonnées GitHub et des assets.
 
 ## Parcours utilisateur
 
@@ -14,7 +15,9 @@ sur toutes les versions de macOS.
 
 ## Préparer et tester
 
-1. Fixer les versions dans `tools/build-app.sh` et `project.yml`, puis `xcodegen generate`.
+1. Fixer version et build dans `tools/build-app.sh`, `tools/package-smoke.sh` et
+   `project.yml`, puis `xcodegen generate`. Le build stable 18 succède au build 17.
+   Conserver l’identité stable de l’app ; la Preview utilise son identité séparée.
 2. Exécuter les suites Swift, Python et Node du README. `KATALOG_PRIVATE_FIXTURES`
    désigne uniquement le corpus local ; les ULog et résultats privés restent hors Git.
 3. Exécuter `python3 tools/check-publication.py --include-untracked` et un scanner
@@ -140,13 +143,15 @@ le ZIP éventuel et leurs checksums. Vérifier le téléchargement et la quarant
 des assets depuis GitHub. Ne pas exposer les anciens assets 0.5.1 : ils restent
 dans l’archive privée distincte. Les clés privées et rapports de flotte restent locaux.
 
-## Flux stable 0.7
+## Flux stable 0.8
 
 Construire avec `KATALOG_UPDATE_CHANNEL=stable`, l’URL HTTPS publique et la clé
 publique vérifiée sous `updates/stable/public-key.txt`. Garder la clé privée dans
 le Trousseau, compte `katalog-sparkle-stable`. Notariser et agrafer le bundle,
 puis recréer le ZIP final avant toute signature Sparkle ou calcul de checksum.
-Préparer le flux avec `tools/update-feed.py prepare` et le build précédent.
+Préparer le flux avec `tools/update-feed.py prepare` et `--previous-build 17`
+pour cette release 0.8.0 (build 18). Revérifier le build public précédent au
+moment de publier : il ne doit pas avoir changé entre préparation et publication.
 Publier d’abord le ZIP et le DMG vérifiés, puis le flux signé sous
 `updates/stable/appcast.xml`. Vérifier les octets et signatures en accès anonyme.
 

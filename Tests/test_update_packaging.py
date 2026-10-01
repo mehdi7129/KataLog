@@ -20,7 +20,7 @@ class UpdatePackagingTests(unittest.TestCase):
     def test_ui_review_build_refuses_production_output_and_active_feed(self):
         with tempfile.TemporaryDirectory(prefix="katalog-preview-guard-", dir="/private/tmp") as directory:
             work = Path(directory)
-            for output, channel in ((work / "dist", "disabled"), (work / "0.6-staging", "stable")):
+            for output, channel in ((work / "dist", "disabled"), (work / "0.6-staging", "stable"), (work / "preview-staging", "stable")):
                 env = dict(os.environ, KATALOG_UI_PREVIEW_BUILD="1", KATALOG_VERSION="0.6.0",
                            KATALOG_DIST_DIR=str(output), KATALOG_UPDATE_CHANNEL=channel)
                 result = subprocess.run(["/bin/bash", str(ROOT / "tools/build-app.sh")], env=env, capture_output=True, timeout=10)

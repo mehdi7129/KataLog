@@ -41,6 +41,9 @@ def classification_key(message):
 
 
 def initialize(db):
+    import library_clients, library_proximity
+    library_clients.initialize(db)
+    library_proximity.initialize(db)
     db.execute('PRAGMA cache_size=-131072')
     tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     version = db.execute("SELECT value FROM kl_meta WHERE key='projectionVersion'").fetchone() if 'kl_meta' in tables else None
@@ -439,10 +442,17 @@ def string_list(value, field):
 def parse_request(request):
     if not isinstance(request, dict) or type(request.get("queryVersion", QUERY_VERSION)) is not int or request.get("queryVersion", QUERY_VERSION) != QUERY_VERSION:
         raise ValueError("Version de requête non prise en charge.")
-    raw = {} if request.get('kind') in ('drones', 'group-keys', 'catalogue') else request.get("scope", {})
+    raw = request.get("scope", {})
+    if isinstance(raw, dict) and request.get('kind') in ('drones', 'group-keys', 'catalogue'):
+        raw = {'clientID': raw.get('clientID')}
     if not isinstance(raw, dict):
         raise ValueError("Périmètre invalide.")
+    import library_clients, library_proximity
     scope = {field: string_list(raw.get(field, []), field) for field in ("droneKeys", "families", "levels", "statuses", 'logIDs')}
+    scope['clientID'] = ('' if raw.get('clientID') == '' else library_clients.validate_id(raw.get('clientID'), optional=True))
+    proximity = library_proximity.validate(request.get('proximity'))
+    if proximity is not None and request.get('kind', 'logs') != 'map':
+        raise ValueError('La recherche de proximité est réservée à la carte.')
     for field, default in (("includeUnknownDates", True), ("alertOnly", False), ("includeMasked", False)):
         if not isinstance(raw.get(field, default), bool):
             raise ValueError("Filtre booléen invalide : " + field)
@@ -488,7 +498,7 @@ def parse_request(request):
         raise ValueError('Recherche du registre invalide.')
     if request.get('sortOrder', 'recent') not in ('recent', 'oldest'):
         raise ValueError('Ordre de tri invalide.')
-    fingerprint = {"scope": scope, "annotations": annotations, "maskedMessageKeys": masks}
+    fingerprint = {"scope": scope, "annotations": annotations, "maskedMessageKeys": masks, "proximity": proximity}
     fingerprint['registrySearch'] = normalized(request.get('registrySearch'))
     fingerprint['sortOrder'] = request.get('sortOrder', 'recent')
     if request.get('eventLevelSource', 'internal') not in ('internal', 'external'):
@@ -552,6 +562,14 @@ CTE = """WITH links AS (
 
 def predicates(scope):
     logs, log_values, messages, message_values = [], [], [], []
+    if scope.get('clientID') is not None:
+        if scope['clientID'] == '':
+            logs.append('NOT EXISTS(SELECT 1 FROM log_clients c WHERE c.log_id=l.id)')
+        else:
+            logs.append('EXISTS(SELECT 1 FROM log_clients c WHERE c.log_id=l.id AND c.client_id=?)')
+            log_values.append(scope['clientID'])
+    if scope.get('_proximityFiltered'):
+        logs.append('EXISTS(SELECT 1 FROM kl_proximity_matches p WHERE p.id=l.id)')
     for field, expression in (("droneKeys", IDENTITY), ("statuses", "l.status"), ('logIDs', 'l.id')):
         if scope[field]:
             logs.append(expression + " IN (" + ",".join("?" for _ in scope[field]) + ")")
@@ -639,7 +657,7 @@ def selection_statement(scope, metadata_only=False):
     # the canonical identity predicate (including UUID propagation/rejection),
     # while letting SQLite visit this controller's rows instead of all 50k.
     controller_scope = bool(scope['droneKeys']) and all(key.startswith('ulog:') for key in scope['droneKeys'])
-    restricted_logs = bool(scope['droneKeys'] or scope['logIDs'] or scope['statuses'] or scope['dateFrom'] or scope['dateTo'] or not scope['includeUnknownDates'] or scope['logSearch'])
+    restricted_logs = bool(scope.get('clientID') is not None or scope.get('_proximityFiltered') or scope['droneKeys'] or scope['logIDs'] or scope['statuses'] or scope['dateFrom'] or scope['dateTo'] or not scope['includeUnknownDates'] or scope['logSearch'])
     source = 'eligible CROSS JOIN kl_messages m ON m.log_id=eligible.id' if restricted_logs else 'kl_messages m'
     matched = "SELECT m.log_id,m.sequence,m.message_id,d.group_id,d.class_key,d.family AS source_family," + FAMILY + " AS family,d.level,d.priority,d.is_alert,m.timestamp,d.raw_text,m.position_json,m.metadata_json,g.source_key,g.title,(mask.key IS NOT NULL) AS masked FROM " + source + MESSAGE_JOINS + " WHERE " + message_where
     columns = 'l.*' if not metadata_only else ','.join('l.' + field for field in ('id','drone_id','drone_name','gcs_uuid','gcs_status','date','date_day','status','duration','failsafe','cached_messages','cached_alerts'))
@@ -669,7 +687,7 @@ def materialize_scope(db, scope):
     joins = MESSAGE_JOINS[MESSAGE_JOINS.index('JOIN kl_groups'):]
     db.execute('CREATE TEMP TABLE kl_query_definitions AS SELECT d.id,d.group_id,d.family AS source_family,' + FAMILY + ' AS family,d.level,d.priority,d.is_alert,(mask.key IS NOT NULL) AS masked FROM kl_definitions d ' + joins + ' WHERE ' + message_where, message_values)
     db.execute('CREATE UNIQUE INDEX kl_query_definitions_id ON kl_query_definitions(id)')
-    restricted = bool(scope['droneKeys'] or scope['logIDs'] or scope['statuses'] or scope['dateFrom'] or scope['dateTo'] or not scope['includeUnknownDates'] or scope['logSearch'])
+    restricted = bool(scope.get('clientID') is not None or scope.get('_proximityFiltered') or scope['droneKeys'] or scope['logIDs'] or scope['statuses'] or scope['dateFrom'] or scope['dateTo'] or not scope['includeUnknownDates'] or scope['logSearch'])
     largest_ordinal = db.execute('SELECT COALESCE(MAX(rowid),0) FROM kl_logs').fetchone()[0]
     compact = (not restricted and db.execute('SELECT COUNT(*) FROM kl_query_definitions').fetchone()[0] <= 10_000
                and largest_ordinal <= 1_000_000
@@ -813,6 +831,9 @@ def query(db, request, read_only=False):
             raise ValueError("L’index doit être préparé par l’instance disposant de l’accès en écriture.") from error
         if metadata.get('initialized') != '1' or metadata.get('projectionVersion') != str(PROJECTION_VERSION) or dirty:
             raise ValueError("L’index doit être actualisé par l’instance disposant de l’accès en écriture.")
+        import library_clients, library_proximity
+        library_clients.prepare_readonly(db)
+        library_proximity.prepare_readonly(db)
     else:
         initialize(db)
     setup_annotations(db, annotations, masks)
@@ -824,10 +845,18 @@ def query(db, request, read_only=False):
             raise ValueError('L’index doit être actualisé par l’instance disposant de l’accès en écriture.')
         offset = cursor_value(request.get("cursor"), revision, scope_hash, kind, group)
         next_position = None
+        proximity_unavailable = None
+        if request.get('proximity') is not None:
+            from library_proximity import prepare_scope, validate
+            scope, proximity_unavailable = prepare_scope(db, scope, validate(request['proximity']), read_only)
         if kind == 'catalogue':
             entries_sql = "SELECT 'family' AS kind,family AS value FROM kl_definitions UNION SELECT 'family',family FROM kl_family_overrides UNION SELECT 'level',level FROM kl_definitions"
-            total = db.execute('SELECT COUNT(*) FROM (' + entries_sql + ')').fetchone()[0]
-            entries = db.execute('SELECT kind,value FROM (' + entries_sql + ') ORDER BY kind,value LIMIT ? OFFSET ?', (limit, offset)).fetchall()
+            entry_params = []
+            if scope.get('clientID') is not None:
+                selected_sql, entry_params, _ = selection_statement(dict(scope, includeMasked=True))
+                entries_sql = selected_sql + "SELECT 'family' AS kind,family AS value FROM matching JOIN selected ON selected.id=matching.log_id UNION SELECT 'level',level FROM matching JOIN selected ON selected.id=matching.log_id"
+            total = db.execute('SELECT COUNT(*) FROM (' + entries_sql + ')', entry_params).fetchone()[0]
+            entries = db.execute('SELECT kind,value FROM (' + entries_sql + ') ORDER BY kind,value LIMIT ? OFFSET ?', entry_params + [limit, offset]).fetchall()
             result = {'queryVersion': QUERY_VERSION, 'revision': revision, 'scopeHash': scope_hash,
                       'families': [], 'levels': [], 'total': total, 'nextCursor': None}
             values = bounded_rows(entries, lambda row: {'kind': row[0], 'value': row[1]}, result)
@@ -840,6 +869,11 @@ def query(db, request, read_only=False):
             clause = ' FROM kl_definitions d WHERE group_id=? AND EXISTS(SELECT 1 FROM kl_messages m WHERE m.definition_id=d.id)'
             total = db.execute('SELECT COUNT(DISTINCT class_key)' + clause, (group,)).fetchone()[0]
             rows = db.execute('SELECT DISTINCT class_key' + clause + ' ORDER BY class_key LIMIT ? OFFSET ?', (group, limit, offset)).fetchall()
+            if scope.get('clientID') is not None:
+                selected_sql, selected_params, _ = selection_statement(dict(scope, includeMasked=True))
+                clause = ' FROM matching JOIN selected ON selected.id=matching.log_id WHERE group_id=?'
+                total = db.execute(selected_sql + 'SELECT COUNT(DISTINCT class_key)' + clause, selected_params + [group]).fetchone()[0]
+                rows = db.execute(selected_sql + 'SELECT DISTINCT class_key' + clause + ' ORDER BY class_key LIMIT ? OFFSET ?', selected_params + [group, limit, offset]).fetchall()
             result = {'queryVersion': QUERY_VERSION, 'revision': revision, 'scopeHash': scope_hash, 'total': total, 'nextCursor': None}
             result['classKeys'] = bounded_rows(rows, lambda row: row[0], result)
             if offset + len(result['classKeys']) < total:
@@ -847,7 +881,7 @@ def query(db, request, read_only=False):
             return result
         statement, params, message_active = selection_statement(scope, metadata_only=kind == 'drones')
         if kind == 'drones':
-            unrestricted_registry = not (scope['droneKeys'] or scope['logIDs'] or scope['statuses'] or scope['dateFrom'] or scope['dateTo'] or not scope['includeUnknownDates'] or scope['logSearch'] or message_active)
+            unrestricted_registry = not (scope.get('clientID') is not None or scope.get('_proximityFiltered') or scope['droneKeys'] or scope['logIDs'] or scope['statuses'] or scope['dateFrom'] or scope['dateTo'] or not scope['includeUnknownDates'] or scope['logSearch'] or message_active)
             if unrestricted_registry:
                 # Aggregate recorded counters per controller/key before name
                 # and stock joins. Fifty thousand logs do not require fifty
@@ -880,13 +914,13 @@ def query(db, request, read_only=False):
             keys = {item['id'] for item in drones}
             controller_keys = {'ulog:' + row[0] for row in db.execute('SELECT DISTINCT drone_id FROM kl_logs')}
             for key, number in annotations.get('stockNumbers', {}).items():
-                if key not in keys and key not in controller_keys and (key.startswith('ulog:') and len(key)>5 or re.fullmatch(r'gcs:[A-F0-9]{24}', key)):
+                if scope.get('clientID') is None and key not in keys and key not in controller_keys and (key.startswith('ulog:') and len(key)>5 or re.fullmatch(r'gcs:[A-F0-9]{24}', key)):
                     drones.append({'id': key, 'droneID': key[5:] if key.startswith('ulog:') else '',
                         'name': 'Drone sans log', 'stockNumber': number, 'logCount': 0, 'lastDate': '',
                         'recordedSeconds': 0, 'alertLogCount': 0})
                     keys.add(key)
             for key, observation in fleet.items():
-                if observation['authorized'] and key not in keys:
+                if scope.get('clientID') is None and observation['authorized'] and key not in keys:
                     drones.append({'id': key, 'droneID': '', 'name': observation['name'] or 'Drone sans log',
                         'stockNumber': annotations.get('stockNumbers', {}).get(key), 'logCount': 0, 'lastDate': '',
                         'recordedSeconds': 0, 'alertLogCount': 0})
@@ -908,7 +942,7 @@ def query(db, request, read_only=False):
             if offset + len(result['drones']) < len(drones):
                 result['nextCursor'] = encode_cursor(revision, scope_hash, kind, group, offset + len(result['drones']))
             return result
-        unfiltered = not (scope['droneKeys'] or scope['statuses'] or scope['logIDs'] or scope['dateFrom'] or scope['dateTo'] or not scope['includeUnknownDates'] or scope['logSearch'] or message_active or annotations.get('familyOverrides') or (masks and not scope['includeMasked']))
+        unfiltered = not (scope.get('clientID') is not None or scope.get('_proximityFiltered') or scope['droneKeys'] or scope['statuses'] or scope['logIDs'] or scope['dateFrom'] or scope['dateTo'] or not scope['includeUnknownDates'] or scope['logSearch'] or message_active or annotations.get('familyOverrides') or (masks and not scope['includeMasked']))
         if unfiltered:
             totals = dict(db.execute("""SELECT COUNT(*) AS logs,COALESCE(SUM(status<>'error'),0) AS validLogs,
                 COALESCE(SUM(CASE WHEN status<>'error' THEN duration ELSE 0 END),0) AS recordedSeconds,
@@ -948,6 +982,8 @@ def query(db, request, read_only=False):
         if stale:
             totals['libraryStaleAnalysisLogs'] = stale
         result = {"queryVersion": QUERY_VERSION, "revision": revision, "scopeHash": scope_hash, "totals": totals, "nextCursor": None}
+        if proximity_unavailable is not None:
+            result['proximityUnavailableLogs'] = proximity_unavailable
         if message_active:
             totals['failsafeLogs'] = 0
         if kind in ("logs", 'map'):
@@ -959,6 +995,8 @@ def query(db, request, read_only=False):
             rows = db.execute(statement + page_select + " ORDER BY " + order_source + ".date " + direction + "," + order_source + ".id " + direction + " LIMIT ? OFFSET ?", params + [limit, offset]).fetchall()
             def map_log(row):
                 value = json.loads(row["summary_projection"])
+                from library_clients import attach
+                attach(db, value)
                 value['flightSeconds'] = row['flight_seconds']
                 message_count, alert_count = row['message_count'], row['alert_count']
                 if message_count is None:

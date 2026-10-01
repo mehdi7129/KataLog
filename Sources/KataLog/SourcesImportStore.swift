@@ -67,7 +67,7 @@ final class SourcesImportStore: ObservableObject {
         guard let library else { return false }
         return !library.isReadOnly && !library.isMaintainingLibrary && !library.isImporting &&
             !library.isExporting && !library.isLoading && !library.isQuerying && !library.isLoadingFlight &&
-            !library.hasExternalActivity() && !isWorking && !isLoading
+            !library.hasExternalActivity() && library.activeDetailLoads == 0 && !isWorking && !isLoading
     }
 
     func load(offset: Int = 0, includeRemoved: Bool = false, clearError: Bool = true) {
@@ -130,6 +130,26 @@ final class SourcesImportStore: ObservableObject {
     func undo() {
         guard let lastChange else { return }
         setRemoved(!lastChange.removed, path: lastChange.path, recordsUndo: false)
+    }
+    func retireAll() {
+        guard canMutate, let library, let engine = library.engineURL else { return }
+        isWorking = true; errorMessage = nil; lastChange = nil
+        message = "Retrait des références de sources…"
+        token = UUID(); readTask?.cancel(); readTask = nil
+        workTask = Task { [weak self] in
+            guard let self else { return }
+            defer { isWorking = false; workTask = nil }
+            do {
+                _ = try await library.performMaintenance {
+                    try await runner(["retire-all-sources", "--database", library.databaseURL.path], engine)
+                }
+                message = "Toutes les sources ont été retirées de la liste. Analyses et fichiers conservés."
+                library.reload(); load(includeRemoved: includeRemoved)
+            } catch {
+                errorMessage = error.localizedDescription
+                load(includeRemoved: includeRemoved, clearError: false)
+            }
+        }
     }
     static func listArguments(database: URL, offset: Int, includeRemoved: Bool) -> [String] {
         var arguments = ["source-folders", "--database", database.path,

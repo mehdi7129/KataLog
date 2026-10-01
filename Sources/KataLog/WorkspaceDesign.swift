@@ -57,7 +57,8 @@ struct WorkspaceActionButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         WorkspaceButtonSurface(label: configuration.label, palette: palette,
                                prominent: prominent, compact: compact,
-                               selected: false, isPressed: configuration.isPressed)
+                               selected: false, destructive: configuration.role == .destructive,
+                               isPressed: configuration.isPressed)
     }
 }
 
@@ -67,33 +68,29 @@ private struct WorkspaceButtonSurface<Label: View>: View {
     let prominent: Bool
     let compact: Bool
     let selected: Bool
+    let destructive: Bool
     let isPressed: Bool
     @Environment(\.isEnabled) private var isEnabled
     @State private var hovering = false
+    @Environment(\.isFocused) private var focused
 
     private var fill: Color {
-        if prominent { return palette.primary }
         if isEnabled && isPressed { return palette.active }
         if isEnabled && hovering { return palette.hover }
-        return selected ? palette.raised : palette.card
-    }
-
-    private var border: Color {
-        if prominent || selected { return palette.primary }
-        return isEnabled && hovering ? palette.muted : palette.buttonBorder
+        return .clear
     }
 
     var body: some View {
         label
-            .font(.system(size: 12, weight: .medium))
+            .font(.system(size: 12, weight: prominent || selected ? .semibold : .medium))
             .padding(.horizontal, compact ? 11 : 15)
             .padding(.vertical, compact ? 6 : 9)
             .frame(minHeight: compact ? 32 : 38)
-            .foregroundStyle(prominent ? palette.card : palette.primary)
+            .foregroundStyle(destructive ? palette.red : palette.primary)
             .background(fill, in: RoundedRectangle(cornerRadius: BentoTokens.buttonRadius))
             .overlay {
                 RoundedRectangle(cornerRadius: BentoTokens.buttonRadius)
-                    .strokeBorder(border, lineWidth: 1)
+                    .strokeBorder(focused && isEnabled ? palette.secondary : .clear, lineWidth: 1.5)
             }
             .contentShape(RoundedRectangle(cornerRadius: BentoTokens.buttonRadius))
             .opacity(isEnabled ? (prominent && (isPressed || hovering) ? 0.86 : 1) : 0.45)
@@ -128,7 +125,7 @@ private struct WorkspaceThemeChoiceStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         WorkspaceButtonSurface(label: configuration.label, palette: palette,
                                prominent: false, compact: false,
-                               selected: selected, isPressed: configuration.isPressed)
+                               selected: selected, destructive: false, isPressed: configuration.isPressed)
     }
 }
 
@@ -162,13 +159,11 @@ struct WorkspaceThemeChoices: View {
     }
 }
 
-/// Direct light/dark access, with system appearance kept available in the menu.
+/// A single click switches light and dark. System appearance lives in Settings.
 struct WorkspaceThemeControl: View {
     @Binding var selection: String
     let palette: Palette
     @Environment(\.colorScheme) private var systemScheme
-    @Environment(\.isEnabled) private var isEnabled
-    @State private var hovering = false
 
     private var dark: Bool {
         (WorkspaceAppearance.colorScheme(for: selection) ?? systemScheme) == .dark
@@ -176,51 +171,15 @@ struct WorkspaceThemeControl: View {
     private var actionLabel: String { dark ? "Activer le thème clair" : "Activer le thème sombre" }
 
     var body: some View {
-        HStack(spacing: 0) {
-            Button {
-                selection = WorkspaceAppearance.toggledSelection(for: selection, systemScheme: systemScheme)
-            } label: {
-                BentoIcon(symbol: dark ? "sun.max" : "moon", size: 14)
-                    .frame(width: 32, height: 32)
-            }
-            .buttonStyle(.plain)
-            .help(actionLabel)
-            .accessibilityLabel(actionLabel)
-            .accessibilityIdentifier("appearance.toggle")
-
-            Menu {
-                ForEach(WorkspaceThemeOption.allCases) { option in
-                    Button {
-                        selection = option.rawValue
-                    } label: {
-                        if WorkspaceAppearance.selection(for: selection) == option.rawValue {
-                            Label(option.label, systemImage: "checkmark")
-                        } else {
-                            Text(option.label)
-                        }
-                    }
-                    .accessibilityIdentifier("appearance.menu.\(option.rawValue)")
-                }
-            } label: {
-                BentoIcon(symbol: "chevron.down", size: 8)
-                    .frame(width: 17, height: 32)
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .help("Choisir le thème : système, clair ou sombre")
-            .accessibilityLabel("Choisir le thème")
-            .accessibilityIdentifier("appearance.menu")
+        Button {
+            selection = WorkspaceAppearance.toggledSelection(for: selection, systemScheme: systemScheme)
+        } label: {
+            BentoIcon(symbol: dark ? "sun.max" : "moon", size: 17)
         }
-        .foregroundStyle(palette.primary)
-        .background(isEnabled && hovering ? palette.hover : palette.card,
-                    in: RoundedRectangle(cornerRadius: BentoTokens.buttonRadius))
-        .overlay {
-            RoundedRectangle(cornerRadius: BentoTokens.buttonRadius)
-                .strokeBorder(isEnabled && hovering ? palette.muted : palette.buttonBorder, lineWidth: 1)
-        }
-        .opacity(isEnabled ? 1 : 0.45)
-        .onHover { hovering = $0 }
-        .fixedSize()
+        .buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true))
+        .help(actionLabel)
+        .accessibilityLabel(actionLabel)
+        .accessibilityIdentifier("appearance.toggle")
     }
 }
 

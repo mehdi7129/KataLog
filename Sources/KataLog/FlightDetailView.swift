@@ -27,14 +27,15 @@ private enum FlightDetailTab: String, CaseIterable, Identifiable {
         case .revisions: "clock.arrow.circlepath"
         }
     }
-    var isTechnical: Bool { [.metrics, .parameters, .topics, .revisions].contains(self) }
+    var isTechnical: Bool { ![.overview, .messages, .curves].contains(self) }
 }
 
-/// One log is inspected at a time; details are loaded by LibraryStore on demand.
+/// Every native log window owns its detail and analysis state.
 struct FlightDetailView: View {
     @ObservedObject var store: LibraryStore
     @StateObject private var study: FlightStudyStore
-    @Environment(\.dismiss) private var dismiss
+    @StateObject private var session: FlightDetailSession
+    @ObservedObject private var views: LibraryViewStore
     @Environment(\.colorScheme) private var colorScheme
     @State private var tab: FlightDetailTab = .overview
     @State private var messageSearch = ""
@@ -50,7 +51,13 @@ struct FlightDetailView: View {
     private var palette: Palette { Palette(dark: colorScheme == .dark) }
 
     init(store: LibraryStore) {
+        self.init(store: store, session: FlightDetailSession(log: store.selectedFlight, library: store))
+    }
+
+    init(store: LibraryStore, session: FlightDetailSession) {
         self.store = store
+        self.views = store.views
+        _session = StateObject(wrappedValue: session)
         _study = StateObject(wrappedValue: FlightStudyStore(library: store))
     }
 
@@ -64,21 +71,21 @@ struct FlightDetailView: View {
                     .padding(.horizontal, 24).padding(.bottom, 12)
             }
             if tab == .curves {
-                if let log = store.selectedFlight, !store.isLoadingFlight {
+                if let log = session.log, !session.isLoading {
                     FlightAnalysisView(log: log, study: study)
-                } else if let error = store.flightError {
+                } else if let error = session.error {
                     ContentUnavailableView("Détail indisponible", systemImage: "exclamationmark.triangle", description: Text(error))
                 } else {
                     ProgressView("Chargement du détail…").frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else if tab == .events {
-                EventBrowserView(library: store, logID: store.selectedFlight?.id).padding(24)
-            } else if tab == .revisions, let logID = store.selectedFlight?.id {
-                AnalysisRevisionsView(library: store, logID: logID)
+                EventBrowserView(library: store, logID: session.log?.id).padding(24)
+            } else if tab == .revisions, let logID = session.log?.id {
+                AnalysisRevisionsView(library: store, logID: logID, currentLog: session.log)
             } else { ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     loadingStatus
-                    if let log = store.selectedFlight {
+                    if let log = session.log {
                         if tab == .overview { summary(log) }
                         switch tab {
                         case .overview: overview(log)
@@ -89,7 +96,7 @@ struct FlightDetailView: View {
                         case .coverage: coverage(log)
                         case .curves, .events, .revisions: EmptyView()
                         }
-                    } else if !store.isLoadingFlight {
+                    } else if !session.isLoading {
                         FlightPanel {
                             FlightEmptyState(symbol: "doc.questionmark", title: "Détails indisponibles",
                                              detail: "Fermez cette fiche pour choisir un autre enregistrement. Les résumés de la bibliothèque restent conservés.")
@@ -101,9 +108,9 @@ struct FlightDetailView: View {
         }
         .foregroundStyle(style.primary).background(style.background)
         .buttonStyle(WorkspaceActionButtonStyle(palette: palette)).tint(palette.primary)
-        .frame(minWidth: 840, idealWidth: 1180, maxWidth: 1400, minHeight: 540, idealHeight: 870, maxHeight: 1100)
+        .frame(minWidth: 680, idealWidth: 1060, maxWidth: .infinity, minHeight: 500, idealHeight: 820, maxHeight: .infinity)
         .sheet(item: $editingIdentity) { target in DroneNumberEditor(target: target, store: store.annotations) }
-        .onChange(of: store.selectedFlight?.id) { _, _ in
+        .onChange(of: session.log?.id) { _, _ in
             tab = .overview; selectedMessageID = nil
             messageSearch = ""; messageLevel = "Tous"; messageFamily = nil
             topicSearch = ""; parameterSearch = ""; exportError = nil
@@ -111,27 +118,30 @@ struct FlightDetailView: View {
         .onChange(of: messageSearch) { _, _ in selectedMessageID = nil }
         .onChange(of: messageLevel) { _, _ in selectedMessageID = nil }
         .onChange(of: messageFamily) { _, _ in selectedMessageID = nil }
-        .onDisappear { study.cancel() }
+        .onChange(of: views.state.advancedMode) { _, enabled in
+            if enabled != true && ![FlightDetailTab.overview, .messages, .curves].contains(tab) { tab = .overview }
+        }
+        .onDisappear { study.cancel(); study.cancelExport(); session.cancel() }
     }
 
     private var header: some View {
         HStack(alignment: .center, spacing: 18) {
             VStack(alignment: .leading, spacing: 9) {
                 HStack(alignment: .firstTextBaseline, spacing: 14) {
-                    Text(store.selectedFlight?.displayName ?? "Enregistrement")
+                    Text(session.log?.displayName ?? "Enregistrement")
                         .font(.system(size: 26, weight: .semibold)).tracking(-0.7).lineLimit(1)
-                    if let log = store.selectedFlight {
+                    if let log = session.log {
                         Text(log.fileName).font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(style.secondary).lineLimit(1)
                     }
                 }
-                if let log = store.selectedFlight {
-                    Text("\(log.date.isEmpty ? "Date inconnue" : log.date) · \(dateOrigin(log.dateSource))")
+                if let log = session.log {
+                    Text("\(log.clientName ?? "Sans client") · \(FlightUIFormat.date(log.date)) · \(dateOrigin(log.dateSource))")
                         .font(.system(size: 11)).foregroundStyle(style.secondary)
                 }
             }
             Spacer(minLength: 10)
-            if let log = store.selectedFlight {
+            if let log = session.log {
                 Button { editingIdentity = DroneIdentityTarget(log: log) } label: {
                     Label("Identifier…", systemImage: "number")
                 }
@@ -145,20 +155,16 @@ struct FlightDetailView: View {
                 }
                 .menuStyle(.borderlessButton).fixedSize().menuIndicator(.hidden)
                 .padding(.horizontal, 14).frame(minHeight: 38)
-                .background(palette.card, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(palette.border, lineWidth: 1))
-                .disabled(isExporting || store.isExporting || store.isLoadingFlight)
+                .disabled(isExporting || store.isExporting || session.isLoading)
                 .accessibilityIdentifier("flight.export")
             }
-            Button { study.cancel(); store.closeFlight(); dismiss() } label: { BentoIcon(symbol: "xmark") }
-                .buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true))
-                .keyboardShortcut(.cancelAction).accessibilityIdentifier("flight.close").accessibilityLabel("Fermer la fiche")
+
         }
         .padding(.horizontal, 24).padding(.vertical, 19)
     }
 
     @ViewBuilder private var loadingStatus: some View {
-        if store.isLoadingFlight {
+        if session.isLoading {
             HStack(spacing: 10) {
                 ProgressView().controlSize(.small)
                 Text("Lecture des détails du log…").font(.system(size: 12))
@@ -168,13 +174,13 @@ struct FlightDetailView: View {
             .padding(14).background(style.raised, in: RoundedRectangle(cornerRadius: 9))
             .accessibilityIdentifier("flight.loading")
         }
-        if let error = store.flightError {
+        if let error = session.error {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "exclamationmark.triangle")
                 Text(error).font(.system(size: 12)).textSelection(.enabled)
                 Spacer()
-                if let log = store.selectedFlight {
-                    Button("Réessayer") { store.loadFlight(log) }.buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true))
+                if session.log != nil {
+                    Button("Réessayer") { session.load() }.buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true))
                         .accessibilityIdentifier("flight.retry")
                 }
             }
@@ -187,25 +193,23 @@ struct FlightDetailView: View {
     private var tabBar: some View {
         ScrollView(.horizontal) {
         HStack(spacing: 8) {
-            ForEach([FlightDetailTab.overview, .messages, .curves, .events]) { item in
+            ForEach([FlightDetailTab.overview, .messages, .curves]) { item in
                 tabButton(item)
             }
-            Menu {
-                ForEach([FlightDetailTab.metrics, .parameters, .topics, .revisions]) { item in
+            if views.state.advancedMode == true { Menu {
+                ForEach([FlightDetailTab.events, .metrics, .parameters, .topics, .coverage, .revisions]) { item in
                     Button(item.rawValue, systemImage: item.symbol) { tab = item }
                         .accessibilityIdentifier("flight.tab.\(tabIdentifier(item))")
                 }
             } label: {
                 HStack(spacing: 8) {
-                    Text(tab.isTechnical ? "Données techniques · \(tab.rawValue)" : "Données techniques")
+                    Text(tab.isTechnical ? "Plus · \(tab.rawValue)" : "Plus")
                     BentoIcon(symbol: "chevron.down", size: 12)
                 }.font(.system(size: 11, weight: .medium)).padding(.horizontal, 12).frame(height: 32)
                     .foregroundStyle(palette.primary)
-                    .background(tab.isTechnical ? palette.raised : palette.card, in: RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(tab.isTechnical ? palette.primary : palette.border, lineWidth: 1))
+
             }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                .disabled(store.selectedFlight == nil).accessibilityIdentifier("flight.tab.technical")
-            tabButton(.coverage)
+                .disabled(session.log == nil).accessibilityIdentifier("flight.tab.technical") }
             Spacer(minLength: 0)
         }
         }.scrollIndicators(.hidden).padding(.horizontal, 24).padding(.bottom, 18)
@@ -214,8 +218,8 @@ struct FlightDetailView: View {
     private func tabButton(_ item: FlightDetailTab) -> some View {
         Button(item.rawValue) { tab = item }
             .buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(tab == item ? palette.primary : .clear, lineWidth: 1))
-            .disabled(store.selectedFlight == nil)
+            .overlay(alignment: .bottom) { Rectangle().fill(tab == item ? palette.mint : .clear).frame(height: 2).padding(.horizontal, 8) }
+            .disabled(session.log == nil)
             .accessibilityIdentifier("flight.tab.\(tabIdentifier(item))")
             .accessibilityAddTraits(tab == item ? .isSelected : [])
     }
@@ -251,7 +255,7 @@ struct FlightDetailView: View {
                     VStack(alignment: .leading, spacing: 9) {
                         HStack { LogAssessmentBadge(log: log); LibraryHelpButton(title: "Niveau des signaux enregistrés", text: LibraryHelp.assessment) }
                         Text(log.assessment.reason).font(.callout).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
-                        if log.assessment.untranslatedEventCount > 0 {
+                        if views.state.advancedMode == true && log.assessment.untranslatedEventCount > 0 {
                             Text("\(log.assessment.untranslatedEventCount) événements PX4 sans traduction disponible").font(.caption).foregroundStyle(style.secondary)
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading)
@@ -261,12 +265,20 @@ struct FlightDetailView: View {
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            HStack(alignment: .top, spacing: 16) {
+            ViewThatFits(in: .horizontal) {
+              HStack(alignment: .top, spacing: 16) {
                 FlightTrackMap(logs: [log], cursorTime: selected?.position == nil ? nil : selected?.timestampSeconds,
                                cursorPosition: selected?.position,
                                onSelectTime: { time in selectedMessageID = log.messages.min { abs($0.timestampSeconds - time) < abs($1.timestampSeconds - time) }?.id })
-                    .frame(maxWidth: .infinity).frame(height: 475)
-                chronology(log).frame(width: 310, height: 475)
+                    .frame(minWidth: 410, maxWidth: .infinity).frame(height: 475)
+                chronology(log).frame(width: 270, height: 475)
+              }
+              VStack(spacing: 16) {
+                FlightTrackMap(logs: [log], cursorTime: selected?.position == nil ? nil : selected?.timestampSeconds, cursorPosition: selected?.position,
+                    onSelectTime: { time in selectedMessageID = log.messages.min { abs($0.timestampSeconds - time) < abs($1.timestampSeconds - time) }?.id })
+                    .frame(height: 390)
+                chronology(log).frame(height: 270)
+              }
             }
             if let selected {
                 FlightPanel {

@@ -46,6 +46,7 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var lastReportExport: ReportExportResult?
     @Published private(set) var reportProgress: ImportProgress?
     @Published private(set) var selectedFlight: FlightLog?
+    @Published var activeDetailLoads = 0
     @Published private(set) var isLoadingFlight = false
     @Published private(set) var flightError: String?
     private var flightTask: Task<Void, Never>?
@@ -59,6 +60,10 @@ final class LibraryStore: ObservableObject {
     let databaseURL: URL
     let annotations: DroneAnnotationStore
     let views: LibraryViewStore
+    lazy var clients = ClientStore(library: self)
+    @Published private(set) var mapProximity: GeographicProximity?
+    var resetCollectionState: () throws -> Void = {}
+    var clientDidDelete: (String) async throws -> Void = { _ in }
     private var annotationSubscription: AnyCancellable?
     private let engineOverride: URL?
     private let snapshotURL: URL
@@ -68,6 +73,7 @@ final class LibraryStore: ObservableObject {
     private var loadToken = UUID()
     private var reloadTask: Task<Void, Never>?
     private(set) var usesPagedNavigation = false
+    var historySortOverride: String?
     private var indexPrepared = false
 
     init(storageDirectory: URL? = nil, engine: URL? = nil, pagedNavigation: Bool = false) {
@@ -110,7 +116,11 @@ final class LibraryStore: ObservableObject {
             guard let self, self.historyPage != nil || self.usesPagedNavigation else { return }
             // @Published sends before assignment. Query on the next actor turn
             // so it captures the newly selected scope and sort order.
-            Task { @MainActor [weak self] in self?.loadHistory() }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.mapPage = nil; self.dronePage = nil; self.catalogue = nil
+                self.loadHistory()
+            }
         }
         reload()
     }
@@ -156,15 +166,16 @@ final class LibraryStore: ObservableObject {
         if panel.runModal() == .OK, let url = panel.url { importFolder(url) }
     }
 
-    func importFolder(_ folder: URL, archiveDestination: URL? = nil) {
+    func importFolder(_ folder: URL, archiveDestination: URL? = nil, clientID: String? = nil) {
         guard !isReadOnly, !isMaintainingLibrary, !isImporting else { return }
-        Task { _ = try? await importCollectedFolder(folder, archiveDestination: archiveDestination) }
+        let destination = clientID ?? views.state.activeScope.clientID ?? ""
+        Task { _ = try? await importCollectedFolder(folder, archiveDestination: archiveDestination, clientID: destination) }
     }
 
     /// Used by the collection queue; completion means the snapshot has been committed.
-    func importCollectedFolder(_ folder: URL, expectedLogID: String? = nil, archiveDestination: URL? = nil) async throws -> FleetSnapshot {
+    func importCollectedFolder(_ folder: URL, expectedLogID: String? = nil, archiveDestination: URL? = nil, clientID: String? = nil) async throws -> FleetSnapshot {
         guard !isReadOnly, !isMaintainingLibrary else { throw AnalysisError.engine("La bibliothèque est occupée ou en lecture seule.") }
-        while isImporting || isQuerying || isLoading { try await Task.sleep(for: .milliseconds(100)) }
+        while isImporting || isQuerying || isLoading || activeDetailLoads > 0 { try await Task.sleep(for: .milliseconds(100)) }
         try Task.checkCancellation()
         guard !isReadOnly, !isMaintainingLibrary else { throw AnalysisError.engine("La bibliothèque est occupée ou en lecture seule.") }
         guard let engine = engineURL else {
@@ -189,14 +200,14 @@ final class LibraryStore: ObservableObject {
             do {
                 let result: FleetSnapshot
                 if self.usesPagedNavigation {
-                    let scanned = try await AnalysisService.scanPaged(folder: folder, database: database, output: output, progress: progressFile, engine: engine, archiveDestination: archiveDestination)
+                    let scanned = try await AnalysisService.scanPaged(folder: folder, database: database, output: output, progress: progressFile, engine: engine, archiveDestination: archiveDestination, clientID: clientID)
                     var request = LibraryQueryRequest(annotations: self.annotations.state)
                     request.scope.includeMasked = true
                     if let expectedLogID { request.scope.logIDs = [expectedLogID] }
                     var page = try await LibraryQueryService.page(LibraryLogPage.self, request: request, database: database, engine: engine, readOnly: true).snapshot
                     page.importStats = scanned.importStats; page.archiveResult = scanned.archiveResult; result = page
                 } else {
-                    result = try await AnalysisService.scan(folder: folder, database: database, output: output, progress: progressFile, engine: engine, archiveDestination: archiveDestination)
+                    result = try await AnalysisService.scan(folder: folder, database: database, output: output, progress: progressFile, engine: engine, archiveDestination: archiveDestination, clientID: clientID)
                 }
                 self.annotations.reconcileIdentities(in: result.logs)
                 let annotated = self.annotations.state.applying(to: result)
@@ -248,7 +259,7 @@ final class LibraryStore: ObservableObject {
     }
 
     func refreshAnalysis() {
-        guard !isReadOnly, !isMaintainingLibrary, !isImporting, !isQuerying, !isLoading,
+        guard !isReadOnly, !isMaintainingLibrary, !isImporting, !isQuerying, !isLoading, activeDetailLoads == 0,
               analysisRefreshTask == nil, let engine = engineURL else { return }
         isImporting = true; errorMessage = nil; progress = nil
         try? FileManager.default.removeItem(at: progressURL)
@@ -286,13 +297,14 @@ final class LibraryStore: ObservableObject {
         queryWasCancelled = true; queryError = nil
     }
     func prepareForTermination() {
+        FlightWindowCoordinator.shared.closeAll(library: self)
         diagnosticStore.prepareForTermination()
         if !diagnosticStopRecorded { diagnostics.record(.appStopped); diagnostics.flush(); diagnosticStopRecorded = true }
         cancelImport(); exportTask?.cancel(); queryTask?.cancel(); flightTask?.cancel(); reloadTask?.cancel()
         progressTask?.cancel(); queryToken = UUID(); flightToken = UUID(); loadToken = UUID()
         isQuerying = false; isCancellingQuery = false; isLoading = false; isLoadingFlight = false
     }
-    var hasActiveWork: Bool { isImporting || isExporting || isMaintainingLibrary || isQuerying || isLoading || isLoadingFlight || diagnosticStore.isLoading || diagnosticStore.isFetchingGCS || diagnosticStore.isExporting }
+    var hasActiveWork: Bool { activeDetailLoads > 0 || isImporting || isExporting || isMaintainingLibrary || isQuerying || isLoading || isLoadingFlight || diagnosticStore.isLoading || diagnosticStore.isFetchingGCS || diagnosticStore.isExporting }
 
     func revealSource(_ path: String) {
         guard FileManager.default.fileExists(atPath: path) else { errorMessage = "Le fichier source n’est plus présent : \(path)"; return }
@@ -381,7 +393,7 @@ final class LibraryStore: ObservableObject {
         guard let engine = engineURL, FileManager.default.fileExists(atPath: databaseURL.path) else { return }
         catalogueError = nil
         do {
-            var request = LibraryQueryRequest(kind: "catalogue", annotations: annotations.state)
+            var request = LibraryQueryRequest(kind: "catalogue", scope: views.state.activeScope, annotations: annotations.state)
             var result = try await LibraryQueryService.page(LibraryCataloguePage.self, request: request, database: databaseURL, engine: engine, readOnly: true)
             while let cursor = result.nextCursor {
                 try Task.checkCancellation()
@@ -434,10 +446,10 @@ final class LibraryStore: ObservableObject {
 
     func exportReport(to destination: URL, mode: ReportScopeManifest.Mode, options: ReportExportOptions) async throws -> ReportExportResult {
         var scope = mode == .full ? SelectionScope() : views.state.activeScope
-        if mode == .full { scope.includeMasked = true }
+        if mode == .full { scope.includeMasked = true; scope.clientID = views.state.activeScope.clientID }
         let query = LibraryQueryRequest(scope: scope, annotations: annotations.state, maskedMessageKeys: views.state.maskedMessageKeys)
         let request = ReportExportRequest(query: query, mode: mode,
-            scopeDescription: mode == .full ? "Toute la bibliothèque · messages masqués inclus" : scope.description,
+            scopeDescription: clients.scopeLabel(for: scope.clientID) + " · " + (mode == .full ? "Tous les logs · messages masqués inclus" : scope.description),
             viewRevision: views.state.revision, options: options)
         return try await exportReport(to: destination, reviewedRequest: request)
     }
@@ -506,7 +518,7 @@ final class LibraryStore: ObservableObject {
         var request = LibraryQueryRequest(scope: views.state.activeScope, annotations: annotations.state,
                                           maskedMessageKeys: views.state.maskedMessageKeys)
         request.cursor = cursor
-        request.sortOrder = views.state.historySort ?? "recent"
+        request.sortOrder = historySortOverride ?? views.state.historySort ?? "recent"
         isQuerying = true; queryWasCancelled = false; queryError = nil
         let database = databaseURL, readOnly = isReadOnly
         queryTask = Task { [weak self] in
@@ -523,6 +535,7 @@ final class LibraryStore: ObservableObject {
                 let groups = try await LibraryQueryService.page(LibraryGroupPage.self, request: groupsRequest, database: database, engine: engine, readOnly: true)
                 guard !Task.isCancelled, let self, queryToken == token else { return }
                 guard page.revision == groups.revision else { throw AnalysisError.engine("La bibliothèque a changé pendant la lecture. Rechargez la sélection.") }
+                clients.reload()
                 historyPage = page; currentHistoryCursor = request.cursor; groupPage = groups; occurrencePage = nil
                 if usesPagedNavigation { snapshot = page.snapshot }
                 isQuerying = false; queryTask = nil
@@ -562,7 +575,8 @@ final class LibraryStore: ObservableObject {
         var request = LibraryQueryRequest(kind: kind, scope: views.state.activeScope, annotations: annotations.state,
                                           maskedMessageKeys: views.state.maskedMessageKeys)
         request.cursor = cursor; request.registrySearch = search
-        request.sortOrder = views.state.historySort ?? "recent"
+        if kind == "map" { request.proximity = mapProximity; request.sortOrder = "recent" }
+        request.sortOrder = kind == "map" ? "recent" : (views.state.historySort ?? "recent")
         isQuerying = true; queryWasCancelled = false; queryError = nil
         let database = databaseURL
         queryTask = Task { [weak self] in
@@ -572,7 +586,18 @@ final class LibraryStore: ObservableObject {
                     guard !Task.isCancelled, let self, queryToken == token else { return }
                     dronePage = result
                 } else if kind == "map" {
-                    let result = try await LibraryQueryService.page(LibraryLogPage.self, request: request, database: database, engine: engine, readOnly: true)
+                    let result: LibraryLogPage
+                    if request.proximity != nil, let self, !self.isReadOnly,
+                       self.activeDetailLoads == 0, !self.hasExternalActivity() {
+                        // Upgrade older libraries lazily: retain verified full GPS tracks after
+                        // the first geographic search, including after the source is unplugged.
+                        result = try await self.performMaintenance(allowOwnedQuery: true) {
+                            try await LibraryQueryService.page(LibraryLogPage.self, request: request,
+                                database: database, engine: engine, readOnly: false)
+                        }
+                    } else {
+                        result = try await LibraryQueryService.page(LibraryLogPage.self, request: request, database: database, engine: engine, readOnly: true)
+                    }
                     guard !Task.isCancelled, let self, queryToken == token else { return }
                     mapPage = result
                 } else {
@@ -593,7 +618,7 @@ final class LibraryStore: ObservableObject {
     /// collection persistence and annotation edits quiescent.
     func performMaintenance<T: Sendable>(allowOwnedExport: Bool = false, allowOwnedQuery: Bool = false, _ operation: () async throws -> T) async throws -> T {
         guard !isReadOnly, !isMaintainingLibrary, !isImporting, (!isExporting || allowOwnedExport),
-              !isLoading, (!isQuerying || allowOwnedQuery), !isLoadingFlight, !hasExternalActivity() else {
+              !isLoading, (!isQuerying || allowOwnedQuery), !isLoadingFlight, activeDetailLoads == 0, !hasExternalActivity() else {
             throw AnalysisError.engine("Terminez ou arrêtez les opérations en cours avant de modifier ou sauvegarder la bibliothèque.")
         }
         try willMaintainLibrary()
@@ -617,10 +642,11 @@ final class LibraryStore: ObservableObject {
         var postRestoreIssue: String?
         let result = try await performMaintenance {
             statusMessage = "Restauration vérifiée…"
+            FlightWindowCoordinator.shared.closeAll(library: self)
             try willRestoreLibrary()
             do {
                 let result = try await LibraryStorageService.restore(archive: archive, library: storageDirectory, engine: engine)
-                annotations.reload(); views.reload()
+                annotations.reload(); views.reload(); clients.reload()
                 indexPrepared = false
                 closeFlight()
                 do { try didRestoreLibrary() }
@@ -634,6 +660,73 @@ final class LibraryStore: ObservableObject {
         reload(); statusMessage = "Bibliothèque restaurée. L’ancien état est conservé dans le dossier de récupération. Les collectes actives sont interrompues."
         if let postRestoreIssue { errorMessage = "La bibliothèque a été restaurée, mais la collecte ne peut pas être rouverte : \(postRestoreIssue). Elle reste bloquée ; relancez l’app ou restaurez sa configuration." }
         return result
+    }
+
+    func openFlightWindow(_ log: FlightLog) {
+        FlightWindowCoordinator.shared.open(log: log, library: self)
+    }
+
+    func loadMap(proximity: GeographicProximity? = nil) {
+        guard !isImporting, !isMaintainingLibrary, !isCancellingQuery else { return }
+        mapPage = nil
+        mapProximity = proximity
+        loadAuxiliary(kind: "map")
+    }
+
+    func clearLibrary() async throws { try await resetLibrary(allSettings: false) }
+    func resetApplication() async throws { try await resetLibrary(allSettings: true) }
+
+    private func resetLibrary(allSettings: Bool) async throws {
+        guard let engine = engineURL else { throw AnalysisError.unavailable("Moteur d’analyse absent.") }
+        guard !diagnosticStore.isExporting, !diagnosticStore.isFetchingGCS, !diagnosticStore.isLoading else {
+            throw AnalysisError.engine("Terminez ou arrêtez le diagnostic avant de réinitialiser la bibliothèque.")
+        }
+        try await performMaintenance {
+            FlightWindowCoordinator.shared.closeAll(library: self)
+            closeFlight()
+            let data = try await AnalysisService.run(["reset-library", "--database", databaseURL.path,
+                "--library", storageDirectory.path] + (allSettings ? ["--all-settings"] : []), engine: engine)
+            struct Result: Decodable { var originalsDeleted: Bool }
+            guard try JSONDecoder().decode(Result.self, from: data).originalsDeleted == false else {
+                throw AnalysisError.engine("Le moteur n’a pas confirmé la conservation des fichiers originaux.")
+            }
+            if allSettings {
+                try resetCollectionState()
+                try Self.removeConfigurationFiles(in: storageDirectory,
+                    names: ["views.json", "annotations.json", "import-options.json"])
+                annotations.reload(); views.reload()
+                diagnosticStore.dismiss()
+                try diagnostics.clear()
+            }
+            // Clearing indices must never revive a legacy JSON snapshot.
+            try Self.removeConfigurationFiles(in: storageDirectory, names: ["library.json", "progress.json"])
+            snapshot = .empty; historyPage = nil; groupPage = nil; dronePage = nil; mapPage = nil
+            occurrencePage = nil; catalogue = nil; progress = nil; mapProximity = nil
+            currentHistoryCursor = nil; lastReportExport = nil; indexPrepared = false
+        }
+        if !allSettings {
+            // Keep preferences and selected client, but drop filters tied to deleted logs.
+            var scope = SelectionScope(); scope.clientID = views.state.activeScope.clientID
+            try views.chooseScope(scope)
+        }
+        clients.reload(); reload()
+        statusMessage = allSettings ? "KataLog réinitialisé. Vos fichiers .ulg sont conservés." : "Bibliothèque vidée. Clients, identifications, réglages et fichiers .ulg conservés."
+    }
+
+    /// Only known regular configuration files can be removed. Never recurse into a directory.
+    static func removeConfigurationFiles(in directory: URL, names: [String]) throws {
+        for name in names {
+            guard !name.contains("/"), !name.lowercased().hasSuffix(".ulg") else {
+                throw AnalysisError.engine("Nom de configuration inattendu.")
+            }
+            let file = directory.appendingPathComponent(name)
+            guard FileManager.default.fileExists(atPath: file.path) else { continue }
+            let values = try file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            guard values.isRegularFile == true || values.isSymbolicLink == true else {
+                throw AnalysisError.engine("Un dossier occupe l’emplacement d’un réglage. Il a été conservé.")
+            }
+            try FileManager.default.removeItem(at: file)
+        }
     }
 
     var engineURL: URL? {

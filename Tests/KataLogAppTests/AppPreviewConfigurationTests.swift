@@ -4,6 +4,19 @@ import KataLogCore
 
 @MainActor
 final class AppPreviewConfigurationTests: XCTestCase {
+    func testVersionedReviewLibraryRemainsIsolatedAfterRelaunch() {
+        let preview = AppPreviewConfiguration(environment: [:], reviewBuild: true,
+            previewLibraryComponent: "KataLogPreview-0.7.0")
+        XCTAssertEqual(preview.defaultLibraryComponent, "KataLogPreview-0.7.0")
+        let installed = AppPreviewConfiguration(environment: [:], reviewBuild: false,
+            previewLibraryComponent: "KataLogPreview-0.7.0")
+        XCTAssertEqual(installed.defaultLibraryComponent, "KataLog")
+        for unsafe in ["KataLog", "../KataLog", "KataLogPreview-/../../KataLog", "/absolute/path"] {
+            XCTAssertEqual(AppPreviewConfiguration(environment: [:], reviewBuild: true,
+                previewLibraryComponent: unsafe).defaultLibraryComponent, "KataLogPreview-0.6")
+        }
+    }
+
     func testReviewPackageShowsUIAndUsesDistinctLibrary() {
         let review = AppPreviewConfiguration(environment: [:], reviewBuild: true)
         XCTAssertTrue(review.showReviewUI)

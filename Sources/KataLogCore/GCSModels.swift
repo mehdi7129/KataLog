@@ -81,6 +81,8 @@ public struct GCSTransfer: Codable, Identifiable, Sendable {
     public var sha256: String?
     // Optional backing fields preserve decoding of v0.2 queues.
     public var batchID: String?
+    /// Import destination captured when enqueued; nil legacy jobs remain unassigned.
+    public var clientID: String?
     public var attempts: Int?
     public var nextRetryAt: Date?
     public var remoteBusyUntil: Date?
@@ -165,6 +167,8 @@ public struct GCSCollectorEvent: Decodable, Sendable {
 }
 
 public struct GCSCollectionState: Codable, Sendable {
+    public var collectionClientID: String?
+
     public var schemaVersion = 1
     public var host = ""
     public var allowedUUIDs: Set<String> = []

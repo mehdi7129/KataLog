@@ -15,6 +15,7 @@ public struct LibraryQueryRequest: Codable, Sendable {
     public var eventLevelSource = "internal"
     public var eventLevels: [String] = []
     public var eventSearch = ""
+    public var proximity: GeographicProximity? = nil
     public init(kind: String = "logs", scope: SelectionScope = .init(), annotations: DroneAnnotationState = .init(), maskedMessageKeys: [String] = []) {
         self.kind = kind; self.scope = scope; self.annotations = annotations; self.maskedMessageKeys = maskedMessageKeys
     }
@@ -115,6 +116,8 @@ public struct LibraryLogPage: Codable, Sendable, LibraryPageContract {
     public var snapshot: FleetSnapshot
     public var totals: LibraryTotals
     public var nextCursor: String?
+    /// Sources without an exact, complete trajectory could not be searched.
+    public var proximityUnavailableLogs: Int? = nil
 }
 
 public struct LibraryGroup: Codable, Identifiable, Sendable {

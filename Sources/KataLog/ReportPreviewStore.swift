@@ -28,11 +28,11 @@ final class ReportPreviewStore: ObservableObject {
     static func request(mode: ReportScopeManifest.Mode, scope: SelectionScope, annotations: DroneAnnotationState,
                         maskedMessageKeys: [String], viewRevision: Int, options: ReportExportOptions) -> ReportExportRequest {
         var selected = mode == .full ? SelectionScope() : scope
-        if mode == .full { selected.includeMasked = true }
+        if mode == .full { selected.includeMasked = true; selected.clientID = scope.clientID }
         var query = LibraryQueryRequest(scope: selected, annotations: annotations, maskedMessageKeys: maskedMessageKeys)
         query.limit = 1
         return ReportExportRequest(query: query, mode: mode,
-            scopeDescription: mode == .full ? "Toute la bibliothèque · messages masqués inclus" : selected.description,
+            scopeDescription: mode == .full ? (scope.clientID == nil ? "Tous les clients" : scope.clientID == "" ? "Sans client" : "Client sélectionné") + " · tous les logs · messages masqués inclus" : selected.description,
             viewRevision: viewRevision, options: options)
     }
 

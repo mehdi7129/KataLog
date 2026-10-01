@@ -1,9 +1,9 @@
-# KataLog — direction UI et version 0.5.1 (build 6)
+# KataLog — direction UI
 
 App macOS locale pour une flotte PX4. Direction validée : bento noir et blanc,
 surfaces gris neutre, accents discrets réservés aux états et aux graphiques.
 
-## Référence visuelle pour 0.6.0
+## Référence visuelle et évolution clients
 
 La composition de la version 0.5.2 reste la référence demandée : sidebar compacte,
 barre supérieure discrète, bande de compteurs commune et bento asymétrique.
@@ -11,11 +11,13 @@ Les parcours 0.6 s’intègrent à cette composition et partagent exactement sa 
 La Vue d’ensemble est l’écran d’accueil. Historique conserve sa navigation paginée ;
 les indicateurs et le radar couvrent toujours toute la sélection.
 
-Le bouton soleil/lune reste visible en haut à droite. Un menu permet aussi de
-suivre le thème macOS. Une préférence absente ouvre le thème sombre ; les choix
+Le bouton soleil/lune bascule directement entre clair et sombre. Le choix
+Système est dans les réglages. Une préférence absente ouvre le thème sombre ; les choix
 explicites existants sont conservés et enregistrés dans la bibliothèque.
-Les filtres restent accessibles dans le header et les vues enregistrées dans
-la barre supérieure. Leurs formulaires s’ouvrent à la demande.
+Les actions n'ont ni cadre ni fond permanent ; survol et focus les soulignent.
+Les filtres restent accessibles dans le header. Le sélecteur de clients remplace
+les vues enregistrées dans la barre supérieure. Le [contrat clients](docs/CLIENTS-BENTO.md)
+définit les périmètres, les destinations d'import et les réinitialisations.
 
 Recette avant release : inspecter chaque écran en clair et sombre, les fenêtres
 900×620 et la Vue d’ensemble à 1440×980 ; vérifier les données globales, l’ouverture
@@ -40,7 +42,8 @@ fichiers importés : les corpus de recette ne préremplissent pas l'app et ne qu
   logs avec alertes. La durée enregistrée n'est pas assimilée au temps de vol.
 - Bento asymétrique : panneau « À examiner » alimenté par les groupes d'alertes,
   radar à droite avec légende chiffrée.
-- Table « Alertes repérées » et historique chronologique. Ouvrir une fiche et
+- Cartes « Alertes repérées » et « Activité récente » alignées en hauteur,
+  avec défilement interne et accès « Tout voir ». Ouvrir une fiche et
   révéler le fichier dans le Finder sont deux actions distinctes.
 
 ## Radar
@@ -61,13 +64,17 @@ et famille ; réinitialisation. Sélection toujours parmi les résultats filtré
 confondue avec une panne confirmée. Le détail comprend source, messages et contexte.
 Ne pas exposer des contrôles qui prétendent appliquer des filtres non implémentés.
 
-## Carte — version 0.4
+## Carte
 
-Apple Maps s'ouvre depuis la sidebar. Recherche locale et filtre drone limitent le
+Apple Maps s'ouvre depuis la sidebar. Recherche de logs et filtre drone limitent le
 périmètre ; les **80 logs géolocalisés les plus récents** de ce périmètre sont
 dessinés, avec **256 points maximum par log**. Cette limite est affichée et la liste
 permet toujours d'ouvrir les autres fiches. Plan/satellite, zoom, compas, échelle et
 recentrage restent des contrôles MapKit natifs.
+
+Une recherche distincte accepte ville, adresse ou coordonnées et un rayon.
+Elle vérifie la trajectoire complète avant la limite d'affichage : une portion
+traversant la zone suffit. Les trajectoires complètes indisponibles sont annoncées.
 
 Les trajectoires sont séparées aux lacunes et aux échantillons GPS invalides.
 Les segments d'un point ont un repère isolé ; aucune liaison n'est inventée.
@@ -80,11 +87,14 @@ Les coordonnées viennent des ULog. L'app ne demande pas la localisation du Mac 
 les tuiles Apple nécessitent un accès réseau. La recette de tuiles indisponibles
 hors connexion reste à faire.
 
-## Fiche de log — version 0.4
+## Fiche de log
 
-Une grande sheet native charge les détails à la demande depuis le cache SQLite
+Une fenêtre macOS indépendante, déplaçable et redimensionnable, charge les détails
+à la demande depuis le cache SQLite
 `flight_details`. Un état de chargement, une erreur avec nouvel essai et la source
 restent visibles. Les détails déjà calculés sont consultables si l'original manque.
+Rouvrir le même log remet sa fenêtre au premier plan. Les événements PX4 et les
+données techniques sont accessibles en mode avancé, désactivé par défaut.
 
 - **Vue du log** : carte bornée à 4 096 points et chronologie des alertes. Le clic
   sur un message positionnable place le curseur sur un échantillon réel à deux
@@ -125,8 +135,9 @@ futur dépôt public. Tout nouvel aperçu public doit provenir de fixtures synth
 
 L’évolution conserve cette composition bento et les deux thèmes. Les actions
 principales **Tout collecter** et **Arrêter** restent visibles en haut de l’écran.
-**Tout collecter** concerne les drones enregistrés dans la flotte et actuellement
-connectés ; les appareils explicitement armés sont exclus. La sélection manuelle
+**Tout collecter** concerne les drones actuellement connectés à la GCS ; les
+nouveaux appareils sont inscrits automatiquement. Les appareils explicitement armés
+sont exclus. La sélection manuelle
 de logs reste accessible par drone.
 
 Une carte **Progression globale** présente le lot courant : pourcentage, volume,

@@ -230,11 +230,13 @@ def position_messages(messages, track):
             message['position'] = point.copy()
 
 
-def enrich(log, ulog, detailed=False, dictionary_path=None):
+def enrich(log, ulog, detailed=False, dictionary_path=None, track_sink=None):
     start = ulog.start_timestamp / 1e6
     end = start + log['durationSeconds']
     track = extract_track(ulog.data_list, start, end)
     log['track'] = track_preview(track, DETAIL_POINTS if detailed else PREVIEW_POINTS)
+    if track_sink is not None:
+        track_sink(track)
     if track:
         log['coverage'].append(f"GPS : un récepteur choisi selon les points valides ; fix 3D/différentiel/RTK seulement, lacunes > {GAP_SECONDS:g} s et échantillons invalides séparés. Trajectoire d’affichage échantillonnée, pas une trajectoire de commande.")
     else:

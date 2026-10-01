@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0181CC1EACF3369A9C0AFC0B /* library_proximity.py in Resources */ = {isa = PBXBuildFile; fileRef = 20238E6271E5BA2A3EF67943 /* library_proximity.py */; };
 		01FAD357C747066DFEAB7B90 /* px4_events.py in Resources */ = {isa = PBXBuildFile; fileRef = B7B81D6550EFCFC9AB10269F /* px4_events.py */; };
 		028F506545A2CC000DC10FF8 /* GCSFleetObservationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4C54501883F0A480DCA8EBB /* GCSFleetObservationStore.swift */; };
 		06363387B2ACC69BB5BBDBB0 /* DroneAnnotationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B700FADA1EBD3DB70D878460 /* DroneAnnotationViews.swift */; };
@@ -18,8 +19,10 @@
 		0F2557868602850F27FA4AF1 /* SelectionScope.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCD4A15E86B6498D3120066A /* SelectionScope.swift */; };
 		0FE523BE994B69EE4D178BA2 /* DiagnosticBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = B82F6C233262E158BF9ABA17 /* DiagnosticBundle.swift */; };
 		1138F55D7398D96D8093D951 /* analyzer.py in Resources */ = {isa = PBXBuildFile; fileRef = EC603D8E7A8E0DD113C174BB /* analyzer.py */; };
+		146196DA785F5EB18F223DFD /* ClientStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0483B4293824DE95AAADD9E3 /* ClientStore.swift */; };
 		1E5EA08A906E690DDCE90454 /* LibraryStorageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53B41688D88BD65000BB0B41 /* LibraryStorageStore.swift */; };
 		1F79A47BEF8649BAF132A57F /* AlertExplanationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2879274F7AD19AC7F2F22D47 /* AlertExplanationView.swift */; };
+		22CD8121ACA4BABBC4AAC6AB /* library_clients.py in Resources */ = {isa = PBXBuildFile; fileRef = D6D2C407176A5F4FC16D0D9F /* library_clients.py */; };
 		244CACA55F30DDA40588BBA7 /* ApplicationLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81608F1EC59D6A4B4309FB7A /* ApplicationLifecycle.swift */; };
 		2B111F3CA61E9B43BCEA891B /* GCSProcessService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1263800F19D2CD42409464DF /* GCSProcessService.swift */; };
 		2C65A8F9F63417D88CC74C2F /* library_sources.py in Resources */ = {isa = PBXBuildFile; fileRef = 4EAE586501564398DAC80B69 /* library_sources.py */; };
@@ -29,6 +32,7 @@
 		3BC941433531EB6D0D29FF87 /* ReportRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3231E8CAB4E8B448FE112E3 /* ReportRenderer.swift */; };
 		3CD6BF0C8CCD4BF5408696DC /* AnalysisService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 767956B06EAA778ABDE3E546 /* AnalysisService.swift */; };
 		3ED9370C71C3E4285F21B031 /* EngineRuntimeResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD541BCB131D49CF40F668A0 /* EngineRuntimeResolver.swift */; };
+		41A31E3FDCBD1DE2663547EF /* FlightDetailLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B53DEF550FF23464ADCB89B /* FlightDetailLoader.swift */; };
 		4223A85F86AB072D4D8A8869 /* library_archives.py in Resources */ = {isa = PBXBuildFile; fileRef = 3247BD603F080AB50D31FEA9 /* library_archives.py */; };
 		4765C3F67E0138495E6EBF07 /* SourcesImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7075CAFA2CC4FEBAA301301C /* SourcesImportView.swift */; };
 		4886455A754F4290297CBE4A /* EngineOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FD04F510482B3719AD7CD79 /* EngineOperations.swift */; };
@@ -38,7 +42,10 @@
 		4F0878508BC3F619360FC520 /* DroneAnnotationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A07E65B3288F0CCC78ABC99F /* DroneAnnotationStore.swift */; };
 		4F67B7410FF75722B6A99E25 /* library_storage.py in Resources */ = {isa = PBXBuildFile; fileRef = B1EE23A87F76652BFFAF41B7 /* library_storage.py */; };
 		5165BFA8B0EC7811C04BEF1F /* WorkspaceDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE95C4D29AE5477B63160E3E /* WorkspaceDesign.swift */; };
+		51E4581E0EA61CBBAA869F52 /* Clients.swift in Sources */ = {isa = PBXBuildFile; fileRef = 973B3986662CFA9BD3A110AD /* Clients.swift */; };
 		54EDE7EFFC2FA19C752E51E3 /* AppPreviewConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = E98860FD022BF7F7428184D5 /* AppPreviewConfiguration.swift */; };
+		5D12BF6935FEAD642769DDE6 /* ClientViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0599D5E86D6285A89C955827 /* ClientViews.swift */; };
+		5D14506D8BC4FE82BE58A739 /* FlightDetailSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 580DA0C78AE7B2EF804C501C /* FlightDetailSession.swift */; };
 		63DA243174849ADBE2F827BB /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD3E883DBD573A4915EAB398 /* main.swift */; };
 		6EF20646AD4817137B1BC471 /* GCSModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9BF98186288FB77D7CDC93D /* GCSModels.swift */; };
 		6F05FE6129C7D6A5FBA722D4 /* GCSQueueRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 509DD61E32EADEC4B75D6E54 /* GCSQueueRepository.swift */; };
@@ -53,6 +60,7 @@
 		91657763976C25B68DA10FC2 /* library_reports.py in Resources */ = {isa = PBXBuildFile; fileRef = 5369C54E1184E23D26B6DAC2 /* library_reports.py */; };
 		939E976794446F159D4DB445 /* EventDictionaryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C74BC6513FA9237CC8CF2AA /* EventDictionaryService.swift */; };
 		9470399B4461298CF8830C84 /* TelemetryReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC7FA7611319A2C592BE4F64 /* TelemetryReport.swift */; };
+		9739D1AABD2E481AF05A2A03 /* BentoColumns.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E826C40F035FB9C0FB00234 /* BentoColumns.swift */; };
 		9D3BC30BE8EEE560D0CC2E2D /* AlertKnowledge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DC881E5A3314E11ACF46DD1 /* AlertKnowledge.swift */; };
 		9E8B88AC99D42CB8A7CF9A23 /* ReportInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = A212A8CC9F08D187462D8ACB /* ReportInteraction.swift */; };
 		9FE53A4AB01CA1A65997F1F3 /* FlightAnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 250C21DF8E49488C594D7485 /* FlightAnalysisView.swift */; };
@@ -86,6 +94,7 @@
 		EA5556CA10BD284FEA285397 /* FleetMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4A48F7FF34BF817A29A662 /* FleetMapView.swift */; };
 		EBF73258F86F97774D49F830 /* AnalysisRevisionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D04D50D0B4BE0AF590382E3B /* AnalysisRevisionsView.swift */; };
 		EE5A65B72D33A317E7F01884 /* GNSSCoverage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7E4498DE9FA167DF465E48 /* GNSSCoverage.swift */; };
+		F071212FAB4F00BC2D60A0D7 /* FlightWindowCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BCD1CFB308445BA1215D96E /* FlightWindowCoordinator.swift */; };
 		F65723071801E971BF3CE7B7 /* UpdateSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E37575D142A735F0733E355 /* UpdateSettingsView.swift */; };
 		FE6A095B24CDDEAE2DFB193B /* KataLog.icns in Resources */ = {isa = PBXBuildFile; fileRef = 15D7E9BEE4F099F75643C742 /* KataLog.icns */; };
 /* End PBXBuildFile section */
@@ -102,13 +111,17 @@
 
 /* Begin PBXFileReference section */
 		00A827A86B61CF8D2BE671D9 /* FlightDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightDetailView.swift; sourceTree = "<group>"; };
+		0483B4293824DE95AAADD9E3 /* ClientStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientStore.swift; sourceTree = "<group>"; };
+		0599D5E86D6285A89C955827 /* ClientViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientViews.swift; sourceTree = "<group>"; };
 		0ACBF6FE3DBC7EE0DCE73010 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
 		0CF1B557B87CF0542B7B021C /* AnalysisRevisionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisRevisionService.swift; sourceTree = "<group>"; };
 		1263800F19D2CD42409464DF /* GCSProcessService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GCSProcessService.swift; sourceTree = "<group>"; };
 		15D7E9BEE4F099F75643C742 /* KataLog.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = KataLog.icns; sourceTree = "<group>"; };
+		20238E6271E5BA2A3EF67943 /* library_proximity.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = library_proximity.py; sourceTree = "<group>"; };
 		250C21DF8E49488C594D7485 /* FlightAnalysisView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightAnalysisView.swift; sourceTree = "<group>"; };
 		2879274F7AD19AC7F2F22D47 /* AlertExplanationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertExplanationView.swift; sourceTree = "<group>"; };
 		293BF69519EAB96FA6E8F777 /* signal_assessment.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = signal_assessment.py; sourceTree = "<group>"; };
+		2B53DEF550FF23464ADCB89B /* FlightDetailLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightDetailLoader.swift; sourceTree = "<group>"; };
 		3247BD603F080AB50D31FEA9 /* library_archives.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = library_archives.py; sourceTree = "<group>"; };
 		34AD89AA23F72FC6283E90E9 /* telemetry_extractor.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = telemetry_extractor.py; sourceTree = "<group>"; };
 		3776621835431D949972CFCA /* LibraryViewStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryViewStore.swift; sourceTree = "<group>"; };
@@ -126,6 +139,7 @@
 		5369C54E1184E23D26B6DAC2 /* library_reports.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = library_reports.py; sourceTree = "<group>"; };
 		53B41688D88BD65000BB0B41 /* LibraryStorageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStorageStore.swift; sourceTree = "<group>"; };
 		54FB48920B4EBE713B760440 /* CoreLibraryUX.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreLibraryUX.swift; sourceTree = "<group>"; };
+		580DA0C78AE7B2EF804C501C /* FlightDetailSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightDetailSession.swift; sourceTree = "<group>"; };
 		5D490EED808F6F284E88FEA6 /* GCSServiceDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GCSServiceDiagnostics.swift; sourceTree = "<group>"; };
 		64C389996F4E1F97EA8457ED /* DiagnosticJournal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticJournal.swift; sourceTree = "<group>"; };
 		67CA2340F1A10C83ADAB2077 /* KataLog.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KataLog.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -135,10 +149,13 @@
 		767956B06EAA778ABDE3E546 /* AnalysisService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisService.swift; sourceTree = "<group>"; };
 		774ECB82F30B1BD18515741C /* DiagnosticStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticStore.swift; sourceTree = "<group>"; };
 		7857E2633A19111A82DF1360 /* UpdateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateStore.swift; sourceTree = "<group>"; };
+		7E826C40F035FB9C0FB00234 /* BentoColumns.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BentoColumns.swift; sourceTree = "<group>"; };
 		81608F1EC59D6A4B4309FB7A /* ApplicationLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationLifecycle.swift; sourceTree = "<group>"; };
 		85F83077C2622F2D653FD323 /* ReportScopeManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportScopeManifest.swift; sourceTree = "<group>"; };
 		8B5BE6BDA87F822ED233D32F /* DroneAnnotations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneAnnotations.swift; sourceTree = "<group>"; };
 		8CBB1A0BBFB7632EBE80C42A /* TelemetryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetryService.swift; sourceTree = "<group>"; };
+		973B3986662CFA9BD3A110AD /* Clients.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Clients.swift; sourceTree = "<group>"; };
+		9BCD1CFB308445BA1215D96E /* FlightWindowCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightWindowCoordinator.swift; sourceTree = "<group>"; };
 		9C7E4498DE9FA167DF465E48 /* GNSSCoverage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GNSSCoverage.swift; sourceTree = "<group>"; };
 		9DC881E5A3314E11ACF46DD1 /* AlertKnowledge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertKnowledge.swift; sourceTree = "<group>"; };
 		9E37575D142A735F0733E355 /* UpdateSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateSettingsView.swift; sourceTree = "<group>"; };
@@ -165,6 +182,7 @@
 		CA3768D8DAE5602B32723F6D /* gcs_collect.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = gcs_collect.py; sourceTree = "<group>"; };
 		D04D50D0B4BE0AF590382E3B /* AnalysisRevisionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisRevisionsView.swift; sourceTree = "<group>"; };
 		D2C120A7ADD1771A31CA7DFE /* ImportOptions06.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportOptions06.swift; sourceTree = "<group>"; };
+		D6D2C407176A5F4FC16D0D9F /* library_clients.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = library_clients.py; sourceTree = "<group>"; };
 		D80CA19A2463BE25542CC90E /* DroneRegistryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneRegistryView.swift; sourceTree = "<group>"; };
 		D9725E1DD4102C316B4DBDFB /* ReportExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportExportService.swift; sourceTree = "<group>"; };
 		DC36BEBC525C10247219C76B /* UpdatePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdatePolicy.swift; sourceTree = "<group>"; };
@@ -204,6 +222,9 @@
 				D04D50D0B4BE0AF590382E3B /* AnalysisRevisionsView.swift */,
 				81608F1EC59D6A4B4309FB7A /* ApplicationLifecycle.swift */,
 				E98860FD022BF7F7428184D5 /* AppPreviewConfiguration.swift */,
+				7E826C40F035FB9C0FB00234 /* BentoColumns.swift */,
+				0483B4293824DE95AAADD9E3 /* ClientStore.swift */,
+				0599D5E86D6285A89C955827 /* ClientViews.swift */,
 				774ECB82F30B1BD18515741C /* DiagnosticStore.swift */,
 				E1FDB937BBB983BCB1B98625 /* DiagnosticView.swift */,
 				A07E65B3288F0CCC78ABC99F /* DroneAnnotationStore.swift */,
@@ -212,9 +233,12 @@
 				381DCE4D44FBD73F1B09DC01 /* EventBrowserView.swift */,
 				4F4A48F7FF34BF817A29A662 /* FleetMapView.swift */,
 				250C21DF8E49488C594D7485 /* FlightAnalysisView.swift */,
+				2B53DEF550FF23464ADCB89B /* FlightDetailLoader.swift */,
+				580DA0C78AE7B2EF804C501C /* FlightDetailSession.swift */,
 				00A827A86B61CF8D2BE671D9 /* FlightDetailView.swift */,
 				C823AC8E27FE792570BB618A /* FlightSheet06.swift */,
 				B085C2B7B159C343A410F297 /* FlightStudyStore.swift */,
+				9BCD1CFB308445BA1215D96E /* FlightWindowCoordinator.swift */,
 				BA713F204AA86A1025CDA21F /* GCSCollectionView.swift */,
 				B4C54501883F0A480DCA8EBB /* GCSFleetObservationStore.swift */,
 				44288B5CAF3F1AFD2A1B24A7 /* GCSStore.swift */,
@@ -254,6 +278,7 @@
 				9DC881E5A3314E11ACF46DD1 /* AlertKnowledge.swift */,
 				0CF1B557B87CF0542B7B021C /* AnalysisRevisionService.swift */,
 				767956B06EAA778ABDE3E546 /* AnalysisService.swift */,
+				973B3986662CFA9BD3A110AD /* Clients.swift */,
 				54FB48920B4EBE713B760440 /* CoreLibraryUX.swift */,
 				B82F6C233262E158BF9ABA17 /* DiagnosticBundle.swift */,
 				64C389996F4E1F97EA8457ED /* DiagnosticJournal.swift */,
@@ -296,6 +321,8 @@
 				4788E90D9FA8547F19241078 /* flight_data.py */,
 				CA3768D8DAE5602B32723F6D /* gcs_collect.py */,
 				3247BD603F080AB50D31FEA9 /* library_archives.py */,
+				D6D2C407176A5F4FC16D0D9F /* library_clients.py */,
+				20238E6271E5BA2A3EF67943 /* library_proximity.py */,
 				5369C54E1184E23D26B6DAC2 /* library_reports.py */,
 				F3E6103FEB3E5830E8AFE8BB /* library_repository.py */,
 				4EAE586501564398DAC80B69 /* library_sources.py */,
@@ -414,6 +441,8 @@
 				0F0CC77AF5A17C689B4646C3 /* flight_data.py in Resources */,
 				4DE75377E0595A1F4D9CAF16 /* gcs_collect.py in Resources */,
 				4223A85F86AB072D4D8A8869 /* library_archives.py in Resources */,
+				22CD8121ACA4BABBC4AAC6AB /* library_clients.py in Resources */,
+				0181CC1EACF3369A9C0AFC0B /* library_proximity.py in Resources */,
 				91657763976C25B68DA10FC2 /* library_reports.py in Resources */,
 				A8733E5DE8EE1895DF681CF7 /* library_repository.py in Resources */,
 				2C65A8F9F63417D88CC74C2F /* library_sources.py in Resources */,
@@ -453,6 +482,7 @@
 				9D3BC30BE8EEE560D0CC2E2D /* AlertKnowledge.swift in Sources */,
 				C4F2D97AF71575A2FB74F124 /* AnalysisRevisionService.swift in Sources */,
 				3CD6BF0C8CCD4BF5408696DC /* AnalysisService.swift in Sources */,
+				51E4581E0EA61CBBAA869F52 /* Clients.swift in Sources */,
 				7C6D3C71BF1E27AF0BE9FD75 /* CoreLibraryUX.swift in Sources */,
 				0FE523BE994B69EE4D178BA2 /* DiagnosticBundle.swift in Sources */,
 				BC04B7ED21CDBEB3B1D0C293 /* DiagnosticJournal.swift in Sources */,
@@ -494,6 +524,9 @@
 				EBF73258F86F97774D49F830 /* AnalysisRevisionsView.swift in Sources */,
 				54EDE7EFFC2FA19C752E51E3 /* AppPreviewConfiguration.swift in Sources */,
 				244CACA55F30DDA40588BBA7 /* ApplicationLifecycle.swift in Sources */,
+				9739D1AABD2E481AF05A2A03 /* BentoColumns.swift in Sources */,
+				146196DA785F5EB18F223DFD /* ClientStore.swift in Sources */,
+				5D12BF6935FEAD642769DDE6 /* ClientViews.swift in Sources */,
 				B74F8DD4BE4540C99EFAD435 /* DiagnosticStore.swift in Sources */,
 				B0177B018900B553C71F4DC6 /* DiagnosticView.swift in Sources */,
 				4F0878508BC3F619360FC520 /* DroneAnnotationStore.swift in Sources */,
@@ -502,9 +535,12 @@
 				E0C026A3A1A1B6D54E6AC3A3 /* EventBrowserView.swift in Sources */,
 				EA5556CA10BD284FEA285397 /* FleetMapView.swift in Sources */,
 				9FE53A4AB01CA1A65997F1F3 /* FlightAnalysisView.swift in Sources */,
+				41A31E3FDCBD1DE2663547EF /* FlightDetailLoader.swift in Sources */,
+				5D14506D8BC4FE82BE58A739 /* FlightDetailSession.swift in Sources */,
 				C9210DFBEBBEDA89BED4FCF3 /* FlightDetailView.swift in Sources */,
 				D239355F95D69EC834380D99 /* FlightSheet06.swift in Sources */,
 				84987209B56C609F522B0BDA /* FlightStudyStore.swift in Sources */,
+				F071212FAB4F00BC2D60A0D7 /* FlightWindowCoordinator.swift in Sources */,
 				E74F447128F666DE6B29CB5D /* GCSCollectionView.swift in Sources */,
 				028F506545A2CC000DC10FF8 /* GCSFleetObservationStore.swift in Sources */,
 				AFC4E1BC00350A4426AD22E7 /* GCSStore.swift in Sources */,
@@ -692,7 +728,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = KataLog;
 				INFOPLIST_KEY_CFBundleIconFile = KataLog;
@@ -714,7 +750,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.7.0;
+				MARKETING_VERSION = 0.8.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -730,7 +766,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = KataLog;
 				INFOPLIST_KEY_CFBundleIconFile = KataLog;
@@ -752,7 +788,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.7.0;
+				MARKETING_VERSION = 0.8.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",

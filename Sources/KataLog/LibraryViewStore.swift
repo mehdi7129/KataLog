@@ -29,6 +29,16 @@ final class LibraryViewStore: ObservableObject {
     func setScope(_ scope: SelectionScope) throws {
         var next = state; next.activeScope = scope; try save(next)
     }
+    func chooseClient(_ id: String?) throws {
+        var scope = state.activeScope
+        scope.clientID = id
+        scope.logIDs = []
+        scope.droneKeys = []
+        try chooseScope(scope)
+    }
+    func setAdvancedMode(_ enabled: Bool) throws {
+        var next = state; next.advancedMode = enabled; try save(next)
+    }
     /// A secondary reader may explore the library without writing settings.
     func chooseScope(_ scope: SelectionScope) throws {
         guard canMutate() else { throw AnalysisError.engine("La bibliothèque est en maintenance.") }

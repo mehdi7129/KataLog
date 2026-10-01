@@ -20,19 +20,20 @@ public enum AnalysisService {
         return snapshot
     }
 
-    public static func scan(folder: URL, database: URL, output: URL, progress: URL, engine: URL, archiveDestination: URL? = nil) async throws -> FleetSnapshot {
+    public static func scan(folder: URL, database: URL, output: URL, progress: URL, engine: URL, archiveDestination: URL? = nil, clientID: String? = nil) async throws -> FleetSnapshot {
         try await scan(folder: folder, database: database, output: output, progress: progress, engine: engine,
-                       archiveDestination: archiveDestination, runtimeConfiguration: .current)
+                       archiveDestination: archiveDestination, clientID: clientID, runtimeConfiguration: .current)
     }
 
-    public static func scanPaged(folder: URL, database: URL, output: URL, progress: URL, engine: URL, archiveDestination: URL? = nil) async throws -> FleetSnapshot {
+    public static func scanPaged(folder: URL, database: URL, output: URL, progress: URL, engine: URL, archiveDestination: URL? = nil, clientID: String? = nil) async throws -> FleetSnapshot {
         try await scan(folder: folder, database: database, output: output, progress: progress, engine: engine,
-                       skipSnapshot: true, archiveDestination: archiveDestination, runtimeConfiguration: .current)
+                       skipSnapshot: true, archiveDestination: archiveDestination, clientID: clientID, runtimeConfiguration: .current)
     }
 
     static func scan(folder: URL, database: URL, output: URL, progress: URL, engine: URL,
                      skipSnapshot: Bool = false,
                      archiveDestination: URL? = nil,
+                     clientID: String? = nil,
                      runtimeConfiguration: EngineRuntimeResolver.Configuration) async throws -> FleetSnapshot {
         guard archiveDestination?.isFileURL ?? true else { throw AnalysisError.engine("Choisissez un dossier local pour les archives.") }
         let control = ProcessLifetime()
@@ -53,6 +54,7 @@ public enum AnalysisService {
                     "--database", database.path, "--output", output.path, "--progress", progress.path]
                     + (skipSnapshot ? ["--skip-snapshot"] : [])
                     + (archiveDestination.map { ["--archive-destination", $0.path] } ?? [])
+                    + (clientID.map { ["--client-id", $0] } ?? [])
                 let status = try execute(runtime, arguments: arguments, control: control, stderr: stderr)
                 guard status == 0 else {
                     let detail = (try? String(contentsOf: stderr, encoding: .utf8)) ?? ""

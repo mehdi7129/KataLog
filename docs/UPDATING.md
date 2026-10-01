@@ -12,29 +12,53 @@ Activez **Rechercher automatiquement les mises à jour** si vous souhaitez être
 prévenu des nouvelles versions. Ce choix est conservé au redémarrage. L’app
 ne télécharge ni n’installe silencieusement : vous gardez le choix du moment.
 
-Les utilisateurs de **0.5.x et 0.6.x** installent 0.7.0 une première fois par
-DMG : leurs builds n’activent pas le flux public. Ensuite les mises à jour se
-font depuis l’app. KataLog Preview reste une app de review indépendante.
+Les utilisateurs de **0.5.x et 0.6.x** installent directement la dernière
+release une première fois par DMG : leurs builds n’activent pas le flux public.
+Ensuite les mises à jour se font depuis l’app. KataLog Preview reste une app de
+review indépendante.
+
+## Passage à 0.8.0
+
+La version **0.8.0 (build 18)** est en validation avant publication. Une fois
+le package et le flux publiés, les utilisateurs de 0.7.0 pourront la rechercher
+depuis l’app ; les autres pourront utiliser le DMG. Le
+[suivi de qualification](RELEASE-0.8.0.md) distingue les vérifications obtenues
+et celles encore en cours.
+
+La mise à jour conserve la bibliothèque stable, les identifications et les dossiers
+choisis. Les logs existants apparaissent dans **Sans client** : ils ne sont pas
+attribués automatiquement à une organisation. Créez vos clients dans le sélecteur
+**Tous les clients**, puis attribuez les logs voulus en lot. Un log déjà connu
+conserve son attribution lors d’un réimport ou d’une nouvelle collecte.
+
+La première recherche géographique peut lire les sources accessibles pour mettre
+en cache les trajectoires complètes. Les trajectoires non vérifiables sont
+signalées ; elles ne sont pas assimilées à des logs hors de la zone recherchée.
+Aucun nouveau téléchargement GCS n’est nécessaire pour cette migration.
+
+Le vidage de bibliothèque et la réinitialisation sont des actions séparées,
+confirmées dans les réglages ; une mise à jour ne les déclenche pas. Elles
+conservent les fichiers `.ulg`. Voir [les effets précis](CLIENTS-BENTO.md#nettoyage).
 
 ## Installation manuelle
 
 Téléchargez le nouveau DMG depuis la page Releases officielle, ouvrez-le, puis
 glissez **KataLog.app** dans **Applications** et acceptez le remplacement de
 l’ancienne app. Fermez KataLog avant ce remplacement. La bibliothèque, les
-numéros de drones, les vues enregistrées et le dossier de collecte restent dans
+numéros de drones, les profils clients, les filtres et le dossier de collecte restent dans
 Application Support et ne sont pas contenus dans l’app.
 
-Les versions **0.5.x et 0.6.x** utilisent cette procédure. Le passage
-à 0.6.0 conserve la bibliothèque existante ; la projection SQLite est reconstruite
-localement sans imposer de réanalyse des ULogs. Sparkle est embarqué, mais aucun
-flux public n’est activé dans cette release.
+Les versions **0.5.x et 0.6.x** utilisent cette procédure. Leurs flux de mise
+à jour étaient désactivés ; elles n’imposent pas d’installer les versions
+intermédiaires une par une.
 
-### Package de review 0.6
+### Package de review indépendant
 
-**KataLog Preview.app** s’installe à côté de KataLog. Il utilise une bibliothèque
-séparée sous `~/Library/Application Support/KataLogPreview-0.6/` et ouvre les
-nouveaux écrans directement. Glisser cette Preview dans Applications ne constitue
-pas une mise à jour de l’app existante. Elle n’active aucun flux de mise à jour.
+**KataLog Preview.app** s’installe à côté de KataLog. Les nouvelles Previews
+utilisent un dossier `KataLogPreview-VERSION` distinct sous Application Support ;
+les anciennes variantes gardent leur dossier dédié. La bibliothèque de la Preview
+n’est pas transférée automatiquement à la version stable. Glisser cette Preview
+dans Applications ne met pas à jour KataLog. Son flux de mise à jour est désactivé.
 
 ## Intégration présente dans les sources
 
@@ -74,13 +98,13 @@ Les deux canaux utilisent des comptes de signature distincts :
 Un flux stable contient des versions sans tag de canal. Le flux de staging
 utilise le tag `staging`, accepté uniquement par les builds de staging. Des URLs
 séparées sont nécessaires pour les deux canaux. Le flux stable KataLog est servi
-par GitHub Raw à l’adresse indiquée au début de ce document. Un éventuel flux
+par [GitHub Raw](https://raw.githubusercontent.com/mehdi7129/KataLog/main/updates/stable/appcast.xml). Un éventuel flux
 de staging doit être créé et vérifié séparément avant activation.
 
 Configurer un build de staging :
 
 ```bash
-KATALOG_VERSION=0.7.1 KATALOG_BUILD_NUMBER=18 \
+KATALOG_VERSION=0.8.0 KATALOG_BUILD_NUMBER=18 \
 KATALOG_UPDATE_CHANNEL=staging \
 KATALOG_UPDATE_FEED_URL=https://updates.example.org/staging/appcast.xml \
 KATALOG_UPDATE_PUBLIC_KEY='<cle-publique-base64>' \
@@ -94,11 +118,11 @@ Pour relire un brouillon, une archive ZIP existante suffit :
 
 ```bash
 python3 tools/update-feed.py prepare \
-  --archive dist/KataLog-0.7.0-macOS-arm64.zip \
-  --archive-url https://updates.example.org/KataLog-0.7.0-macOS-arm64.zip \
+  --archive dist/KataLog-0.8.0-macOS-arm64.zip \
+  --archive-url https://updates.example.org/KataLog-0.8.0-macOS-arm64.zip \
   --output /private/tmp/katalog-update-draft \
   --release-notes /private/tmp/katalog-release-notes.txt \
-  --channel staging --previous-build 16 --draft
+  --channel staging --previous-build 17 --draft
 ```
 
 Le brouillon est nommé `appcast.draft.xml` et reste non signé. Pour préparer un

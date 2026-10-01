@@ -42,6 +42,12 @@ final class ReportExportTests: XCTestCase {
         log.update(droneID='PRIVATE-NEEDLE-42',droneName='PRIVATE-NEEDLE-42',date='2026-01-01T12:00:00Z',durationSeconds=60,status='ok',metadata={'secret':'PRIVATE-NEEDLE-42'})
         log['messages']=[{'id':str(i),'timestampSeconds':i,'level':'WARNING','family':'Batterie','title':'PRIVATE-NEEDLE-42','text':'PRIVATE-NEEDLE-42 warning','groupKey':'warning','isAlert':True} for i in range(int(sys.argv[4]))]
         db=analyzer.open_database(sys.argv[1]);analyzer.remember_log(db,log)
+        client_id='A9E80000-0000-4000-8000-000000000042'
+        client_name='PRIVATE-CLIENT-NAME-42'
+        db.execute('INSERT INTO clients VALUES(?,?)',(client_id,client_name))
+        db.execute('INSERT INTO log_clients VALUES(?,?)',(identity,client_id))
+        detail=dict(log,clientID=client_id,clientName=client_name,parameters={'CLIENT':client_name,'CLIENT_ID':client_id},parameterDetails={'nested':{'clientName':client_name,'clientID':client_id}})
+        db.execute('INSERT INTO flight_details VALUES(?,?,?)',(identity,analyzer.PARSER_VERSION,json.dumps(detail)))
         db.execute('INSERT INTO sources VALUES(?,?)',(identity,str(source)));db.commit();db.close()
         """.write(to: script, atomically: true, encoding: .utf8)
         let database = root.appendingPathComponent("library.sqlite")
@@ -136,6 +142,33 @@ final class ReportExportTests: XCTestCase {
         XCTAssertEqual(result.renderMode, "json-stream")
         XCTAssertEqual(try AnalysisService.decode(Data(contentsOf: destination)).logs[0].messages.count, 2)
         XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: root.path).contains { $0.hasPrefix(".katalog-report-") })
+    }
+
+    func testClientIdentityDoesNotLeakThroughSharedHTMLScopeCacheOrAttachments() async throws {
+        let clientID = "A9E80000-0000-4000-8000-000000000042", clientName = "PRIVATE-CLIENT-NAME-42"
+        for messages in [2, 5_001] {
+            let root = try folder(), (database, configuration) = try fixture(root, messageCount: messages)
+            let engine = resources.appendingPathComponent("analyzer.py")
+            var scope = SelectionScope(); scope.clientID = clientID
+            let request = ReportExportRequest(query: .init(scope: scope), mode: .selection,
+                scopeDescription: clientName + " " + clientID,
+                options: .init(excludeIdentity: true, includeCachedDetails: true))
+            let capture = try await ReportExportService.capture(database: database, directory: root.appendingPathComponent("capture"),
+                request: request, engine: engine, runtimeConfiguration: configuration)
+            let destination = root.appendingPathComponent("shared")
+            let result = try await ReportExportService.export(capture: capture, destination: destination, engine: engine, runtimeConfiguration: configuration)
+            XCTAssertEqual(result.renderMode, messages == 2 ? "interactive" : "summary-with-attachments")
+            XCTAssertFalse(result.rawDataIncluded)
+            for file in try FileManager.default.contentsOfDirectory(at: destination, includingPropertiesForKeys: nil) {
+                let text = try String(contentsOf: file, encoding: .utf8)
+                XCTAssertFalse(text.contains(clientName), file.lastPathComponent)
+                XCTAssertFalse(text.contains(clientID), file.lastPathComponent)
+            }
+            let snapshot = try AnalysisService.decode(Data(contentsOf: destination.appendingPathComponent("rapport.json")))
+            XCTAssertEqual(snapshot.logs.count, 1)
+            XCTAssertNil(snapshot.logs[0].clientID); XCTAssertNil(snapshot.logs[0].clientName)
+            XCTAssertNil(snapshot.logs[0].parameterDetails)
+        }
     }
 
     func testCancellationKillsUncooperativeHelperAndPreservesPreviousDestination() async throws {

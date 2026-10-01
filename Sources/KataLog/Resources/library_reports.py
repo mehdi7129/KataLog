@@ -220,6 +220,8 @@ def _header(db, row, context):
                         if revision:
                             import analyzer
                             value['analysisRevision'] = analyzer.revision_metadata(db, revision)
+    from library_clients import attach
+    attach(db, value)
     value['droneName'] = row['canonical_name']
     value['stockNumber'] = row['stock_number']
     cached_messages = json.loads(row['signal_messages_json'])
@@ -255,6 +257,9 @@ class _Shared:
         return self.families.setdefault(value, f'Famille {len(self.families) + 1}')
 
     def header(self, source, ordinal):
+        # Client IDs/names, scope labels and nested cached details are private
+        # identity too. Build this allowlist from scratch; never copy the input
+        # header and remove only the fields known when the exporter was written.
         drone = self.drone(source['droneID'])
         try:
             datetime.fromisoformat(source['date'].replace('Z', '+00:00'))

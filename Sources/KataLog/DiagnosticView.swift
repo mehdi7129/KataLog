@@ -98,7 +98,7 @@ struct DiagnosticView: View {
 
     private var services: some View {
         card {
-            Label("Journaux de la GCS", systemImage: "antenna.radiowaves.left.and.right")
+            Label("1 · Récupérer les journaux GCS", systemImage: "antenna.radiowaves.left.and.right")
                 .font(.system(size: 14, weight: .semibold))
             Text("MQTT, liaison radio, backend et serveur web, si votre firmware fournit ces journaux.")
                 .font(.system(size: 12)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
@@ -107,7 +107,7 @@ struct DiagnosticView: View {
                 Button("Annuler la récupération") { store.cancelGCS() }
                     .accessibilityIdentifier("diagnostic.cancel-gcs")
             } else {
-                Button(store.serviceFiles.isEmpty ? "Récupérer les logs GCS" : "Actualiser les logs GCS", systemImage: "arrow.down.doc") {
+                Button(store.serviceFiles.isEmpty ? "Récupérer les journaux GCS" : "Actualiser les journaux GCS", systemImage: "arrow.down.doc") {
                     store.fetchGCS(host: host)
                 }.disabled(host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isExporting)
                     .accessibilityIdentifier("diagnostic.fetch-gcs")
@@ -126,10 +126,15 @@ struct DiagnosticView: View {
                     .accessibilityIdentifier("diagnostic.gcs-status")
             }
             Divider().overlay(palette.border)
-            Toggle("Inclure les journaux GCS bruts", isOn: $store.includePrivateGCS)
-                .toggleStyle(.checkbox).font(.system(size: 12)).disabled(store.serviceFiles.isEmpty || store.isExporting)
+            Text("2 · Choisir le contenu à partager").font(.system(size: 12, weight: .semibold))
+            Toggle("Inclure les textes complets de la GCS", isOn: $store.includePrivateGCS)
+                .toggleStyle(.switch).controlSize(.small).tint(palette.mint)
+                .font(.system(size: 12)).disabled(store.serviceFiles.isEmpty || store.isExporting)
                 .accessibilityIdentifier("diagnostic.private-gcs")
-            Text(store.includePrivateGCS
+                .help(store.serviceFiles.isEmpty ? "Récupérez les journaux GCS ci-dessus pour activer cette option." : "Ajoute les journaux bruts au diagnostic que vous allez exporter.")
+            Text(store.serviceFiles.isEmpty
+                 ? "Récupérez d’abord les journaux ci-dessus. Cette option sera disponible dès qu’un journal aura été reçu."
+                 : store.includePrivateGCS
                  ? "Données privées incluses : les textes bruts peuvent contenir des identités, adresses, positions et détails de votre infrastructure."
                  : "Par défaut, le diagnostic GCS conserve une synthèse filtrée des journaux récupérés.")
                 .font(.system(size: 11)).foregroundStyle(store.includePrivateGCS ? palette.amber : palette.secondary)
@@ -217,7 +222,7 @@ struct DiagnosticView: View {
     private var contents: some View {
         card {
             HStack {
-                Text("Contenu du ZIP").font(.system(size: 14, weight: .semibold))
+                Text("3 · Vérifier avant d’exporter").font(.system(size: 14, weight: .semibold))
                 Spacer()
                 BentoStatus(label: store.privateDataRequested ? "Pièces privées incluses" : "Sans pièces brutes privées", color: store.privateDataRequested ? palette.amber : palette.mint)
             }

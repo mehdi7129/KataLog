@@ -4,6 +4,8 @@ import Foundation
 /// The same request is used by the library, views and exports. Calendar bounds
 /// compare source calendar days; a path date is never assigned an invented zone.
 public struct SelectionScope: Codable, Equatable, Sendable {
+    /// nil: all clients; empty: unassigned; otherwise a local client ID.
+    public var clientID: String? = nil
     public var logIDs: [String] = []
     public var droneKeys: [String] = []
     public var dateFrom: String? = nil
@@ -19,10 +21,11 @@ public struct SelectionScope: Codable, Equatable, Sendable {
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case logIDs, droneKeys, dateFrom, dateTo, includeUnknownDates, families, levels, alertOnly, search, logSearch, statuses, includeMasked
+        case clientID, logIDs, droneKeys, dateFrom, dateTo, includeUnknownDates, families, levels, alertOnly, search, logSearch, statuses, includeMasked
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        clientID = try c.decodeIfPresent(String.self, forKey: .clientID)
         logIDs = try c.decodeIfPresent([String].self, forKey: .logIDs) ?? []
         droneKeys = try c.decodeIfPresent([String].self, forKey: .droneKeys) ?? []
         dateFrom = try c.decodeIfPresent(String.self, forKey: .dateFrom)
@@ -57,11 +60,12 @@ public struct SelectionScope: Codable, Equatable, Sendable {
         !families.isEmpty || !levels.isEmpty || alertOnly || !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
     public var isUnfiltered: Bool {
-        logIDs.isEmpty && droneKeys.isEmpty && dateFrom == nil && dateTo == nil && includeUnknownDates &&
+        clientID == nil && logIDs.isEmpty && droneKeys.isEmpty && dateFrom == nil && dateTo == nil && includeUnknownDates &&
         !hasMessageFilters && logSearch.isEmpty && statuses.isEmpty
     }
     public var description: String {
         var parts: [String] = []
+        if let clientID { parts.append(clientID.isEmpty ? "Sans client" : "Client sélectionné") }
         if !logIDs.isEmpty { parts.append("\(logIDs.count) log(s)") }
         if !droneKeys.isEmpty { parts.append("\(droneKeys.count) identité(s)") }
         if dateFrom != nil || dateTo != nil { parts.append("\(dateFrom ?? "Sans borne de début") → \(dateTo ?? "Sans borne de fin") · dates source") }
@@ -87,6 +91,7 @@ public struct SelectionScope: Codable, Equatable, Sendable {
         let logQuery = Self.normalizedSearch(logSearch)
         var result = source
         result.logs = source.logs.compactMap { original in
+            if let clientID, (original.clientID ?? "") != clientID { return nil }
             guard ids.isEmpty || ids.contains(original.id) else { return nil }
             guard drones.isEmpty || drones.contains(original.annotationKey) else { return nil }
             guard statusSet.isEmpty || statusSet.contains(original.status) else { return nil }
@@ -150,5 +155,6 @@ public struct LibraryViewState: Codable, Sendable {
     public var profileAxes: [String]? = nil
     public var studyPreferences: [String: TelemetryRequest]? = nil
     public var historySort: String? = nil
+    public var advancedMode: Bool? = nil
     public init() {}
 }

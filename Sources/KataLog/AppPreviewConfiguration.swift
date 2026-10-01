@@ -6,12 +6,22 @@ struct AppPreviewConfiguration {
     let reviewBuild: Bool
     let showReviewUI: Bool
     private let libraryOverride: String?
-    var defaultLibraryComponent: String { reviewBuild ? "KataLogPreview-0.6" : "KataLog" }
+    private let previewLibraryComponent: String?
+    var defaultLibraryComponent: String {
+        guard reviewBuild else { return "KataLog" }
+        if let name = previewLibraryComponent,
+           name.range(of: #"^KataLogPreview-[A-Za-z0-9][A-Za-z0-9.-]*$"#, options: .regularExpression) != nil {
+            return name
+        }
+        return "KataLogPreview-0.6"
+    }
 
     init(environment: [String: String] = ProcessInfo.processInfo.environment,
          reviewBuild: Bool = Bundle.main.object(forInfoDictionaryKey: "KataLogUIReviewPreview") as? Bool == true,
-         releaseVersion: String? = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) {
+         releaseVersion: String? = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+         previewLibraryComponent: String? = Bundle.main.object(forInfoDictionaryKey: "KataLogPreviewLibraryComponent") as? String) {
         self.reviewBuild = reviewBuild
+        self.previewLibraryComponent = previewLibraryComponent
         // The approved workspace ships in stable 0.6+ builds. Preview storage
         // remains a separate choice, never inferred from the workspace layout.
         let approvedRelease = releaseVersion.map {

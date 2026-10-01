@@ -147,6 +147,9 @@ def open_database(path, read_only=False):
         );
         CREATE INDEX IF NOT EXISTS analysis_revisions_log ON analysis_revisions(log_id,created_at DESC,id DESC);
     """)
+    import library_clients, library_proximity
+    library_clients.initialize(db)
+    library_proximity.initialize(db)
     db.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
     if not revision_version:
         try:
@@ -718,7 +721,7 @@ def gps_date(datasets, start, coverage):
     return None
 
 
-def analyze_file(path, root, digest=None, detailed=False, event_dictionary_directory=None, origin_context=None):
+def analyze_file(path, root, digest=None, detailed=False, event_dictionary_directory=None, origin_context=None, track_sink=None):
     path = Path(path).resolve()
     require_local_source(path)
     digest = digest or digest_file(path)
@@ -816,7 +819,7 @@ def analyze_file(path, root, digest=None, detailed=False, event_dictionary_direc
                 candidate = Path(event_dictionary_directory) / (expected + '.json.xz')
                 if candidate.is_file() and not candidate.is_symlink():
                     dictionary_path = candidate
-        enrich(log, ulog, detailed=detailed, dictionary_path=dictionary_path)
+        enrich(log, ulog, detailed=detailed, dictionary_path=dictionary_path, track_sink=track_sink)
         log["status"] = "partial" if log["issues"] else "ok"
     except Exception as error:
         log["status"] = "error"
@@ -868,6 +871,8 @@ def snapshot(db, stats=None):
         if log["droneName"] != "Drone non identifié":
             names[log["droneID"]] = log["droneName"]
     for log in logs:
+        from library_clients import attach
+        attach(db, log)
         attach_source_availability(log, sources.get(log["id"], []), known_files, checked_at)
         if not log["sourcePaths"]:
             log["coverage"].append("Source originale indisponible : chemins remplacés par un autre contenu; résumé et messages historiques conservés.")
@@ -894,7 +899,7 @@ def snapshot(db, stats=None):
             "importStats": stats, "logs": logs}
 
 
-def scan(folder, database, output=None, progress=None, skip_snapshot=False, archive_destination=None):
+def scan(folder, database, output=None, progress=None, skip_snapshot=False, archive_destination=None, client_id=None):
     root = Path(folder).expanduser().resolve()
     exact_file = root if root.is_file() and root.suffix.lower() == '.ulg' else None
     if not root.is_dir() and exact_file is None:
@@ -940,6 +945,8 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
         return Path(result['path'])
     db = open_database(database)
     try:
+        import library_clients
+        client_id = library_clients.require_client(db, client_id)
         db.execute("INSERT OR IGNORE INTO folders(path) VALUES(?)", (str(root),))
         # An explicit import of this root makes a deliberately retired source
         # visible again; historical sources and analyses were never deleted.
@@ -956,7 +963,10 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
             log["status"] = "error"
             log["issues"] = [str(error)]
             log["coverage"] = ["Contenu de ce dossier non parcouru; nombre de logs inconnu. Les autres dossiers sont importés."]
+            existing_error = db.execute('SELECT 1 FROM logs WHERE id=?', (error_id,)).fetchone()
             remember_log(db, log)
+            if existing_error is None and client_id is not None:
+                db.execute('INSERT INTO log_clients VALUES(?,?)', (error_id, client_id))
             db.execute("INSERT OR IGNORE INTO sources(log_id,path) VALUES(?,?)", (error_id, str(directory)))
             stats["failed"] += 1
         db.commit()
@@ -993,6 +1003,7 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
                 origin_context = base_log(path, root, digest, before.st_size)
                 managed = archive_import(digest, index, path, signature, origin_context)
                 analysis_signature = stat_signature(managed.stat()) if archive_result is not None else signature
+                full_tracks = []
                 existing = db.execute("SELECT parser_version,summary FROM logs WHERE id=?", (digest,)).fetchone()
                 if existing and existing["parser_version"] == PARSER_VERSION and json.loads(existing["summary"]).get("status") != "error":
                     saved = json.loads(existing["summary"])
@@ -1002,11 +1013,16 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
                         remember_log(db, saved)
                     category = "duplicates"
                 else:
-                    saved = analyze_file(managed, root, digest, origin_context=origin_context) if archive_result is not None else analyze_file(path, root, digest)
+                    saved = analyze_file(managed, root, digest, origin_context=origin_context, track_sink=full_tracks.append) if archive_result is not None else analyze_file(path, root, digest, track_sink=full_tracks.append)
                     remember_log(db, saved)
                     category = "failed" if saved["status"] == "error" else "imported"
+                if existing is None and client_id is not None:
+                    db.execute("INSERT INTO log_clients VALUES(?,?)", (digest, client_id))
                 if stat_signature(managed.stat()) != analysis_signature:
                     raise OSError("Le fichier a changé pendant l'analyse; réimporter une fois la copie terminée.")
+                if full_tracks:
+                    from library_proximity import cache_track
+                    cache_track(db, digest, full_tracks[0])
                 db.execute("INSERT OR REPLACE INTO files(path,size,mtime_ns,ctime_ns,inode,log_id) VALUES(?,?,?,?,?,?)", (absolute, *signature, digest))
                 db.execute("DELETE FROM sources WHERE path=? AND log_id<>?", (absolute, digest))
                 db.execute("INSERT OR IGNORE INTO sources(log_id,path) VALUES(?,?)", (digest, absolute))
@@ -1039,7 +1055,10 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
                 saved["status"] = "error"
                 saved["issues"] = [f"{type(error).__name__}: {error}"]
                 saved["coverage"] = ["Fichier non analysable; réessayer l'import lorsque la source est disponible."]
+                existing_error = db.execute('SELECT 1 FROM logs WHERE id=?', (digest,)).fetchone()
                 remember_log(db, saved)
+                if existing_error is None and client_id is not None:
+                    db.execute('INSERT INTO log_clients VALUES(?,?)', (digest, client_id))
                 db.execute("INSERT OR IGNORE INTO sources(log_id,path) VALUES(?,?)", (digest, absolute))
                 # Never cache a failed read: the next scan retries it.
                 db.execute("DELETE FROM files WHERE path=?", (absolute,))
@@ -1101,6 +1120,8 @@ def detail(log_id, database, output=None, read_only=False, revision=None):
             result['metadata']['detailParserVersion'] = row['parser_version']
             known_files = {row['path']: row for row in db.execute("SELECT * FROM files WHERE path IN (SELECT path FROM sources WHERE log_id=?)", (log_id,))}
             attach_source_availability(result, sources, known_files)
+            from library_clients import attach
+            attach(db, result)
             if output:
                 atomic_json(output, result)
             return result
@@ -1204,6 +1225,8 @@ def detail(log_id, database, output=None, read_only=False, revision=None):
             result['analysisRevision'] = revision_metadata(db, retained_revision)
         known_files = {row['path']: row for row in db.execute("SELECT * FROM files WHERE path IN (SELECT path FROM sources WHERE log_id=?)", (log_id,))}
         attach_source_availability(result, sources, known_files)
+        from library_clients import attach
+        attach(db, result)
         if not read_only:
             for observation in result['sourceAvailability']:
                 db.execute('INSERT OR REPLACE INTO source_observations VALUES(?,?,?,?)', (log_id, observation['path'], observation['state'], observation['checkedAt']))
@@ -1387,6 +1410,7 @@ def main(argv=None):
     scan_command.add_argument("--progress")
     scan_command.add_argument("--skip-snapshot", action="store_true")
     scan_command.add_argument('--archive-destination')
+    scan_command.add_argument('--client-id')
     snapshot_command = commands.add_parser("snapshot")
     snapshot_command.add_argument("--database", required=True)
     snapshot_command.add_argument("--output", required=True)
@@ -1488,8 +1512,35 @@ def main(argv=None):
     recover_command = commands.add_parser("recover-restore")
     recover_command.add_argument("--library", required=True)
     recover_command.add_argument("--output", required=True)
+    for name in ('clients', 'create-client', 'rename-client', 'delete-client', 'assign-client', 'retire-all-sources', 'reset-library'):
+        command = commands.add_parser(name)
+        command.add_argument('--database', required=True)
+        command.add_argument('--output', required=True)
+        if name in ('create-client', 'rename-client', 'delete-client', 'assign-client'):
+            command.add_argument('--request', required=True)
+        if name == 'clients':
+            command.add_argument('--read-only', action='store_true')
+        if name == 'reset-library':
+            command.add_argument('--library', required=True)
+            command.add_argument('--all-settings', action='store_true')
     args = parser.parse_args(argv)
     try:
+        if args.command in ('clients', 'create-client', 'rename-client', 'delete-client', 'assign-client', 'retire-all-sources', 'reset-library'):
+            import library_clients
+            request = None
+            if hasattr(args, 'request'):
+                if Path(args.request).stat().st_size > 16 * 1024 * 1024:
+                    raise ValueError('Requête de clients trop volumineuse.')
+                request = json.loads(Path(args.request).read_text(encoding='utf-8'))
+            if args.command == 'reset-library':
+                result = library_clients.reset_library(args.database, args.library, args.all_settings)
+            elif args.command == 'retire-all-sources':
+                result = library_clients.retire_all_sources(args.database)
+            else:
+                result = library_clients.command(args.database, args.command, request, read_only=getattr(args, 'read_only', False))
+            atomic_json(args.output, result)
+            print(json.dumps({'command': args.command, 'ok': True}))
+            return 0
         if args.command in ('source-folders', 'retire-source', 'restore-source'):
             import library_sources
             result = (library_sources.source_folders(args.database, args.offset, args.limit, args.include_removed)
@@ -1596,7 +1647,7 @@ def main(argv=None):
             print(json.dumps({"logID": result["id"], "status": result["status"]}))
             return 0
         if args.command == "scan":
-            result = scan(args.folder, args.database, args.output, args.progress, skip_snapshot=args.skip_snapshot, archive_destination=args.archive_destination)
+            result = scan(args.folder, args.database, args.output, args.progress, skip_snapshot=args.skip_snapshot, archive_destination=args.archive_destination, client_id=args.client_id)
         else:
             db = open_database(args.database, read_only=args.read_only)
             try:

@@ -306,6 +306,55 @@ else:
         }
     }
 
+    func testConnectedCollectionBentoCardsAtDesktopWidthWithFailedQueue() async throws {
+        // The fixture collector only prints synthetic events; it never opens a socket.
+        let (store, root) = try fixture(mode: "empty-inventory", configure: false, stateBuilder: { directory in
+            var state = GCSCollectionState(downloadDirectory: directory.path)
+            state.host = "localhost"; state.autoImport = false
+            state.queue = (0..<40).map { index in
+                var transfer = GCSTransfer(droneUUID: index.isMultiple(of: 2) ? self.first : self.second,
+                    remotePath: "/fs/microsd/log/demo/log_\(index).ulg", size: 64,
+                    host: "localhost", destination: directory.path)
+                transfer.state = "failed"; transfer.attemptCount = 1
+                transfer.error = "Interruption simulée · relance possible après reconnexion."
+                return transfer
+            }
+            return state
+        })
+        let library = LibraryStore(storageDirectory: root)
+        defer { store.stopCollection(); store.disconnect(); library.prepareForTermination(); try? FileManager.default.removeItem(at: root) }
+        store.connect()
+        try await waitUntil { store.drones.filter(\.isOnline).count == 2 }
+        XCTAssertEqual(store.queue.count, 40)
+        _ = NSApplication.shared
+        for scheme in [ColorScheme.dark, .light] {
+            try library.views.setTheme(scheme == .dark ? "dark" : "light")
+            let controller = NSHostingController(rootView: Workspace06View(library: library, gcs: store, initialPage: .collection))
+            let view = controller.view
+            let size = NSSize(width: 1440, height: 1700)
+            view.frame = NSRect(origin: .zero, size: size)
+            let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            window.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
+            window.isReleasedWhenClosed = false; window.contentViewController = controller
+            defer { window.close() }
+            window.setContentSize(size)
+            try await Task.sleep(for: .milliseconds(600))
+            view.layoutSubtreeIfNeeded()
+            let fitting = controller.sizeThatFits(in: size)
+            XCTAssertLessThanOrEqual(fitting.width, size.width + 0.5)
+            XCTAssertLessThanOrEqual(fitting.height, size.height + 0.5)
+            if let output = ProcessInfo.processInfo.environment["KATALOG_UI_ARTIFACTS"] {
+                let directory = URL(fileURLWithPath: output)
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+                view.cacheDisplay(in: view.bounds, to: bitmap)
+                try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                    .write(to: directory.appendingPathComponent("gcs-desktop-1440-failed-queue-\(scheme).png"))
+            }
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("trace.jsonl").path), "Rendering must not start a transfer.")
+    }
+
     func testActiveGlobalProgressFitsMinimumContentWidthInLightAndDark() async throws {
         let (store, root) = try fixture(mode: "phases")
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }

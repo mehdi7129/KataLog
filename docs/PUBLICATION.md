@@ -28,6 +28,20 @@ classés en privé ; les derniers assets et le commit de release sont revérifi�
 Les ProjectsV2 ont une visibilité indépendante ; leur contenu n’est pas qualifié
 par cet audit avec les permissions API disponibles.
 
+## Périmètre de la release 0.8.0
+
+La nouvelle release est **en validation**. Les contrôles 0.7.0 ci-dessus restent
+historiques et ne valent pas approbation des nouveaux fichiers, du commit final,
+de ses archives ou des logs de CI 0.8.0. Le résultat final doit être consigné dans
+[RELEASE-0.8.0.md](RELEASE-0.8.0.md) après contrôle du contenu exact publié.
+
+Les fonctionnalités clients n’introduisent aucun compte distant : noms de clients,
+attributions et bibliothèques restent locaux. Les fixtures utilisent des noms et
+identifiants fictifs. Les rapports en mode partage excluent noms et identifiants
+de clients ; les exports privés peuvent en contenir et restent hors Git.
+Les captures d’acceptation de l’interface et les preuves détaillées de recette
+ne sont pas ajoutées aux archives publiques.
+
 ## Ce qui entre dans le dépôt public
 
 - Code source, contrats, documentation technique et scripts reproductibles.
@@ -100,9 +114,9 @@ fichiers ; voir [GitHub — visibilité](https://docs.github.com/en/repositories
 
 ## Installation utilisateur cible
 
-La distribution autonome 0.7.0 se fait **hors App Store** : télécharger le DMG, l'ouvrir,
+La distribution autonome 0.8.0 prévue se fait **hors App Store** : télécharger le DMG, l'ouvrir,
 glisser KataLog dans Applications, éjecter puis lancer. Le moteur est embarqué.
 Un appcast public signé permet les updates Sparkle sans compte GitHub utilisateur
 à partir de la release 0.7.0. Les versions 0.6.x nécessitent une première installation
 par DMG ; leur flux était désactivé.
-Voir le [plan 0.6.0](PLAN-0.6.0.md) et la [procédure de release](RELEASING.md).
+Voir la [recette 0.8.0](RELEASE-0.8.0.md) et la [procédure de release](RELEASING.md).

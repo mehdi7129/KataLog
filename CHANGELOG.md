@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.8.0 — en validation
+
+- Clients locaux personnalisables ; attribution des nouveaux logs à l’import et
+  à la collecte, réattribution en lot, périmètre client partagé entre statistiques,
+  historique, carte, registre et rapports. Les doublons conservent leur attribution.
+- Interface Bento épurée : boutons sans cadre permanent, états de survol/focus,
+  bascule clair/sombre directe et activité récente avec défilement interne.
+- Recherche géographique par ville, adresse ou coordonnées avec rayon, sur les
+  trajectoires complètes disponibles ; traversées de zone et lacunes distinguées.
+- Fenêtres macOS indépendantes par log, déplaçables et redimensionnables, avec
+  état de lecture indépendant et réouverture de la fenêtre déjà affichée.
+- Collecte des drones éligibles connectés sans inscription manuelle ; destination
+  client persistante par travail. Numéro de stock facultatif.
+- Outils PX4 spécialisés regroupés dans un mode avancé désactivé par défaut.
+- Retrait groupé des sources, vidage de bibliothèque et réinitialisation globale
+  confirmés ; tous les fichiers `.ulg` restent sur disque, y compris les copies internes.
+- Diagnostic GCS guidé et disponibilité des options expliquée.
+- Compatibilité des anciennes bibliothèques en lecture seule, cache géographique
+  alimenté depuis les sources accessibles, exports partagés sans identité client.
+
+Version **0.8.0**, build **18**. L’acceptation visuelle de la Preview précède la
+qualification du package stable. État, résultats finaux et limites :
+[RELEASE-0.8.0.md](docs/RELEASE-0.8.0.md).
+
 ## 0.7.0 — 2026-10-01
 
 - Refonte native des dix onglets en bento monochrome, clair/sombre, boutons et icônes cohérents.
