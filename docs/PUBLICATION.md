@@ -33,7 +33,9 @@ par cet audit avec les permissions API disponibles.
 Les contrôles de la release **0.8.0** sont consignés dans
 [RELEASE-0.8.0.md](RELEASE-0.8.0.md). Ils portent sur le code qualifié, le commit
 final et ses archives ; les contrôles 0.7.0 ci-dessus restent historiques.
-Les surfaces GitHub et téléchargements publics se vérifient après publication.
+Les quatre assets publics et le flux stable 0.8.0 ont été téléchargés sans
+authentification et vérifiés après publication. Les notes, le tag et les
+métadonnées de release ont également été contrôlés.
 
 Les fonctionnalités clients n’introduisent aucun compte distant : noms de clients,
 attributions et bibliothèques restent locaux. Les fixtures utilisent des noms et

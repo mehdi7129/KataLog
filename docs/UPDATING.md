@@ -19,7 +19,7 @@ review indépendante.
 
 ## Passage à 0.8.0
 
-Le package **0.8.0 (build 18)** est qualifié.
+La version **0.8.0 (build 18)** est publiée et disponible depuis le flux stable signé.
 Les utilisateurs de 0.7.0
 peuvent rechercher les versions publiées depuis l’app ; les autres utilisent
 le DMG. Le [suivi de qualification](RELEASE-0.8.0.md) précise les tests locaux,

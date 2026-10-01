@@ -1,7 +1,7 @@
 # KataLog 0.8.0 — recette de release
 
 Version **0.8.0**, build **18**, préparée le 1er octobre 2026.
-État : **package stable qualifié**. La Preview et sa
+État : **publiée le 1er octobre 2026**. La Preview et sa
 direction visuelle ont été approuvées. Les résultats du package, de la CI et
 des contrôles de publication sont distingués ci-dessous.
 
@@ -110,19 +110,27 @@ et leur documentation finale.
 
 ## Contrôles de publication
 
-La qualification locale du package ne prouve pas que les assets GitHub ou le
-flux public ont déjà été publiés. La publication doit suivre cet ordre :
+La [release publique 0.8.0](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.0)
+a été publiée après la réussite de la CI. Le tag cible `4e9be42` ; seuls les
+comptes rendus et le flux de mise à jour sont ajoutés ensuite sur `main`.
 
-1. Confirmer la réussite du dernier run CI et taguer les sources correspondantes.
-2. Publier le DMG, le ZIP issu du même bundle final, l’archive des sources et
-   leurs checksums sur la release `v0.8.0`.
-3. Télécharger les assets sans authentification et comparer leurs SHA-256.
-4. Publier le flux Sparkle signé après les archives qu’il référence, puis vérifier
-   le flux HTTPS, la signature du feed et celle du ZIP avec les outils officiels.
-5. Contrôler les métadonnées et logs GitHub rendus publics par cette publication.
+- DMG, ZIP d’installation, sources et `SHA256SUMS` téléchargés sans authentification.
+- Les quatre fichiers téléchargés correspondent exactement aux fichiers validés
+  et aux empreintes renvoyées par GitHub.
+- DMG téléchargé avec quarantaine : accepté par Gatekeeper comme distribution
+  Developer ID notarisée ; ticket Apple validé.
+- Archive source : 241 fichiers identiques au tag, aucun fichier supplémentaire,
+  chemin dangereux ou lien symbolique ; garde de confidentialité sans finding.
+- Flux stable publié après les archives, téléchargé depuis son URL HTTPS habituelle
+  et identique aux octets signés préparés : version 0.8.0, build 18.
+- Signatures du flux et du ZIP téléchargés vérifiées avec l’outil officiel Sparkle ;
+  URL et taille de l’archive concordantes.
 
-Les résultats de publication sont consignés dans la
-[recette tenue à jour](https://github.com/mehdi7129/KataLog/blob/main/docs/RELEASE-0.8.0.md).
+| Archive | SHA-256 |
+| --- | --- |
+| `KataLog-0.8.0-macOS-arm64.dmg` | `96cd780f8e57c65204e226bf50dd49884d8986d77bf00bc76ebbae2b355553ed` |
+| `KataLog-0.8.0-macOS-arm64.zip` | `c390671a3faa861976af2e32be86f98c46cdbc2bd9fad17a0ce157f843b2397f` |
+| `KataLog-0.8.0-source.zip` | `6e90a5bdde793de720c55eab3f767dab8db66960cb0196471faa136595b60885` |
 
 Les rapports détaillés, bibliothèques de test et captures locales restent hors
 Git. Aucun résultat CI, notarisation ou téléchargement public n’est déduit du
