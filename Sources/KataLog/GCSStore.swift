@@ -67,6 +67,7 @@ final class GCSStore: ObservableObject {
     @Published private(set) var completedInventoryUUIDs: Set<String> = []
     private var inventoryFailures: [String: String] = [:]
     @Published private(set) var cachedFileCount = 0
+    @Published private(set) var destinationPreviewFileCount: Int?
     private var currentBatchID: String
     private var inventoryBusyUntil: [String: Date] = [:]
     private lazy var fleetObservations = makeFleetObservationStore()
@@ -79,9 +80,19 @@ final class GCSStore: ObservableObject {
         return queue.filter { ["failed", "interrupted", "stopped"].contains($0.state) && allowedUUIDs.contains($0.droneUUID) }.count
     }
     var isStopping: Bool { queue.contains { transferTasks[$0.id] != nil && $0.state == "stopped" } }
+    var diagnosticJobCount: Int? {
+        if let queueRepository { return try? queueRepository.transferCount(overlay: dirtyTransfers) }
+        return queueStorageIssue == nil ? queue.count : nil
+    }
     var batchProgress: GCSBatchProgress {
         if let queueRepository, let progress = try? queueRepository.batchProgress(id: currentBatchID, overlay: dirtyTransfers) { return progress }
         return GCSBatchProgress(transfers: queue.filter { $0.batchID == currentBatchID })
+    }
+    var collectionFraction: Double { overallFraction(for: batchProgress) }
+    func overallFraction(for progress: GCSBatchProgress) -> Double {
+        if progress.totalCount > 0 { return progress.fraction }
+        let allPreviewFilesPresent = destinationPreviewFileCount.map { $0 > 0 && cachedFileCount == $0 } ?? true
+        return cachedFileCount > 0 && allPreviewFilesPresent && !isScanningFleet && !hasIncompleteInventory ? 1 : 0
     }
     var isReadOnly: Bool { library?.isReadOnly == true }
     var isMaintenanceBlocked: Bool { library?.isMaintainingLibrary == true }
@@ -95,10 +106,22 @@ final class GCSStore: ObservableObject {
     var batchStatusMessage: String {
         let progress = batchProgress
         if isScanningFleet { return "Lecture des inventaires de la flotte · \(inventoryCoverageLabel)" }
+        if isBusy && progress.totalCount == 0 && selectedUUID != nil && files.isEmpty {
+            return "Lecture de l’inventaire du drone sélectionné…"
+        }
         if hasIncompleteInventory {
             if isQueuePaused && progress.activeCount == 0 { return "Collecte arrêtée · inventaire incomplet · \(inventoryCoverageLabel)" }
             if progress.activeCount > 0 || progress.pendingCount > 0 { return "Collecte en cours · inventaire incomplet · \(inventoryCoverageLabel)" }
             return "Collecte partielle · inventaire incomplet · \(inventoryCoverageLabel)"
+        }
+        if progress.totalCount == 0, let available = destinationPreviewFileCount, available > 0 {
+            let missing = max(0, available - cachedFileCount)
+            let scope = completedInventoryUUIDs.sorted().first.map {
+                library?.annotations.displayName(forGCSUUID: $0) ?? "Drone \($0.prefix(8))…"
+            } ?? "Inventaire vérifié"
+            return missing > 0
+                ? "\(scope) · \(missing) log\(missing == 1 ? "" : "s") à collecter dans ce dossier · \(cachedFileCount) déjà présent\(cachedFileCount == 1 ? "" : "s")."
+                : "\(scope) à jour · \(cachedFileCount) log\(cachedFileCount == 1 ? "" : "s") déjà présent\(cachedFileCount == 1 ? "" : "s") et vérifié\(cachedFileCount == 1 ? "" : "s")."
         }
         if progress.totalCount == 0 && cachedFileCount > 0 { return "À jour · \(cachedFileCount) logs déjà présents et vérifiés." }
         if progress.totalCount == 0 && !expectedInventoryUUIDs.isEmpty { return "Aucun log disponible · inventaire terminé sur \(expectedInventoryUUIDs.count) drone\(expectedInventoryUUIDs.count == 1 ? "" : "s")." }
@@ -176,6 +199,7 @@ final class GCSStore: ObservableObject {
         queue = state.queue
         dirtyTransferIDs = Set(state.queue.filter { !$0.isSuccessful }.map(\.id))
         cachedFileCount = state.cachedFileCount ?? 0
+        destinationPreviewFileCount = state.destinationPreviewFileCount
         expectedInventoryUUIDs = state.expectedInventoryUUIDs ?? []
         completedInventoryUUIDs = state.completedInventoryUUIDs ?? []
         inventoryFailures = state.inventoryFailures ?? [:]
@@ -290,6 +314,7 @@ final class GCSStore: ObservableObject {
         downloadDirectory = URL(fileURLWithPath: state.downloadDirectory, isDirectory: true)
         isApplyingRestoredState = true; autoImport = state.autoImport; isApplyingRestoredState = false
         cachedFileCount = state.cachedFileCount ?? 0
+        destinationPreviewFileCount = state.destinationPreviewFileCount
         expectedInventoryUUIDs = state.expectedInventoryUUIDs ?? []; completedInventoryUUIDs = state.completedInventoryUUIDs ?? []
         inventoryFailures = state.inventoryFailures ?? [:]
         inventoryErrors = inventoryFailures.sorted { $0.key < $1.key }.map { "\($0.key.prefix(8))… : \($0.value)" }
@@ -320,6 +345,7 @@ final class GCSStore: ObservableObject {
         guard let script else { errorMessage = "Le collecteur GCS est absent de l’app."; return }
         host = value; connectedHost = value; isConnecting = true; errorMessage = nil
         reconnect = true; persist()
+        library?.diagnostics.record(.gcsConnecting)
         discoveryTask = Task { [weak self] in
             guard let self else { return }
             defer { self.isConnecting = false; self.isConnected = false; self.discoveryTask = nil }
@@ -329,7 +355,9 @@ final class GCSStore: ObservableObject {
                         try Task.checkCancellation()
                         switch event.event {
                         case "connection":
+                            let previouslyConnected = self.isConnected
                             self.isConnected = event.connected == true; self.isConnecting = !self.isConnected
+                            if self.isConnected != previouslyConnected { self.library?.diagnostics.record(self.isConnected ? .gcsConnected : .gcsDisconnected, code: self.isConnected ? .none : .disconnected) }
                             if self.isConnected { self.statusMessage = "GCS connectée · surveillance des drones active"; self.errorMessage = nil }
                         case "drones":
                             let fresh = event.drones ?? []
@@ -365,7 +393,7 @@ final class GCSStore: ObservableObject {
                         }
                     }
                 } catch is CancellationError { return }
-                catch { if !Task.isCancelled { self.errorMessage = "Connexion GCS perdue : \(error.localizedDescription)" } }
+                catch { if !Task.isCancelled { self.library?.diagnostics.record(.gcsDisconnected, code: .connectionUnavailable); self.errorMessage = "Connexion GCS perdue : \(error.localizedDescription)" } }
                 if Task.isCancelled { return }
                 self.isConnected = false; self.isConnecting = true
                 for i in self.drones.indices { self.drones[i].lastSeen = .distantPast }
@@ -384,6 +412,7 @@ final class GCSStore: ObservableObject {
         isConnected = false; isConnecting = false; connectedHost = nil
         for i in drones.indices { drones[i].lastSeen = .distantPast }
         selectedUUID = nil; files = []; selectedFileIDs = []
+        library?.diagnostics.record(.gcsDisconnected)
         statusMessage = "GCS déconnectée"; persist()
     }
 
@@ -422,7 +451,7 @@ final class GCSStore: ObservableObject {
         refreshInventory()
     }
 
-    func refreshInventory() {
+    func refreshInventory(updateDestinationProgress: Bool = false) {
         guard permitMutation() else { return }
         guard validateDestination(downloadDirectory) else { return }
         guard let uuid = selectedUUID, canRead(uuid), !isBusy, inventoryTask == nil else { return }
@@ -434,13 +463,29 @@ final class GCSStore: ObservableObject {
             do {
                 self.files = try await self.readInventory(uuid: uuid, host: currentHost, destination: destination)
                 self.selectedFileIDs = self.selectedFileIDs.intersection(Set(self.files.filter { !$0.isDownloaded }.map(\.id)))
+                if updateDestinationProgress {
+                    self.recordInventory(uuid: uuid)
+                    self.destinationPreviewFileCount = self.files.count
+                    let cached = Set(self.files.filter(\.isDownloaded).map {
+                        GCSTransferSource(uuid: uuid, file: $0, destination: destination).cacheIdentity
+                    })
+                    try self.prepareQueueStorage()
+                    self.cachedFileCount = try self.queueRepository?.recordCachedFiles(batchID: self.currentBatchID, identities: cached) ?? 0
+                    self.persist()
+                }
                 self.statusMessage = "\(self.files.count) logs · \(self.files.filter(\.isDownloaded).count) déjà récupérés"
             } catch is CancellationError { self.statusMessage = "Lecture de la carte arrêtée" }
-            catch { self.errorMessage = error.localizedDescription }
+            catch {
+                if updateDestinationProgress { self.recordInventory(uuid: uuid, error: error.localizedDescription); self.persist() }
+                self.errorMessage = error.localizedDescription
+            }
         }
     }
 
     private func readInventory(uuid: String, host: String, destination: String) async throws -> [GCSLogFile] {
+        library?.diagnostics.record(.inventoryStarted, correlation: currentBatchID + uuid)
+        var inventorySucceeded = false
+        defer { if !inventorySucceeded { library?.diagnostics.record(.inventoryCompleted, code: Task.isCancelled ? .cancelled : .connectionUnavailable, correlation: currentBatchID + uuid) } }
         guard let script else { throw AnalysisError.unavailable("Le collecteur GCS est absent de l’app.") }
         for attempt in 1...GCSQueuePolicy.maxAttempts {
             try Task.checkCancellation()
@@ -505,6 +550,10 @@ final class GCSStore: ObservableObject {
                     try Task.checkCancellation()
                     knownAnalysisHashes.formUnion(valid)
                 }
+                inventorySucceeded = true
+                library?.diagnostics.record(.inventoryCompleted, correlation: currentBatchID + uuid, metrics: [.items: Int64(result.count)])
+                let cached = result.filter(\.isDownloaded).count
+                if cached > 0 { library?.diagnostics.record(.cacheHit, correlation: currentBatchID + uuid, metrics: [.items: Int64(cached)]) }
                 return result.sorted { $0.path > $1.path }
             } catch {
                 if Task.isCancelled { throw CancellationError() }
@@ -525,6 +574,7 @@ final class GCSStore: ObservableObject {
         selectedFileIDs = selectedFileIDs == pending ? [] : pending
     }
     private func beginBatchIfNeeded(preserveInventories: Bool = false) {
+        destinationPreviewFileCount = nil
         if !queue.contains(where: { $0.isPending || $0.isActive }) {
             currentBatchID = UUID().uuidString; cachedFileCount = 0
             if !preserveInventories {
@@ -597,7 +647,7 @@ final class GCSStore: ObservableObject {
             }
             dirtyTransferIDs.insert(job.id); added += 1
         }
-        if added > 0 { queue = updated }
+        if added > 0 { queue = updated; library?.diagnostics.record(.collectionStarted, correlation: currentBatchID, metrics: [.items: Int64(added)]) }
         return added
     }
     func enqueueSelected() {
@@ -676,11 +726,13 @@ final class GCSStore: ObservableObject {
     func pauseQueue() {
         guard permitMutation() else { return }
         isQueuePaused = true
+        library?.diagnostics.record(.collectionPaused, correlation: currentBatchID)
         statusMessage = activeTransferCount > 0 ? "Pause après les fichiers en cours." : "File en pause"
         persist()
     }
-    func resumeQueue() { guard permitMutation() else { return }; isQueuePaused = false; persist(); runQueue() }
+    func resumeQueue() { guard permitMutation() else { return }; isQueuePaused = false; library?.diagnostics.record(.collectionStarted, correlation: currentBatchID); persist(); runQueue() }
     func stopCollection() {
+        library?.diagnostics.record(.collectionStopped, code: .cancelled, correlation: currentBatchID)
         isQueuePaused = true
         if let uuid = activeInventoryUUID { inventoryBusyUntil[uuid] = Date().addingTimeInterval(21) }
         inventoryTask?.cancel()
@@ -755,12 +807,16 @@ final class GCSStore: ObservableObject {
     private func download(id: String, script: URL) async {
         guard let index = queueIDIndex[id] else { return }
         let job = queue[index]
+        let diagnosticCorrelation = (job.batchID ?? currentBatchID) + id
+        library?.diagnostics.record(.transferStarted, correlation: diagnosticCorrelation, metrics: [.totalBytes: job.size, .retryAttempt: Int64(job.attemptCount)])
+        var lastDiagnosticProgress = Date.distantPast
         defer { dirtyTransferIDs.insert(id); transferTasks[id] = nil; updateBusy(); persist(); runQueue() }
         var retryable = false
+        var diagnosticFailure: DiagnosticEvent.Code = .storageUnavailable
         do {
             try Task.checkCancellation()
             try requireDestination(URL(fileURLWithPath: job.destination, isDirectory: true))
-            retryable = true
+            retryable = true; diagnosticFailure = .transferFailed
             var downloaded = false
             let args = ["download", "--host", job.host, "--port", "1999", "--http-port", "8080", "--uuid", job.droneUUID,
                         "--remote", job.remotePath, "--size", String(job.size), "--destination", job.destination]
@@ -772,15 +828,21 @@ final class GCSStore: ObservableObject {
                 switch event.event {
                 case "transfer_started":
                     queue[index].phase = "drone"; queue[index].phaseBytes = 0; queue[index].phaseTotal = job.size
+                    library?.diagnostics.record(.transferProgress, phase: .drone, correlation: diagnosticCorrelation, metrics: [.bytes: 0, .totalBytes: job.size])
                     queue[index].remoteBusyUntil = Date().addingTimeInterval(min(3600, max(300, event.timeoutSeconds ?? 300)) + 5)
                     persist()
                 case "transfer_finished": queue[index].remoteBusyUntil = nil; persist()
                 case "phase":
                     if let phase = event.phase, ["drone", "http", "verification"].contains(phase) {
                         queue[index].phase = phase; queue[index].phaseBytes = event.bytes; queue[index].phaseTotal = event.total
+                        library?.diagnostics.record(.transferProgress, phase: DiagnosticEvent.Phase(rawValue: phase), correlation: diagnosticCorrelation, metrics: [.bytes: event.bytes ?? 0, .totalBytes: event.total ?? job.size])
                     }
                 case "progress":
                     queue[index].receiveProgress(phase: event.phase, bytes: event.bytes ?? 0, total: event.total)
+                    if Date().timeIntervalSince(lastDiagnosticProgress) >= 5 {
+                        lastDiagnosticProgress = Date()
+                        library?.diagnostics.record(.transferProgress, phase: DiagnosticEvent.Phase(rawValue: queue[index].phase ?? ""), correlation: diagnosticCorrelation, metrics: [.bytes: event.bytes ?? 0, .totalBytes: event.total ?? job.size])
+                    }
                     if Date().timeIntervalSince(lastSave) > 1 { persist() }
                 case "downloaded":
                     guard let local = event.localPath, let hash = event.sha256, event.bytes == job.size else { throw AnalysisError.engine("Réponse de téléchargement incomplète.") }
@@ -792,11 +854,13 @@ final class GCSStore: ObservableObject {
             }
             try Task.checkCancellation()
             guard downloaded else { throw AnalysisError.engine("Aucun fichier complet reçu.") }
-            queue[index].state = "downloaded"; persist()
+            let shouldImport = autoImport
+            queue[index].state = shouldImport ? "importing" : "downloaded"
+            if shouldImport { queue[index].phase = "import"; dirtyTransferIDs.insert(id) }
+            persist()
             // Import errors should not automatically retry a network download which already succeeded.
-            retryable = false
-            if autoImport, let local = queue[index].localPath {
-                queue[index].state = "importing"; queue[index].phase = "import"; dirtyTransferIDs.insert(id); persist()
+            retryable = false; diagnosticFailure = .analysisFailed
+            if shouldImport, let local = queue[index].localPath {
                 // The scanner accepts one file: siblings are never walked again after each completion.
                 let collectedFile = URL(fileURLWithPath: local)
                 let result: FleetSnapshot
@@ -812,16 +876,22 @@ final class GCSStore: ObservableObject {
                 knownAnalysisHashes.insert(log.id)
                 if log.status == "partial" { queue[index].error = "Analyse partielle : consultez la couverture du log." }
             }
+            library?.diagnostics.record(.transferCompleted, correlation: diagnosticCorrelation, metrics: [.bytes: job.size, .totalBytes: job.size])
+            let completed = batchProgress
+            if completed.totalCount > 0 && completed.completedCount == completed.totalCount { library?.diagnostics.record(.collectionCompleted, correlation: currentBatchID, metrics: [.items: Int64(completed.totalCount)]) }
             if selectedUUID == job.droneUUID, let f = files.firstIndex(where: { $0.path == job.remotePath }) { files[f].isDownloaded = true }
-            statusMessage = autoImport ? "\(job.filename) récupéré et analysé" : "\(job.filename) récupéré"
+            statusMessage = shouldImport ? "\(job.filename) récupéré et analysé" : "\(job.filename) récupéré"
         } catch {
             if Task.isCancelled {
+                library?.diagnostics.record(.transferCompleted, code: .cancelled, correlation: diagnosticCorrelation)
                 if queue[index].state != "stopped" { queue[index].state = "interrupted"; queue[index].error = "Collecte interrompue. Relancez le fichier pour reprendre." }
             } else if retryable, let date = GCSQueuePolicy.retryDate(attempt: queue[index].attemptCount) {
+                library?.diagnostics.record(.transferRetrying, code: .transferFailed, correlation: diagnosticCorrelation, metrics: [.retryAttempt: Int64(queue[index].attemptCount + 1)])
                 queue[index].state = "retrying"
                 queue[index].nextRetryAt = max(date, queue[index].remoteBusyUntil ?? .distantPast)
                 queue[index].error = "\(error.localizedDescription) · nouvelle tentative \(queue[index].attemptCount + 1)/3"
             } else {
+                library?.diagnostics.record(.transferCompleted, code: diagnosticFailure, correlation: diagnosticCorrelation)
                 queue[index].state = "failed"; queue[index].error = error.localizedDescription
                 errorMessage = error.localizedDescription
             }
@@ -840,15 +910,37 @@ final class GCSStore: ObservableObject {
     }
     func setDownloadDirectory(_ url: URL) throws {
         guard permitMutation() else { throw AnalysisError.unavailable(errorMessage ?? "La bibliothèque est en lecture seule.") }
-        guard !isBusy else { throw AnalysisError.unavailable("Arrêtez la collecte en cours avant de changer de dossier.") }
+        guard !isBusy, !queue.contains(where: \.isPending) else {
+            throw AnalysisError.unavailable("Arrêtez la collecte et les transferts en attente avant de changer de dossier.")
+        }
         let destination = url.standardizedFileURL
         try requireDestination(destination)
+        guard destination.path != downloadDirectory.standardizedFileURL.path else { return }
         let previous = downloadDirectory
+        let previousBatch = currentBatchID, previousCachedCount = cachedFileCount
+        let previousPreviewCount = destinationPreviewFileCount
+        let previousExpected = expectedInventoryUUIDs, previousCompleted = completedInventoryUUIDs
+        let previousFailures = inventoryFailures, previousErrors = inventoryErrors
         downloadDirectory = destination
+        currentBatchID = UUID().uuidString; cachedFileCount = 0
+        destinationPreviewFileCount = nil
+        expectedInventoryUUIDs = []; completedInventoryUUIDs = []; inventoryFailures = [:]; inventoryErrors = []
         do { try saveState() }
-        catch { downloadDirectory = previous; throw error }
+        catch {
+            downloadDirectory = previous; currentBatchID = previousBatch; cachedFileCount = previousCachedCount
+            destinationPreviewFileCount = previousPreviewCount
+            expectedInventoryUUIDs = previousExpected; completedInventoryUUIDs = previousCompleted
+            inventoryFailures = previousFailures; inventoryErrors = previousErrors
+            throw error
+        }
+        library?.diagnostics.record(.destinationChanged)
+        files = []; selectedFileIDs = []
         errorMessage = nil
-        statusMessage = "Dossier de collecte enregistré. Les fichiers déjà en file conservent leur destination."
+        statusMessage = "Dossier de collecte enregistré. La progression est recalculée pour ce dossier ; les anciennes copies sont conservées."
+        if let uuid = selectedUUID, isConnected,
+           drones.contains(where: { $0.uuid == uuid && $0.isOnline && $0.armed != true }) {
+            refreshInventory(updateDestinationProgress: true)
+        }
     }
     func revealDownloads() {
         guard validateDestination(downloadDirectory) else { return }
@@ -883,6 +975,7 @@ final class GCSStore: ObservableObject {
         state.host = host; state.allowedUUIDs = proposed ?? allowedUUIDs; state.autoImport = autoImport
         state.reconnect = reconnect; state.queue = []; state.queueStorageVersion = 1
         state.currentBatchID = currentBatchID; state.cachedFileCount = cachedFileCount; state.queuePaused = isQueuePaused; state.inventoryBusyUntil = inventoryBusyUntil
+        state.destinationPreviewFileCount = destinationPreviewFileCount
         state.expectedInventoryUUIDs = expectedInventoryUUIDs; state.completedInventoryUUIDs = completedInventoryUUIDs; state.inventoryFailures = inventoryFailures
         try FileManager.default.createDirectory(at: stateURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try JSONEncoder().encode(state).write(to: stateURL, options: .atomic); lastSave = Date()

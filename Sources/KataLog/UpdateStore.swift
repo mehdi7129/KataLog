@@ -11,13 +11,16 @@ final class UpdateStore: NSObject, ObservableObject, SPUUpdaterDelegate {
     @Published private(set) var state: State = .disabled
     @Published private(set) var driverCanCheck = false
     @Published private(set) var workBlocked = false
+    @Published private(set) var automaticallyChecksForUpdates = false
     var installationAllowed: () -> Bool = { true }
     private let configuration: UpdateConfiguration?
     private var controller: SPUStandardUpdaterController?
     private var observation: AnyCancellable?
+    private var automaticChecksObservation: AnyCancellable?
     private var postponement: Task<Void, Never>?
     private var monitor: Task<Void, Never>?
     var canCheck: Bool { configuration != nil && driverCanCheck && installationAllowed() && !workBlocked }
+    var canConfigureAutomaticChecks: Bool { configuration != nil && controller != nil }
     var title: String {
         switch state {
         case .disabled: "Mises à jour manuelles"
@@ -33,11 +36,11 @@ final class UpdateStore: NSObject, ObservableObject, SPUUpdaterDelegate {
         if workBlocked { return "Terminez les opérations en cours avant la mise à jour." }
         return switch state {
         case .disabled: "Ce build n’active aucun flux distant. Téléchargez le nouveau DMG et remplacez KataLog dans Applications. Votre bibliothèque est conservée."
-        case .ready: "Vérifiez les nouvelles versions signées de KataLog."
+        case .ready: "Recherchez une nouvelle version de KataLog."
         case .checking: "Vérification du flux signé…"
-        case .available: "Sparkle affiche la version proposée et demande votre choix."
+        case .available: "Téléchargez la mise à jour, puis choisissez quand installer et redémarrer."
         case .upToDate: "Aucune nouvelle version compatible n’a été trouvée."
-        case .deferred: "La mise à jour reprendra lorsque les opérations seront terminées."
+        case .deferred: "L’installation attend la fin des opérations en cours."
         case .failed(let message): message
         }
     }
@@ -49,6 +52,12 @@ final class UpdateStore: NSObject, ObservableObject, SPUUpdaterDelegate {
         guard configuration != nil else { return }
         let controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: self, userDriverDelegate: nil)
         self.controller = controller
+        // Sparkle owns persistence. Read the saved choice without resetting it
+        // at launch; installation still requires the standard user dialog.
+        automaticallyChecksForUpdates = controller.updater.automaticallyChecksForUpdates
+        automaticChecksObservation = controller.updater.publisher(for: \.automaticallyChecksForUpdates).sink { [weak self] value in
+            Task { @MainActor in self?.automaticallyChecksForUpdates = value }
+        }
         observation = controller.updater.publisher(for: \.canCheckForUpdates).sink { [weak self] value in
             Task { @MainActor in self?.driverCanCheck = value }
         }
@@ -64,6 +73,11 @@ final class UpdateStore: NSObject, ObservableObject, SPUUpdaterDelegate {
                 self.workBlocked = !self.installationAllowed()
             }
         }
+    }
+    func setAutomaticallyChecksForUpdates(_ enabled: Bool) {
+        guard configuration != nil, let updater = controller?.updater else { return }
+        updater.automaticallyChecksForUpdates = enabled
+        automaticallyChecksForUpdates = updater.automaticallyChecksForUpdates
     }
     func checkForUpdates() {
         do { try UpdatePolicy.requireIdle(installationAllowed()) }

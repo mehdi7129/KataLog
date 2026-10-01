@@ -9,6 +9,8 @@ struct SourcesImportView: View {
     @State private var includeRemoved = false
     @State private var offsets = [0]
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var scheme
+    private var palette: Palette { Palette(dark: scheme == .dark) }
 
     init(library: LibraryStore, externalBusy: Bool = false) {
         self.library = library; self.externalBusy = externalBusy
@@ -17,12 +19,13 @@ struct SourcesImportView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Text("Sources d’import").font(.system(size: 25, weight: .semibold)).tracking(-0.6)
+                Text("Bibliothèque locale").font(.system(size: 25, weight: .semibold)).tracking(-0.6)
                 LibraryHelpButton(title: "Sources d’import", text: LibraryHelp.sources)
                 Spacer()
-                Button("Fermer") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button { dismiss() } label: { BentoIcon(symbol: "xmark") }
+                    .keyboardShortcut(.cancelAction).accessibilityLabel("Fermer les sources d’import")
             }
-            Text("Liste globale des dossiers importés. Le retrait conserve les analyses et les fichiers ; vous pouvez restaurer la source à tout moment.")
+            Text("Gérer les dossiers suivis. Les fichiers et les analyses restent conservés après un retrait ; vous pouvez restaurer la source à tout moment.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack {
                 if let page = sources.page {
@@ -52,7 +55,7 @@ struct SourcesImportView: View {
                 if sources.page != nil { Text("Dernière liste conservée · actualisation impossible").font(.caption).foregroundStyle(.secondary) }
             }
             if sources.isLoading || sources.isWorking { ProgressView(sources.isWorking ? "Mise à jour de la liste…" : "Vérification des dossiers…").controlSize(.small) }
-            ScrollView {
+            BentoPanel(palette: palette) { ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(sources.page?.folders ?? []) { folder in
                         folderRow(folder)
@@ -63,7 +66,7 @@ struct SourcesImportView: View {
                             .font(.callout).foregroundStyle(.secondary).padding(.vertical, 30)
                     }
                 }
-            }
+            } }
             if let page = sources.page {
                 HStack {
                     Button("Précédent") {
@@ -79,8 +82,16 @@ struct SourcesImportView: View {
                     }.disabled(page.nextOffset == nil || sources.isLoading || sources.isWorking)
                 }
             }
+            HStack {
+                Label("Retirer un dossier désactive son suivi et conserve ses fichiers et analyses.", systemImage: "info.circle")
+                    .font(.system(size: 11)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button("Terminé") { dismiss() }.buttonStyle(WorkspaceActionButtonStyle(palette: palette, prominent: true))
+            }
         }
         .padding(24).frame(minWidth: 650, idealWidth: 800, minHeight: 460, idealHeight: 600)
+        .foregroundStyle(palette.primary).background(palette.background)
+        .buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true)).tint(palette.primary)
         .onAppear { sources.load() }
         .onChange(of: includeRemoved) { _, value in offsets = [0]; sources.load(includeRemoved: value) }
         .onChange(of: sources.currentOffset) { _, offset in if offset == 0 { offsets = [0] } }
@@ -91,21 +102,23 @@ struct SourcesImportView: View {
 
     private func folderRow(_ folder: SourceFolderPage.Folder) -> some View {
         HStack(alignment: .top, spacing: 16) {
-            Image(systemName: folder.removed ? "folder.badge.minus" : "folder").frame(width: 24).foregroundStyle(.secondary)
+            BentoIcon(symbol: folder.removed ? "folder.badge.minus" : "folder", size: 22).frame(width: 24).foregroundStyle(palette.secondary)
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     Text(folder.name).font(.callout.weight(.medium))
-                    Text(folder.removed ? "Retirée de la liste" : "Active").font(.caption).foregroundStyle(.secondary)
+                    BentoStatus(label: folder.removed ? "Suivi désactivé" : "Active", color: folder.removed ? palette.secondary : palette.mint)
                 }
-                Text(folder.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
                 Text("\(folder.logCount) \(folder.logCount == 1 ? "log" : "logs") · \(folder.availabilityLabel)").font(.caption).foregroundStyle(.secondary)
+                DisclosureGroup("Chemin du dossier") {
+                    Text(folder.path).font(.caption.monospaced()).foregroundStyle(palette.secondary).textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true).padding(.top, 6)
+                }.font(.system(size: 10)).foregroundStyle(palette.secondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
-            Button(folder.removed ? "Restaurer" : "Retirer de la liste") {
+            Button(folder.removed ? "Restaurer" : "Retirer du suivi") {
                 sources.setRemoved(!folder.removed, path: folder.path)
             }
             .controlSize(.small).disabled(!sources.canMutate || externalBusy)
-            .help(folder.removed ? "Remet ce dossier dans la liste des sources actives." : "Retire ce dossier de la liste. Les analyses et les fichiers sont conservés.")
+            .help(folder.removed ? "Remet ce dossier dans la liste des sources actives." : "Désactive le suivi de ce dossier. Les analyses et les fichiers sont conservés.")
         }.padding(.vertical, 15)
     }
 }

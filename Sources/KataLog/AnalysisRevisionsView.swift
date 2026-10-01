@@ -52,9 +52,11 @@ struct AnalysisRevisionsView: View {
     @StateObject private var store = AnalysisRevisionsStore()
     @State private var offset = 0
     @State private var comparisonLimit = 200
+    @Environment(\.colorScheme) private var scheme
+    private var palette: Palette { Palette(dark: scheme == .dark) }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Analyses conservées").font(.title2.weight(.semibold))
+            Text("Analyses conservées").font(.system(size: 20, weight: .semibold))
             Text("Lecture seule, sans recalcul et sans fichier source requis. La date indique la capture de l’analyse, pas la date du vol.").font(.caption).foregroundStyle(.secondary)
             if let error = store.error { HStack { Text(error).textSelection(.enabled); Spacer(); Button("Réessayer") { store.load(library: library, logID: logID, offset: offset) } } }
             if store.isLoading { ProgressView("Lecture des révisions…") }
@@ -65,7 +67,7 @@ struct AnalysisRevisionsView: View {
                 Button("Suivante") { if let next = store.page?.nextOffset { offset = next } }.disabled(store.page?.nextOffset == nil || store.isLoading)
             }
             HStack(alignment: .top, spacing: 18) {
-                ScrollView {
+                BentoPanel(palette: palette) { ScrollView {
                     LazyVStack(alignment: .leading, spacing: 8) {
                         ForEach(store.page?.revisions ?? []) { revision in
                             Button { store.select(revision, library: library, logID: logID) } label: {
@@ -75,13 +77,13 @@ struct AnalysisRevisionsView: View {
                                     Text(revision.createdAt).font(.caption.monospaced()).foregroundStyle(.secondary)
                                     Text(ByteCountFormatter.string(fromByteCount: revision.sizeBytes, countStyle: .file)).font(.caption)
                                 }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(store.selected?.id == revision.id ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+                                    .background(store.selected?.id == revision.id ? palette.raised : palette.card, in: RoundedRectangle(cornerRadius: 12))
+                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(store.selected?.id == revision.id ? palette.primary : palette.border, lineWidth: 1))
                             }.buttonStyle(.plain).accessibilityLabel("\(revision.kind == "detail" ? "Fiche détaillée" : "Résumé"), parseur \(revision.parserVersion), capture \(revision.createdAt)")
                         }
                     }
-                }.frame(width: 260)
-                Divider()
-                ScrollView {
+                } }.frame(width: 280)
+                BentoPanel(palette: palette) { ScrollView {
                     if store.isLoadingDetail { ProgressView("Lecture de l’analyse conservée…").frame(maxWidth: .infinity) }
                     else if let log = store.detail, let revision = store.selected {
                         VStack(alignment: .leading, spacing: 14) {
@@ -101,9 +103,11 @@ struct AnalysisRevisionsView: View {
                             DisclosureGroup("Données complètes de cette analyse") { Text(json(log)).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8) }
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     } else { ContentUnavailableView("Choisir une analyse", systemImage: "clock.arrow.circlepath", description: Text("Les révisions précédentes restent séparées de la fiche courante.")).frame(maxWidth: .infinity) }
-                }.frame(maxWidth: .infinity)
+                } }.frame(maxWidth: .infinity)
             }.frame(maxHeight: .infinity)
         }.padding(24)
+        .foregroundStyle(palette.primary).background(palette.background)
+        .buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true)).tint(palette.primary)
         .task(id: "\(logID)|\(offset)") { store.load(library: library, logID: logID, offset: offset) }
         .onDisappear { store.cancel() }
     }

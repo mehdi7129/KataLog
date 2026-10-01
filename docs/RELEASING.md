@@ -1,8 +1,8 @@
 # Distribution macOS hors App Store
 
-Le dépôt reste privé jusqu’à une décision explicite de publication. La version
-0.6.0 (14) fournit une installation autonome ; Sparkle est embarqué avec un flux
-désactivé. La mise à jour s’effectue par DMG. Voir [la recette](RELEASE-0.6.0.md).
+La version 0.7.0 (17) conserve l’installation autonome par DMG et active le flux
+Sparkle stable signé. Voir [la recette](RELEASE-0.7.0.md). Toute publication exige la
+validation de l’historique, des métadonnées GitHub et des assets.
 
 ## Parcours utilisateur
 
@@ -139,3 +139,16 @@ fixer un tag annoté correspondant au commit, puis créer la release avec le DMG
 le ZIP éventuel et leurs checksums. Vérifier le téléchargement et la quarantaine
 des assets depuis GitHub. Ne pas exposer les anciens assets 0.5.1 : ils restent
 dans l’archive privée distincte. Les clés privées et rapports de flotte restent locaux.
+
+## Flux stable 0.7
+
+Construire avec `KATALOG_UPDATE_CHANNEL=stable`, l’URL HTTPS publique et la clé
+publique vérifiée sous `updates/stable/public-key.txt`. Garder la clé privée dans
+le Trousseau, compte `katalog-sparkle-stable`. Notariser et agrafer le bundle,
+puis recréer le ZIP final avant toute signature Sparkle ou calcul de checksum.
+Préparer le flux avec `tools/update-feed.py prepare` et le build précédent.
+Publier d’abord le ZIP et le DMG vérifiés, puis le flux signé sous
+`updates/stable/appcast.xml`. Vérifier les octets et signatures en accès anonyme.
+
+Ne pas remplacer les assets d’une release déjà publiée : une nouvelle archive
+exige un nouveau numéro de build. Conserver les ZIP encore référencés par le flux.

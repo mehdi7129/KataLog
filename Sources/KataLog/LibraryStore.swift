@@ -36,6 +36,12 @@ final class LibraryStore: ObservableObject {
     var didRestoreLibrary: () throws -> Void = {}
     private var writerLease: LibraryWriterLease?
     let storageDirectory: URL
+    let diagnostics: DiagnosticJournal
+    lazy var diagnosticStore = DiagnosticStore(journal: diagnostics, canWrite: { [weak self] in
+        guard let self else { return false }
+        return !isReadOnly && !isImporting && !isExporting && !isMaintainingLibrary && !hasExternalActivity()
+    })
+    private var diagnosticStopRecorded = false
     private var exportTask: Task<Void, Error>?
     @Published private(set) var lastReportExport: ReportExportResult?
     @Published private(set) var reportProgress: ImportProgress?
@@ -80,6 +86,8 @@ final class LibraryStore: ObservableObject {
             writable = false
         }
         isReadOnly = !writable
+        diagnostics = DiagnosticJournal(directory: base.appendingPathComponent("Diagnostics", isDirectory: true), configuration: .init(persistent: writable))
+        diagnostics.record(.appStarted)
         if !writable { statusMessage = "Bibliothèque en lecture seule. Fermez l’autre instance de KataLog puis relancez l’app pour modifier ou collecter." }
         annotations = DroneAnnotationStore(url: base.appendingPathComponent("annotations.json"), canWrite: writable)
         views = LibraryViewStore(url: base.appendingPathComponent("views.json"), canWrite: writable)
@@ -165,6 +173,8 @@ final class LibraryStore: ObservableObject {
         }
         loadToken = UUID(); isLoading = false
         isImporting = true; errorMessage = nil; statusMessage = nil; progress = nil
+        let diagnosticOperation = UUID().uuidString
+        diagnostics.record(.importStarted, correlation: diagnosticOperation)
         try? FileManager.default.removeItem(at: progressURL)
         progressTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -199,13 +209,15 @@ final class LibraryStore: ObservableObject {
                         self.errorMessage = "\(stats.archiveFailed ?? 0) copies d’archive ont échoué : ces fichiers n’ont pas été analysés. Les analyses déjà présentes et les originaux sont conservés. Vérifiez l’espace disponible et l’accès au dossier d’archive avant de recommencer."
                     }
                 }
+                self.diagnostics.record(.importCompleted, code: stats.failed > 0 ? .analysisFailed : .none, correlation: diagnosticOperation, metrics: [.items: Int64(stats.discovered), .completedItems: Int64(stats.imported + stats.unchanged + stats.duplicates)])
                 if self.usesPagedNavigation { Task { self.loadHistory() } }
                 return annotated
             } catch is CancellationError {
+                self.diagnostics.record(.importFailed, code: .cancelled, correlation: diagnosticOperation)
                 self.statusMessage = "Import annulé. Les logs déjà traités sont conservés ; un nouvel import reprendra la lecture."
                 Task { self.reload() }
                 throw CancellationError()
-            } catch { self.errorMessage = error.localizedDescription; throw error }
+            } catch { self.diagnostics.record(.importFailed, code: .analysisFailed, correlation: diagnosticOperation); self.errorMessage = error.localizedDescription; throw error }
         }
         importTask = task
         return try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
@@ -274,11 +286,13 @@ final class LibraryStore: ObservableObject {
         queryWasCancelled = true; queryError = nil
     }
     func prepareForTermination() {
+        diagnosticStore.prepareForTermination()
+        if !diagnosticStopRecorded { diagnostics.record(.appStopped); diagnostics.flush(); diagnosticStopRecorded = true }
         cancelImport(); exportTask?.cancel(); queryTask?.cancel(); flightTask?.cancel(); reloadTask?.cancel()
         progressTask?.cancel(); queryToken = UUID(); flightToken = UUID(); loadToken = UUID()
         isQuerying = false; isCancellingQuery = false; isLoading = false; isLoadingFlight = false
     }
-    var hasActiveWork: Bool { isImporting || isExporting || isMaintainingLibrary || isQuerying || isLoading || isLoadingFlight }
+    var hasActiveWork: Bool { isImporting || isExporting || isMaintainingLibrary || isQuerying || isLoading || isLoadingFlight || diagnosticStore.isLoading || diagnosticStore.isFetchingGCS || diagnosticStore.isExporting }
 
     func revealSource(_ path: String) {
         guard FileManager.default.fileExists(atPath: path) else { errorMessage = "Le fichier source n’est plus présent : \(path)"; return }
@@ -324,6 +338,11 @@ final class LibraryStore: ObservableObject {
         }
         guard !isExporting else { throw AnalysisError.engine("Un export est déjà en cours.") }
         isExporting = true; errorMessage = nil; statusMessage = "Préparation du rapport…"
+        let diagnosticOperation = UUID().uuidString
+        diagnostics.record(.exportStarted, correlation: diagnosticOperation)
+        var diagnosticCompleted = false
+        var diagnosticFailure: DiagnosticEvent.Code = .exportFailed
+        defer { diagnostics.record(diagnosticCompleted ? .exportCompleted : .exportFailed, code: diagnosticCompleted ? .none : diagnosticFailure, correlation: diagnosticOperation) }
         defer { isExporting = false; exportTask = nil }
         let captured = selection ?? snapshot
         let task = Task.detached(priority: .userInitiated) {
@@ -343,7 +362,9 @@ final class LibraryStore: ObservableObject {
             }
         }
         exportTask = task
-        try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+        do { try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() } }
+        catch { if error is CancellationError { diagnosticFailure = .cancelled }; throw error }
+        diagnosticCompleted = true
         statusMessage = "Rapport exporté : \(url.lastPathComponent)"
     }
 
@@ -434,6 +455,11 @@ final class LibraryStore: ObservableObject {
             throw AnalysisError.engine("Les réglages ont changé depuis la prévisualisation. Actualisez-la avant de générer le rapport.")
         }
         isExporting = true; lastReportExport = nil; errorMessage = nil
+        let diagnosticOperation = UUID().uuidString
+        diagnostics.record(.exportStarted, correlation: diagnosticOperation)
+        var diagnosticCompleted = false
+        var diagnosticFailure: DiagnosticEvent.Code = .exportFailed
+        defer { diagnostics.record(diagnosticCompleted ? .exportCompleted : .exportFailed, code: diagnosticCompleted ? .none : diagnosticFailure, correlation: diagnosticOperation) }
         reportProgress = nil
         var reportProgressTask: Task<Void, Never>?
         defer { isExporting = false; exportTask = nil; reportProgressTask?.cancel() }
@@ -461,8 +487,10 @@ final class LibraryStore: ObservableObject {
             self.lastReportExport = result
         }
         exportTask = task
-        try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+        do { try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() } }
+        catch { if error is CancellationError { diagnosticFailure = .cancelled }; throw error }
         guard let result = lastReportExport else { throw AnalysisError.engine("Le rapport n’a pas été publié.") }
+        diagnosticCompleted = true
         statusMessage = "Rapport publié · \(result.logCount) logs · \(result.messageCount) messages · révision \(result.revision)."
         return result
     }

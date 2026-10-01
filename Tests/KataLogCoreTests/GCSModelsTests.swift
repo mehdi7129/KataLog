@@ -2,22 +2,95 @@ import XCTest
 @testable import KataLogCore
 
 final class GCSModelsTests: XCTestCase {
-    func testTransportPhasesCountOnlyHTTPBytesInGlobalProgress() throws {
+    func testGlobalProgressAdvancesAcrossBothTransportPhasesWithoutCountingDroneBytesAsMacBytes() throws {
         var item = GCSTransfer(droneUUID: "0102030405060708090A0B0C", remotePath: "/fs/microsd/log/log.ulg", size: 64,
                                host: "localhost", destination: "/private/tmp")
         item.state = "downloading"
+        item.receiveProgress(phase: "drone", bytes: 32, total: 64)
+        XCTAssertEqual(GCSBatchProgress(transfers: [item]).fraction, 0.25)
         item.receiveProgress(phase: "drone", bytes: 64, total: 64)
         XCTAssertEqual(item.phaseProgress, 1)
         XCTAssertEqual(item.completedBytes, 0)
-        XCTAssertEqual(GCSBatchProgress(transfers: [item]).fraction, 0)
+        XCTAssertEqual(GCSBatchProgress(transfers: [item]).fraction, 0.5)
         item.receiveProgress(phase: "http", bytes: 8, total: 64)
         XCTAssertEqual(item.phaseProgress, 0.125)
         XCTAssertEqual(item.completedBytes, 8)
-        XCTAssertEqual(GCSBatchProgress(transfers: [item]).fraction, 0.125)
+        XCTAssertEqual(GCSBatchProgress(transfers: [item]).fraction, 0.5625)
+        item.receiveProgress(phase: "drone", bytes: 60, total: 64)
+        XCTAssertEqual(item.phase, "http", "A delayed first-leg event must not rewind the batch.")
+        XCTAssertEqual(GCSBatchProgress(transfers: [item]).fraction, 0.5625)
         let restored = try JSONDecoder().decode(GCSTransfer.self, from: JSONEncoder().encode(item))
         XCTAssertEqual(restored.phase, "http")
         XCTAssertEqual(restored.phaseBytes, 8)
         XCTAssertEqual(restored.phaseTotal, 64)
+        XCTAssertEqual(GCSBatchProgress(transfers: [restored]).fraction, 0.5625)
+    }
+
+    func testWorkIsWeightedByFileSizeAcrossDifferentDrones() {
+        var small = GCSTransfer(droneUUID: "0102030405060708090A0B0C", remotePath: "/small.ulg", size: 100, host: "localhost", destination: "/tmp")
+        var large = GCSTransfer(droneUUID: "1112131415161718191A1B1C", remotePath: "/large.ulg", size: 900, host: "localhost", destination: "/tmp")
+        small.state = "downloading"; large.state = "downloading"
+        small.receiveProgress(phase: "drone", bytes: 50, total: 100)
+        large.receiveProgress(phase: "http", bytes: 450, total: 900)
+        let progress = GCSBatchProgress(transfers: [small, large])
+        XCTAssertEqual(progress.totalBytes, 1_000)
+        XCTAssertEqual(progress.completedBytes, 450)
+        XCTAssertEqual(progress.completedWorkBytes, 700)
+        XCTAssertEqual(progress.fraction, 0.7, accuracy: 0.000001)
+    }
+
+    func testLegacySingleTransportProgressKeepsItsOriginalScale() {
+        var item = GCSTransfer(droneUUID: "0102030405060708090A0B0C", remotePath: "/legacy.ulg", size: 100, host: "localhost", destination: "/tmp")
+        item.state = "downloading"
+        item.receiveProgress(phase: nil, bytes: 30, total: 100)
+        XCTAssertNil(item.phase)
+        XCTAssertEqual(item.completedBytes, 30)
+        XCTAssertEqual(GCSBatchProgress(transfers: [item]).fraction, 0.3)
+        item.receiveProgress(phase: nil, bytes: 100, total: 100)
+        XCTAssertEqual(GCSBatchProgress(transfers: [item]).fraction, 0.99)
+        item.state = "downloaded"
+        XCTAssertEqual(GCSBatchProgress(transfers: [item]).fraction, 1)
+    }
+
+    func testVerificationFailureStopAndRetryCannotClaimCompletedCollection() {
+        var item = GCSTransfer(droneUUID: "0102030405060708090A0B0C", remotePath: "/log.ulg", size: 100, host: "localhost", destination: "/tmp")
+        item.state = "downloading"
+        item.receiveProgress(phase: "http", bytes: 100, total: 100)
+        for state in ["downloading", "importing", "failed", "stopped", "interrupted"] {
+            item.state = state
+            XCTAssertEqual(GCSBatchProgress(transfers: [item]).fraction, 0.99)
+            XCTAssertEqual(GCSBatchProgress(transfers: [item]).completedBytes, 100)
+        }
+        for state in ["queued", "retrying"] {
+            item.state = state
+            XCTAssertEqual(GCSBatchProgress(transfers: [item]).fraction, 0)
+        }
+        item.state = "downloading"; item.completedBytes = 0; item.phase = nil
+        item.phaseBytes = nil; item.phaseTotal = nil
+        item.receiveProgress(phase: "drone", bytes: 40, total: 100)
+        XCTAssertEqual(GCSBatchProgress(transfers: [item]).fraction, 0.2)
+        item.state = "complete"
+        XCTAssertEqual(GCSBatchProgress(transfers: [item]).fraction, 1)
+    }
+
+    func testZeroAndMalformedSizesAndPhaseCountersStayBounded() {
+        var zero = GCSTransfer(droneUUID: "0102030405060708090A0B0C", remotePath: "/zero.ulg", size: 0, host: "localhost", destination: "/tmp")
+        XCTAssertEqual(GCSBatchProgress(transfers: [zero]).fraction, 0)
+        zero.state = "complete"
+        XCTAssertEqual(GCSBatchProgress(transfers: [zero]).fraction, 1)
+        XCTAssertEqual(GCSBatchProgress(transfers: [zero]).completedBytes, 0)
+        var huge = GCSTransfer(droneUUID: zero.droneUUID, remotePath: "/huge.ulg", size: Int64.max, host: "localhost", destination: "/tmp")
+        huge.state = "downloading"; huge.phase = "drone"
+        huge.phaseBytes = Int64.max; huge.phaseTotal = Int64.max
+        let overflow = GCSBatchProgress(transfers: [huge, huge])
+        XCTAssertEqual(overflow.totalBytes, Int64.max)
+        XCTAssertEqual(overflow.completedBytes, 0)
+        XCTAssertEqual(overflow.fraction, 0.5)
+        huge.phaseBytes = -10; huge.phaseTotal = 0
+        XCTAssertEqual(GCSBatchProgress(transfers: [huge]).fraction, 0)
+        huge.receiveProgress(phase: "drone", bytes: Int64.max, total: -1)
+        XCTAssertEqual(huge.phaseBytes, 0)
+        XCTAssertEqual(GCSBatchProgress(transfers: [huge]).fraction, 0)
     }
 
     func testOnlyFullUnicastIdentitiesAreAccepted() {

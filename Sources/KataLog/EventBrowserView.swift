@@ -43,6 +43,8 @@ struct EventBrowserView: View {
     @State private var search = ""
     @State private var cursors: [String?] = [nil]
     @State private var selected: LibraryEventOccurrence?
+    @State private var presentation = "table"
+    @State private var showingCoverage = false
     @State private var dictionaryMessage: String?
     @State private var dictionaryBusy = false
     @Environment(\.colorScheme) private var scheme
@@ -54,8 +56,8 @@ struct EventBrowserView: View {
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("Occurrences binaires").font(.system(size: 16, weight: .semibold))
-                        Text("Niveau interne par défaut · données en cache").font(.caption).foregroundStyle(.secondary)
+                        Text("Événements disponibles").font(.system(size: 16, weight: .semibold))
+                        Text("Données binaires en cache · niveau interne par défaut").font(.caption).foregroundStyle(palette.secondary)
                     }
                     Spacer()
                     Button("Associer un dictionnaire…") { chooseDictionary() }
@@ -66,15 +68,23 @@ struct EventBrowserView: View {
                     HStack(spacing: 12) { levelFilters; searchField.frame(minWidth: 200) }
                     VStack(alignment: .leading, spacing: 12) { levelFilters; searchField }
                 }
+                HStack(spacing: 8) {
+                    presentationButton("Chronologie", value: "chronology", symbol: "clock")
+                    presentationButton("Tableau", value: "table", symbol: "list.bullet.rectangle")
+                    Spacer()
+                }
                 if let coverage = store.page?.coverage {
-                    VStack(alignment: .leading, spacing: 5) {
+                    DisclosureGroup("Couverture du décodage · \(coverage.cachedLogs) / \(coverage.selectedLogs) fiches en cache", isExpanded: $showingCoverage) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("\(coverage.cachedLogs) / \(coverage.selectedLogs) logs avec fiche en cache · \(coverage.eventLogs) avec événements · \(coverage.translatedLogs) avec traduction").font(.callout)
                         if coverage.unavailableLogs + coverage.legacyCacheLogs + coverage.invalidCacheLogs > 0 {
                             Text("\(coverage.unavailableLogs) fiches non chargées · \(coverage.legacyCacheLogs) anciens caches sans extraction · \(coverage.invalidCacheLogs) caches invalides. Ouvrez les fiches concernées pour extraire les événements si leur source est accessible.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         if coverage.previousParserLogs > 0 { Text("\(coverage.previousParserLogs) fiches proviennent d’un ancien parseur ; les données restent accessibles.").font(.caption).foregroundStyle(.secondary) }
-                    }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(palette.raised, in: RoundedRectangle(cornerRadius: 12))
+                    }.padding(.top, 12).frame(maxWidth: .infinity, alignment: .leading)
+                    }.font(.system(size: 12)).padding(14)
+                        .background(palette.raised, in: RoundedRectangle(cornerRadius: 12))
                 }
                 if let message = dictionaryMessage { Text(message).font(.callout).textSelection(.enabled) }
                 if let error = store.error {
@@ -95,28 +105,29 @@ struct EventBrowserView: View {
                                 .font(.caption).foregroundStyle(palette.secondary)
                         }.padding(.vertical, 14).frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    LazyVStack(alignment: .leading, spacing: 8) {
+                    if presentation == "table" {
+                        HStack(spacing: 16) {
+                            Text("Temps / appareil").frame(width: 150, alignment: .leading)
+                            Text("Événement").frame(maxWidth: .infinity, alignment: .leading)
+                            Text("Niveau").frame(width: 100, alignment: .leading)
+                        }.font(.system(size: 10)).foregroundStyle(palette.secondary).padding(.vertical, 10)
+                        Rectangle().fill(palette.border).frame(height: 1)
+                    }
+                    LazyVStack(alignment: .leading, spacing: presentation == "table" ? 0 : 16) {
                         ForEach(page.occurrences) { occurrence in
                             Button { selected = occurrence } label: {
-                                VStack(alignment: .leading, spacing: 7) {
-                                    HStack {
-                                        Text(occurrence.droneName).fontWeight(.semibold)
-                                        Text(occurrence.date.isEmpty ? "Date inconnue" : occurrence.date).foregroundStyle(.secondary)
-                                        Spacer()
-                                        Text(eventLevel(occurrence.event)).font(.caption.weight(.semibold))
-                                        Text(occurrence.event.timeSeconds.map { "t = \(FlightUIFormat.seconds($0))" } ?? "Temps inconnu").font(.caption.monospaced())
-                                    }
-                                    Text(occurrence.event.message ?? "Événement brut · ID \(occurrence.event.eventID.description)").font(.callout).lineLimit(3)
-                                    Text("ID \(occurrence.event.eventID.description) · \(EventTranslationLabel.describe(occurrence.event.translationStatus)) · \(occurrence.event.topic ?? "event") [\(occurrence.event.instance ?? 0)]").font(.caption).foregroundStyle(.secondary)
-                                }.padding(13).frame(maxWidth: .infinity, alignment: .leading).background(palette.raised, in: RoundedRectangle(cornerRadius: 10))
+                                if presentation == "table" { tableRow(occurrence) }
+                                else { chronologyRow(occurrence) }
                             }.buttonStyle(.plain).accessibilityLabel("Événement \(occurrence.event.eventID.description), \(eventLevel(occurrence.event)), \(occurrence.droneName)")
+                            if presentation == "table" { Rectangle().fill(palette.border).frame(height: 1) }
                         }
                     }
                 }
-            }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
-                .background(palette.card, in: RoundedRectangle(cornerRadius: 17))
-                .overlay(RoundedRectangle(cornerRadius: 17).stroke(palette.border, lineWidth: 1))
+            }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
+                .background(palette.card, in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(palette.border, lineWidth: 1))
         }
+        .foregroundStyle(palette.primary).buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true)).tint(palette.primary)
         .task(id: filterKey) { cursors = [nil]; selected = nil; reload() }
         .onDisappear { store.cancel() }
         .sheet(item: $selected) { occurrence in
@@ -125,9 +136,10 @@ struct EventBrowserView: View {
     }
     private var levelFilters: some View {
         HStack(spacing: 12) {
-            Picker("Niveau", selection: $levelSource) {
-                Text("Interne").tag("internal"); Text("Externe").tag("external")
-            }.pickerStyle(.segmented).frame(width: 200)
+            Menu {
+                Button("Niveau interne") { levelSource = "internal" }
+                Button("Niveau externe") { levelSource = "external" }
+            } label: { Label(levelSource == "internal" ? "Niveau interne" : "Niveau externe", systemImage: "slider.horizontal.3") }
             Picker("Sévérité", selection: $level) {
                 Text("Tous les niveaux").tag("")
                 ForEach(["EMERGENCY", "ALERT", "CRITICAL", "ERROR", "WARNING", "NOTICE", "INFO", "DEBUG"] + (8...15).map { "RAW_\($0)" } + ["UNKNOWN"], id: \.self) { Text($0).tag($0) }
@@ -136,6 +148,52 @@ struct EventBrowserView: View {
     }
     private var searchField: some View {
         TextField("Rechercher un ID ou du texte", text: $search).textFieldStyle(.roundedBorder)
+    }
+    private func presentationButton(_ title: String, value: String, symbol: String) -> some View {
+        Button(title, systemImage: symbol) { presentation = value }
+            .buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(presentation == value ? palette.primary : .clear, lineWidth: 1))
+            .accessibilityAddTraits(presentation == value ? .isSelected : [])
+            .accessibilityIdentifier("events.presentation.\(value)")
+    }
+    private func tableRow(_ occurrence: LibraryEventOccurrence) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(occurrence.event.timeSeconds.map { "t = \(FlightUIFormat.seconds($0))" } ?? "Temps inconnu").font(.system(size: 12, weight: .medium)).monospacedDigit()
+                Text(occurrence.droneName).font(.system(size: 11)).foregroundStyle(palette.secondary)
+                Text(occurrence.date.isEmpty ? "Date inconnue" : occurrence.date).font(.system(size: 10)).foregroundStyle(palette.secondary)
+            }.frame(width: 150, alignment: .leading)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(occurrence.event.message ?? "Événement brut · ID \(occurrence.event.eventID.description)").font(.system(size: 12, weight: .medium)).lineLimit(3)
+                Text("ID \(occurrence.event.eventID.description) · \(EventTranslationLabel.describe(occurrence.event.translationStatus))")
+                    .font(.system(size: 10)).foregroundStyle(palette.secondary).lineLimit(2)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            BentoStatus(label: eventLevel(occurrence.event), color: eventColor(occurrence.event)).frame(width: 100, alignment: .leading)
+        }.padding(.vertical, 16).contentShape(Rectangle())
+    }
+    private func chronologyRow(_ occurrence: LibraryEventOccurrence) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            Circle().fill(eventColor(occurrence.event)).frame(width: 7, height: 7).padding(.top, 5).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(occurrence.event.timeSeconds.map { "t = \(FlightUIFormat.seconds($0))" } ?? "Temps inconnu").monospacedDigit()
+                    Text(occurrence.droneName)
+                    Text(occurrence.date.isEmpty ? "Date inconnue" : occurrence.date)
+                    Spacer()
+                    BentoStatus(label: eventLevel(occurrence.event), color: eventColor(occurrence.event))
+                }.font(.system(size: 11)).foregroundStyle(palette.secondary)
+                Text(occurrence.event.message ?? "Événement brut · ID \(occurrence.event.eventID.description)").font(.system(size: 13, weight: .medium)).lineLimit(3)
+                Text("ID \(occurrence.event.eventID.description) · \(EventTranslationLabel.describe(occurrence.event.translationStatus)) · \(occurrence.event.topic ?? "event") [\(occurrence.event.instance ?? 0)]")
+                    .font(.system(size: 10)).foregroundStyle(palette.secondary)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }.padding(.vertical, 12).contentShape(Rectangle())
+    }
+    private func eventColor(_ event: PX4Event) -> Color {
+        switch eventLevel(event) {
+        case "EMERGENCY", "ALERT", "CRITICAL", "ERROR": palette.red
+        case "WARNING": palette.amber
+        default: palette.secondary
+        }
     }
     private func eventLevel(_ event: PX4Event) -> String {
         (levelSource == "external" ? event.externalLevelName : event.internalLevelName) ?? event.level
@@ -162,6 +220,8 @@ struct EventBrowserView: View {
 private struct EventDetailSheet: View {
     let occurrence: LibraryEventOccurrence
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var scheme
+    private var palette: Palette { Palette(dark: scheme == .dark) }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack { Text("Événement \(occurrence.event.eventID.description)").font(.title2.weight(.semibold)); Spacer(); Button("Fermer") { dismiss() }.keyboardShortcut(.cancelAction) }
@@ -185,6 +245,8 @@ private struct EventDetailSheet: View {
                 }.textSelection(.enabled)
             }
         }.padding(24).frame(width: 620, height: 540)
+            .foregroundStyle(palette.primary).background(palette.background)
+            .buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true)).tint(palette.primary)
     }
     private func row(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) { Text(label).font(.caption).foregroundStyle(.secondary); Text(value).font(.callout.monospaced()) }

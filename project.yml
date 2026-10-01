@@ -35,8 +35,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mehdiguiard.katalog
-        MARKETING_VERSION: 0.6.0
-        CURRENT_PROJECT_VERSION: 14
+        MARKETING_VERSION: 0.7.0
+        CURRENT_PROJECT_VERSION: 17
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: KataLog
         INFOPLIST_KEY_CFBundleIconFile: KataLog

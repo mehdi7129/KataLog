@@ -31,12 +31,9 @@ struct LogAssessmentBadge: View {
     var log: FlightLog
     @Environment(\.colorScheme) private var scheme
     var body: some View {
-        Label(log.assessment.label, systemImage: log.assessment.symbolName)
-            .font(.caption.weight(.medium))
-            .foregroundStyle(color)
-            .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+        BentoStatus(label: log.assessment.label, color: color)
             .help(log.assessment.help)
+            .accessibilityLabel(log.assessment.label + ", " + log.assessment.reason)
     }
     private var color: Color {
         switch log.assessment.tone {

@@ -127,7 +127,18 @@ final class WorkspacePreviewTests: XCTestCase {
         let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
         host.cacheDisplay(in: host.bounds, to: bitmap)
         let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
-        XCTAssertGreaterThan(png.count, 5_000)
+        XCTAssertEqual(Array(png.prefix(8)), [137, 80, 78, 71, 13, 10, 26, 10])
+        XCTAssertGreaterThan(bitmap.pixelsWide, 0)
+        XCTAssertGreaterThan(bitmap.pixelsHigh, 0)
+        // PNG size depends on compression: a minimal monochrome chart can be
+        // smaller than 5 KB. Check real rendered pixels instead of file weight.
+        let background = bitmap.colorAt(x: 0, y: 0)
+        let samples = stride(from: 0, to: bitmap.pixelsHigh, by: max(1, bitmap.pixelsHigh / 80)).contains { y in
+            stride(from: 0, to: bitmap.pixelsWide, by: max(1, bitmap.pixelsWide / 80)).contains { x in
+                bitmap.colorAt(x: x, y: y) != background
+            }
+        }
+        XCTAssertTrue(samples, "The rendered view must contain visible content, not a flat bitmap.")
         if let output = ProcessInfo.processInfo.environment["KATALOG_UI_ARTIFACTS"] {
             let folder = URL(fileURLWithPath: output); try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             try png.write(to: folder.appendingPathComponent(name + ".png"))
@@ -151,7 +162,7 @@ final class WorkspacePreviewTests: XCTestCase {
         let f = try await fixture()
         XCTAssertEqual(f.library.historyPage?.totals.logs, 120)
         XCTAssertEqual(f.library.historyPage?.totals.familyLogCounts.count, 9)
-        for page in [Workspace06View.Page.overview, .history, .alerts, .events, .drones,
+        for page in [Workspace06View.Page.overview, .history, .alerts, .events, .map, .drones,
                      .collection, .storage, .reports, .settings] {
             for scheme in [ColorScheme.dark, .light] {
                 let fitting = try await renderWorkspace(f, page: page, name: "workspace-\(page)-\(scheme)",
@@ -310,6 +321,16 @@ final class WorkspacePreviewTests: XCTestCase {
                 XCTAssertLessThanOrEqual(fitting.height, 130.5)
             }
         }
+    }
+
+    func testProfileZoomKeepsRawCountsAndReadableLogDenominator() {
+        let counts = ["Batterie": 11, "GNSS": 4, "Ancien axe": 0]
+        XCTAssertEqual(AlertProfile06.displayMaximum(counts: counts, denominator: 128), 12)
+        XCTAssertEqual(counts["Batterie"], 11)
+        XCTAssertEqual(AlertProfile06.displayMaximum(counts: [:], denominator: 128), 1)
+        XCTAssertEqual(AlertProfile06.displayMaximum(counts: ["Batterie": 0], denominator: 128), 1)
+        XCTAssertEqual(AlertProfile06.displayMaximum(counts: counts, denominator: 0), 1)
+        XCTAssertEqual(AlertProfile06.displayMaximum(counts: ["Tous": Int.max], denominator: Int.max), Int.max)
     }
 
     func testReadOnlySavedScopeAndResetAreTransientAndPreserveSettings() async throws {

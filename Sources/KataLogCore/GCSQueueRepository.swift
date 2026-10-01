@@ -88,6 +88,26 @@ public final class GCSQueueRepository: @unchecked Sendable {
         return writes
     }
 
+    /// Count the complete history without decoding the bounded UI page. Jobs
+    /// created since the latest persistence pass are included exactly once.
+    public func transferCount(overlay: [GCSTransfer] = []) throws -> Int {
+        lock.lock(); defer { lock.unlock() }
+        let statement = try prepare("SELECT COUNT(*) FROM transfers")
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else { throw AnalysisError.engine("Le nombre de transferts n’a pas pu être lu.") }
+        var count = Int(sqlite3_column_int64(statement, 0))
+        let identifiers = Array(Set(overlay.map(\.id)))
+        for offset in stride(from: 0, to: identifiers.count, by: 500) {
+            let batch = Array(identifiers[offset..<min(offset + 500, identifiers.count)])
+            let existing = try prepare("SELECT COUNT(*) FROM transfers WHERE id IN (" + Array(repeating: "?", count: batch.count).joined(separator: ",") + ")")
+            defer { sqlite3_finalize(existing) }
+            for (index, id) in batch.enumerated() { bind(id, at: Int32(index + 1), to: existing) }
+            guard sqlite3_step(existing) == SQLITE_ROW else { throw AnalysisError.engine("Le nombre de transferts récents n’a pas pu être lu.") }
+            count += batch.count - Int(sqlite3_column_int64(existing, 0))
+        }
+        return count
+    }
+
     public func retainedTransfers(terminalLimit: Int = 200) throws -> [GCSTransfer] {
         lock.lock(); defer { lock.unlock() }
         let statement = try prepare("SELECT payload FROM transfers WHERE state IN ('queued','retrying','downloading','importing') OR remote_busy_until > ? OR id IN (SELECT id FROM transfers WHERE state NOT IN ('queued','retrying','downloading','importing') ORDER BY position DESC LIMIT ?) ORDER BY position")
@@ -163,17 +183,46 @@ public final class GCSQueueRepository: @unchecked Sendable {
 
     public func batchProgress(id: String, overlay: [GCSTransfer] = []) throws -> GCSBatchProgress {
         lock.lock(); defer { lock.unlock() }
-        let statement = try prepare("SELECT COUNT(*),COALESCE(SUM(state IN ('downloaded','complete')),0),COALESCE(SUM(state IN ('failed','interrupted')),0),COALESCE(SUM(state IN ('downloading','importing')),0),COALESCE(SUM(state IN ('queued','retrying')),0),COALESCE(SUM(state='stopped'),0),COALESCE(SUM(size),0),COALESCE(SUM(completed_bytes),0) FROM transfers WHERE batch_id=?")
+        // Terminal successes and queued work need no JSON parsing. For partial work,
+        // SQLite reads the existing phase fields without materializing the history in Swift.
+        // This keeps the v1 schema/settings and read-only backup compatibility intact.
+        let statement = try prepare("""
+            SELECT COUNT(*),COALESCE(SUM(state IN ('downloaded','complete')),0),
+                   COALESCE(SUM(state IN ('failed','interrupted')),0),
+                   COALESCE(SUM(state IN ('downloading','importing')),0),
+                   COALESCE(SUM(state IN ('queued','retrying')),0),COALESCE(SUM(state='stopped'),0),
+                   COALESCE(SUM(CAST(size AS REAL)),0),COALESCE(SUM(CAST(completed_bytes AS REAL)),0),
+                   COALESCE(SUM(CAST(size AS REAL) * (
+                       CASE WHEN state IN ('downloaded','complete') THEN 1.0
+                            WHEN state IN ('queued','retrying') OR size <= 0 THEN 0.0
+                            ELSE MIN(0.99, MAX(0.0,
+                                CASE json_extract(CAST(payload AS TEXT),'$.phase')
+                                WHEN 'drone' THEN 0.5 *
+                                    CASE WHEN json_extract(CAST(payload AS TEXT),'$.phaseTotal') > 0
+                                         THEN MIN(1.0, MAX(0.0, COALESCE(
+                                             CAST(json_extract(CAST(payload AS TEXT),'$.phaseBytes') AS REAL) /
+                                             CAST(json_extract(CAST(payload AS TEXT),'$.phaseTotal') AS REAL),0.0)))
+                                         ELSE 0.0 END
+                                WHEN 'http' THEN 0.5 + 0.5 * MIN(1.0,MAX(0.0,CAST(completed_bytes AS REAL)/size))
+                                ELSE MIN(1.0,MAX(0.0,CAST(completed_bytes AS REAL)/size)) END)) END
+                   )),0)
+            FROM transfers WHERE batch_id=?
+            """)
         defer { sqlite3_finalize(statement) }; bind(id, at: 1, to: statement)
         guard sqlite3_step(statement) == SQLITE_ROW else { throw AnalysisError.engine("Impossible de lire la progression de collecte.") }
-        var values = (0...7).map { sqlite3_column_int64(statement, Int32($0)) }
-        for current in overlay {
+        var values = (0...8).map { sqlite3_column_double(statement, Int32($0)) }
+        let latest = overlay.reduce(into: [String: GCSTransfer]()) { $0[$1.id] = $1 }
+        for current in latest.values {
             if let previous = try transfer(id: current.id), previous.batchID == id {
                 add(previous, direction: -1, values: &values)
             }
             if current.batchID == id { add(current, direction: 1, values: &values) }
         }
-        return GCSBatchProgress(totalCount: Int(values[0]), completedCount: Int(values[1]), failedCount: Int(values[2]), activeCount: Int(values[3]), pendingCount: Int(values[4]), stoppedCount: Int(values[5]), totalBytes: values[6], completedBytes: values[7])
+        return GCSBatchProgress(totalCount: Int(GCSProgressMath.boundedInteger(values[0])), completedCount: Int(GCSProgressMath.boundedInteger(values[1])),
+                                failedCount: Int(GCSProgressMath.boundedInteger(values[2])), activeCount: Int(GCSProgressMath.boundedInteger(values[3])),
+                                pendingCount: Int(GCSProgressMath.boundedInteger(values[4])), stoppedCount: Int(GCSProgressMath.boundedInteger(values[5])),
+                                totalBytes: GCSProgressMath.boundedInteger(values[6]), completedBytes: GCSProgressMath.boundedInteger(values[7]),
+                                completedWorkBytes: values[8], totalWorkBytes: values[6])
     }
 
     public func recordCachedFiles(batchID: String, identities: Set<String>) throws -> Int {
@@ -197,9 +246,10 @@ public final class GCSQueueRepository: @unchecked Sendable {
 
     public func forgetPayloads(except ids: Set<String>) { lock.lock(); defer { lock.unlock() }; encoded = encoded.filter { ids.contains($0.key) } }
 
-    private func add(_ item: GCSTransfer, direction: Int64, values: inout [Int64]) {
+    private func add(_ item: GCSTransfer, direction: Double, values: inout [Double]) {
         let p = GCSBatchProgress(transfers: [item])
-        let delta = [Int64(p.totalCount), Int64(p.completedCount), Int64(p.failedCount), Int64(p.activeCount), Int64(p.pendingCount), Int64(p.stoppedCount), p.totalBytes, p.completedBytes]
+        let delta = [Double(p.totalCount), Double(p.completedCount), Double(p.failedCount), Double(p.activeCount), Double(p.pendingCount), Double(p.stoppedCount),
+                     Double(max(0, item.size)), Double(min(max(0, item.size), max(0, item.completedBytes))), Double(max(0, item.size)) * item.workFraction]
         for index in values.indices { values[index] += direction * delta[index] }
     }
     private func prepare(_ sql: String) throws -> OpaquePointer {

@@ -18,10 +18,10 @@ struct UpdateSettingsView: View {
             }
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .top, spacing: 14) {
-                    Image(systemName: symbol).font(.system(size: 22, weight: .medium))
+                    BentoIcon(symbol: symbol, size: 22)
                         .foregroundStyle(store.state == .upToDate ? palette.mint : ink)
                         .frame(width: 42, height: 42)
-                        .background(palette.raised, in: RoundedRectangle(cornerRadius: 11))
+                        .background(palette.raised, in: RoundedRectangle(cornerRadius: 12))
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 6) {
                         Text(store.title).font(.system(size: 13, weight: .semibold))
@@ -32,6 +32,20 @@ struct UpdateSettingsView: View {
                     if checking {
                         ProgressView().controlSize(.small)
                             .accessibilityLabel("Recherche d’une nouvelle version en cours")
+                    }
+                }
+                if store.canConfigureAutomaticChecks {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle("Rechercher automatiquement les mises à jour", isOn: Binding(
+                            get: { store.automaticallyChecksForUpdates },
+                            set: { store.setAutomaticallyChecksForUpdates($0) }
+                        ))
+                        .toggleStyle(.switch).controlSize(.small)
+                        .font(.system(size: 12)).disabled(readOnly)
+                        .accessibilityIdentifier("updates.automaticChecks")
+                        Text("KataLog vous propose les nouvelles versions. Vous choisissez quand installer et redémarrer.")
+                            .font(.system(size: 11)).foregroundStyle(subtle)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 if readOnly {
@@ -52,9 +66,9 @@ struct UpdateSettingsView: View {
             Label("Les imports, collectes et exports se terminent avant le redémarrage.", systemImage: "clock")
                 .font(.system(size: 11)).foregroundStyle(subtle)
         }
-        .foregroundStyle(ink).padding(22).frame(maxWidth: .infinity, alignment: .leading)
-        .background(palette.card, in: RoundedRectangle(cornerRadius: 17))
-        .overlay(RoundedRectangle(cornerRadius: 17).stroke(palette.border, lineWidth: 1))
+        .foregroundStyle(ink).padding(24).frame(maxWidth: .infinity, alignment: .leading)
+        .background(palette.card, in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(palette.border, lineWidth: 1))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Réglages des mises à jour de KataLog")
     }

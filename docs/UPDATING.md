@@ -1,5 +1,21 @@
 # Mettre à jour KataLog
 
+## Depuis la version 0.7.0
+
+Ouvrez **Réglages → Mises à jour → Rechercher une mise à jour**, ou la commande
+du menu de l’app. Lorsqu’une nouvelle version est proposée, choisissez de la
+télécharger puis **Installer et redémarrer**. La bibliothèque, les identités et
+le dossier de collecte sont conservés. Terminez ou arrêtez les opérations avant
+l’installation ; KataLog attend si un import, une collecte ou un export est en cours.
+
+Activez **Rechercher automatiquement les mises à jour** si vous souhaitez être
+prévenu des nouvelles versions. Ce choix est conservé au redémarrage. L’app
+ne télécharge ni n’installe silencieusement : vous gardez le choix du moment.
+
+Les utilisateurs de **0.5.x et 0.6.x** installent 0.7.0 une première fois par
+DMG : leurs builds n’activent pas le flux public. Ensuite les mises à jour se
+font depuis l’app. KataLog Preview reste une app de review indépendante.
+
 ## Installation manuelle
 
 Téléchargez le nouveau DMG depuis la page Releases officielle, ouvrez-le, puis
@@ -8,7 +24,7 @@ l’ancienne app. Fermez KataLog avant ce remplacement. La bibliothèque, les
 numéros de drones, les vues enregistrées et le dossier de collecte restent dans
 Application Support et ne sont pas contenus dans l’app.
 
-Les versions **0.5.1, 0.5.2 et 0.6.0** utilisent cette procédure. Le passage
+Les versions **0.5.x et 0.6.x** utilisent cette procédure. Le passage
 à 0.6.0 conserve la bibliothèque existante ; la projection SQLite est reconstruite
 localement sans imposer de réanalyse des ULogs. Sparkle est embarqué, mais aucun
 flux public n’est activé dans cette release.
@@ -34,9 +50,9 @@ qu’un flux public est disponible ni qu’une mise à jour réelle a été publ
 
 Un build activé exige un flux HTTPS et sa clé publique Ed25519. Le flux et
 l’archive doivent être signés. La signature est vérifiée avant extraction ;
-l’expiration permettant un repli vers un flux non signé est désactivée. Les
-recherches automatiques, l’installation automatique, le profil système et le
-JavaScript des notes de version sont désactivés.
+l’expiration permettant un repli vers un flux non signé est désactivée. Les recherches automatiques sont désactivées par défaut et activables par
+l’utilisateur depuis les réglages. L’installation automatique, le profil
+système et le JavaScript des notes de version restent désactivés.
 
 La recherche et l’installation sont refusées pendant les imports, collectes,
 exports ou opérations de stockage. Si le redémarrage devient nécessaire alors
@@ -57,14 +73,14 @@ Les deux canaux utilisent des comptes de signature distincts :
 
 Un flux stable contient des versions sans tag de canal. Le flux de staging
 utilise le tag `staging`, accepté uniquement par les builds de staging. Des URLs
-séparées sont prévues, par exemple `updates/staging/appcast.xml` et
-`updates/stable/appcast.xml` sur GitHub Pages. Ces endpoints doivent être créés
-et vérifiés avant toute activation d’un build destiné aux utilisateurs.
+séparées sont nécessaires pour les deux canaux. Le flux stable KataLog est servi
+par GitHub Raw à l’adresse indiquée au début de ce document. Un éventuel flux
+de staging doit être créé et vérifié séparément avant activation.
 
 Configurer un build de staging :
 
 ```bash
-KATALOG_VERSION=0.6.0 KATALOG_BUILD_NUMBER=9 \
+KATALOG_VERSION=0.7.1 KATALOG_BUILD_NUMBER=18 \
 KATALOG_UPDATE_CHANNEL=staging \
 KATALOG_UPDATE_FEED_URL=https://updates.example.org/staging/appcast.xml \
 KATALOG_UPDATE_PUBLIC_KEY='<cle-publique-base64>' \
@@ -78,11 +94,11 @@ Pour relire un brouillon, une archive ZIP existante suffit :
 
 ```bash
 python3 tools/update-feed.py prepare \
-  --archive dist/KataLog-0.6.0-macOS-arm64.zip \
-  --archive-url https://updates.example.org/KataLog-0.6.0-macOS-arm64.zip \
+  --archive dist/KataLog-0.7.0-macOS-arm64.zip \
+  --archive-url https://updates.example.org/KataLog-0.7.0-macOS-arm64.zip \
   --output /private/tmp/katalog-update-draft \
   --release-notes /private/tmp/katalog-release-notes.txt \
-  --channel staging --previous-build 8 --draft
+  --channel staging --previous-build 16 --draft
 ```
 
 Le brouillon est nommé `appcast.draft.xml` et reste non signé. Pour préparer un
