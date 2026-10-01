@@ -302,13 +302,20 @@ final class EngineRuntimeTests: XCTestCase {
         let start = Date()
         task.cancel()
         _ = try? await task.value
-        let deadline = Date().addingTimeInterval(1.5)
+        let deadline = start.addingTimeInterval(1.5)
         while kill(pid, 0) == 0, Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertEqual(kill(pid, 0), -1)
         XCTAssertEqual(errno, ESRCH)
+        // Stream cancellation resumes its consumer before the detached reader
+        // finishes. A reaped child does not prove that the reader's defer has
+        // closed the parent-side lease duplicate. Require both within one bound.
+        var nextWriter = try LibraryWriterLease(directory: root)
+        while !nextWriter.isWritable, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+            nextWriter = try LibraryWriterLease(directory: root)
+        }
+        XCTAssertTrue(nextWriter.isWritable, "The cancelled reader must release its inherited lease within the cancellation deadline.")
         XCTAssertLessThan(Date().timeIntervalSince(start), 1.5)
-        let nextWriter = try LibraryWriterLease(directory: root)
-        XCTAssertTrue(nextWriter.isWritable)
         withExtendedLifetime(nextWriter) {}
     }
 
