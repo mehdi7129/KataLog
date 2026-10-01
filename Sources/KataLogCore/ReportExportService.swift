@@ -206,10 +206,16 @@ public enum ReportExportService {
            prepared.logCount + prepared.messageCount <= 5_000 {
             let snapshot = try AnalysisService.decode(boundedRead(full, budget: inlineJSONBudget))
             try cancellation.check()
-            let detailedItems = snapshot.logs.reduce(0) { sum, log in
-                sum + (log.parameters?.count ?? 0) + (log.events?.count ?? 0) +
-                (log.topicDetails?.reduce(0) { $0 + $1.fields.count } ?? 0) +
-                (log.telemetry?.reduce(0) { $0 + $1.points.count } ?? 0)
+            let detailedItems: Int = snapshot.logs.reduce(0) { (sum: Int, log: FlightLog) -> Int in
+                let parameterCount: Int = log.parameters?.count ?? 0
+                let eventCount: Int = log.events?.count ?? 0
+                let topicFieldCount: Int = log.topicDetails?.reduce(0) { (total: Int, topic: TopicDetail) -> Int in
+                    total + topic.fields.count
+                } ?? 0
+                let telemetryPointCount: Int = log.telemetry?.reduce(0) { (total: Int, series: TelemetrySeries) -> Int in
+                    total + series.points.count
+                } ?? 0
+                return sum + parameterCount + eventCount + topicFieldCount + telemetryPointCount
             }
             if detailedItems <= 5_000 {
                 var manifest = ReportScopeManifest.describing(snapshot, mode: capture.request.mode,

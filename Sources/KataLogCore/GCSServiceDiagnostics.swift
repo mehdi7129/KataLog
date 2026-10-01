@@ -164,10 +164,17 @@ public enum GCSServiceDiagnostics {
         }
         guard bytes.count >= 22 else { throw GCSServiceDiagnosticsError.invalidArchive }
         let lower = max(0, bytes.count - 65557)
-        guard let end = stride(from: bytes.count - 22, through: lower, by: -1).first(where: { i in
-            bytes[i] == 0x50 && bytes[i+1] == 0x4b && bytes[i+2] == 5 && bytes[i+3] == 6 &&
-            i + 22 + (Int(bytes[i+20]) | Int(bytes[i+21]) << 8) == bytes.count
-        }) else { throw GCSServiceDiagnosticsError.invalidArchive }
+        let candidates: StrideThrough<Int> = stride(from: bytes.count - 22, through: lower, by: -1)
+        let endOffset: Int? = candidates.first { (i: Int) -> Bool in
+            guard bytes[i] == 0x50, bytes[i + 1] == 0x4b,
+                  bytes[i + 2] == 5, bytes[i + 3] == 6 else { return false }
+            let commentLow: Int = Int(bytes[i + 20])
+            let commentHigh: Int = Int(bytes[i + 21]) << 8
+            let commentLength: Int = commentLow | commentHigh
+            let recordEnd: Int = i + 22 + commentLength
+            return recordEnd == bytes.count
+        }
+        guard let end = endOffset else { throw GCSServiceDiagnosticsError.invalidArchive }
         let count = try u16(end + 10), offset = try u32(end + 16), size = try u32(end + 12)
         guard try u16(end+4) == 0, try u16(end+6) == 0, try u16(end+8) == count,
               (1...names.count).contains(count), offset + size == end else { throw GCSServiceDiagnosticsError.unsafeArchive }
