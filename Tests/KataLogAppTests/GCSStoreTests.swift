@@ -321,8 +321,13 @@ else:
             }
             return state
         })
-        let library = LibraryStore(storageDirectory: root)
+        let library = LibraryStore(storageDirectory: root, pagedNavigation: true)
         defer { store.stopCollection(); store.disconnect(); library.prepareForTermination(); try? FileManager.default.removeItem(at: root) }
+        // Finish the startup index before connecting and rendering. Otherwise
+        // onAppear starts maintenance and the next theme can race its writes.
+        try await waitUntil { !library.isQuerying && !library.isMaintainingLibrary }
+        XCTAssertNil(library.queryError)
+        _ = try XCTUnwrap(library.historyPage, "The startup index must be ready for this collection layout fixture.")
         store.connect()
         try await waitUntil { store.drones.filter(\.isOnline).count == 2 }
         XCTAssertEqual(store.queue.count, 40)
@@ -352,6 +357,8 @@ else:
                     .write(to: directory.appendingPathComponent("gcs-desktop-1440-failed-queue-\(scheme).png"))
             }
         }
+        XCTAssertNil(library.queryError)
+        XCTAssertNil(store.errorMessage, "Rendering must not cause a collection persistence error.")
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("trace.jsonl").path), "Rendering must not start a transfer.")
     }
 

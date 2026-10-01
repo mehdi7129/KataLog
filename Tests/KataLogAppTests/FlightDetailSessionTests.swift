@@ -168,9 +168,20 @@ final class FlightDetailSessionTests: XCTestCase {
         XCTAssertNil(secondWindow.appearance)
         FlightWindowCoordinator.shared.open(log: first, library: library)
         XCTAssertEqual(NSApp.windows.filter { $0.identifier?.rawValue == "flight.window.native-first" }.count, 1)
-        let frame = NSRect(x: firstWindow.frame.minX + 20, y: firstWindow.frame.minY + 20, width: 900, height: 700)
+        // AppKit constrains titled windows to the available screen height (the
+        // CI desktop is smaller than 700 pt). Exercise a size that fits it.
+        let available = try XCTUnwrap(firstWindow.screen).visibleFrame.insetBy(dx: 12, dy: 12)
+        let previousSize = firstWindow.frame.size
+        let frame = NSRect(x: available.minX, y: available.minY,
+                           width: min(900, available.width), height: min(700, available.height))
+        XCTAssertGreaterThanOrEqual(frame.width, firstWindow.minSize.width)
+        XCTAssertGreaterThanOrEqual(frame.height, firstWindow.minSize.height)
         firstWindow.setFrame(frame, display: false)
         XCTAssertEqual(firstWindow.frame.size, frame.size)
+        XCTAssertNotEqual(firstWindow.frame.size, previousSize)
+        let movedOrigin = NSPoint(x: frame.minX + 8, y: frame.minY + 8)
+        firstWindow.setFrameOrigin(movedOrigin)
+        XCTAssertEqual(firstWindow.frame.origin, movedOrigin)
         firstWindow.performClose(nil)
         XCTAssertFalse(firstWindow.isVisible)
         XCTAssertTrue(secondWindow.isVisible)
