@@ -93,6 +93,9 @@ struct Workspace06View: View {
     }
 
     var body: some View {
+        librarySheets
+    }
+    private var workspaceContent: some View {
         HStack(spacing: 0) {
             sidebar
             VStack(spacing: 0) {
@@ -126,6 +129,9 @@ struct Workspace06View: View {
         .font(.system(size: 12)).foregroundStyle(palette.primary)
         .buttonStyle(WorkspaceActionButtonStyle(palette: palette))
         .preferredColorScheme(theme).tint(palette.primary)
+    }
+    private var observedWorkspace: some View {
+        workspaceContent
         .onAppear {
             gcs.attach(library: library)
             updates.installationAllowed = { !library.isReadOnly && !library.isImporting && !library.isExporting && !library.isMaintainingLibrary && !gcs.isBusy && !library.isQuerying && !library.isLoadingFlight }
@@ -147,10 +153,16 @@ struct Workspace06View: View {
         .onChange(of: storage.errorMessage) { _, issue in
             if issue != nil, let index = storageOffsets.firstIndex(of: storage.currentOffset) { storageOffsets = Array(storageOffsets.prefix(index + 1)) }
         }
+    }
+    private var navigationSheets: some View {
+        observedWorkspace
         .sheet(isPresented: $showingScope, onDismiss: { library.loadHistory(); focusedControl = .scope }) { ScopeEditor06(library: library) }
         .sheet(isPresented: $showingFlight, onDismiss: { library.closeFlight(); focusedControl = page == .history ? lastOpenedLogID.map(FocusControl.historyLog) : .refresh }) { FlightSheet06(library: library).preferredColorScheme(theme) }
         .sheet(item: $identity) { DroneNumberEditor(target: $0, store: library.annotations) }
         .sheet(isPresented: $showingSources) { SourcesImportView(library: library, externalBusy: gcs.isBusy).preferredColorScheme(theme) }
+    }
+    private var librarySheets: some View {
+        navigationSheets
         .sheet(isPresented: Binding(get: { restorePreview != nil }, set: { if !$0 { restorePreview = nil; restoreCandidate = nil } }), onDismiss: { focusedControl = .restore }) { restoreSheet }
         .sheet(isPresented: $showingDiagnostic, onDismiss: { diagnostics.dismiss(); focusedControl = .diagnostic }) {
             DiagnosticView(store: diagnostics, host: gcs.host, readOnly: library.isReadOnly, externalBusy: mutationBusy || library.isExporting,
@@ -1491,7 +1503,8 @@ private struct ProfileRadar06: View {
     var body: some View {
         GeometryReader { geometry in
             let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
-            let radius = min(geometry.size.width / 3, geometry.size.height / 2.6)
+            let layoutRadius: CGFloat = min(geometry.size.width / 3, geometry.size.height / 2.6)
+            let radius: Double = Double(layoutRadius)
             let count = axes.count
             ZStack {
                 ForEach(1...4, id: \.self) { ring in Path { path in for index in 0..<count { let p = point(index, count, center, radius * Double(ring) / 4); if index == 0 { path.move(to: p) } else { path.addLine(to: p) } }; path.closeSubpath() }.stroke(palette.border, lineWidth: 1) }
