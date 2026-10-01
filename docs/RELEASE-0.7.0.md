@@ -1,7 +1,7 @@
 # KataLog 0.7.0 — recette de release
 
-Version **0.7.0**, build **17**. Qualification locale terminée le 1er octobre 2026.
-La publication et la CI publique sont suivies séparément ci-dessous.
+Version **0.7.0**, build **17**. Qualifications locale et CI terminées le 1er octobre 2026.
+La distribution publique et les tests de mise à jour sont détaillés ci-dessous.
 
 ## Contenu
 
@@ -52,6 +52,12 @@ Les runners GitHub standard sont gratuits pour ce dépôt public.
 Le corpus privé demeure exclu de la CI ; aucun log de flotte réelle n’y est envoyé.
 Les modifications de compatibilité Swift 6.1 préservent les calculs et les actions
 de l’interface ; les rendus de référence restent identiques.
+
+Le [banc SDK de mise à jour](https://github.com/mehdi7129/KataLog/actions/runs/36877469286)
+réussit également sur macOS 15 et 27 : installation et relancement, flux modifié,
+archive modifiée, téléchargement interrompu et archive absente. Chaque runner
+exécute les cinq recettes avec des apps jetables et des données synthétiques.
+Ce banc qualifie le fonctionnement du SDK avec un flux loopback signé.
 
 L’audit couvre le commit exact, l’archive source, les assets, les refs et l’historique,
 les métadonnées GitHub et les logs de CI. Aucune donnée opérationnelle privée

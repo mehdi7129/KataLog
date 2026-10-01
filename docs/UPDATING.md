@@ -142,6 +142,14 @@ cycle sur macOS 15 et macOS 27. Les tests unitaires et les signatures locales
 constituent des preuves logicielles ; ils ne remplacent pas cette recette
 d’installation.
 
+Pour la 0.7.0, le [banc d’installation SDK](https://github.com/mehdi7129/KataLog/actions/runs/36877469286)
+a réussi ses cinq recettes sur macOS 15 et 27 : installation et relancement,
+flux et archive modifiés, téléchargement interrompu et archive absente.
+Il utilise des apps jetables, une clé de test éphémère et un flux loopback signé.
+Les fichiers de la bibliothèque et du dossier de collecte synthétiques sont conservés.
+Les archives publiques et leur flux HTTPS sont contrôlés séparément par SHA-256
+et avec l’outil de vérification officiel Sparkle.
+
 Sources : [Sparkle 2.10.0](https://github.com/sparkle-project/Sparkle/releases/tag/2.10.0),
 [sécurité et configuration](https://sparkle-project.org/documentation/customization/),
 [publication des mises à jour](https://sparkle-project.org/documentation/publishing/).
