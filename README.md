@@ -34,6 +34,28 @@ le suivi de la CI finale sont consignés dans les
 [validation de la Preview](docs/VALIDATION-CLIENTS-BENTO.md) conserve ses résultats
 séparément. La Preview utilise une bibliothèque indépendante.
 
+### Prérelease 0.8.1 en préparation
+
+La candidate **`v0.8.1-beta.1`**, distribuée sous le nom **KataLog Preview**
+(version 0.8.1, build 19), améliore la couverture de la carte, la navigation et
+la lisibilité des actions. Sa qualification finale est en cours ; **0.8.0 reste
+la release stable** et son flux de mise à jour n’est pas modifié.
+
+- Tous les logs géolocalisés de la sélection sont représentés, avec regroupement
+  des repères proches et trajectoires détaillées à l’ouverture d’un log.
+- Les retours entre onglets réutilisent les résultats encore valides ; le cadrage
+  de la carte est conservé pendant la navigation.
+- Les réglages et filtres sont allégés ; les identifiants et outils techniques
+  restent disponibles en mode avancé. Les actions indisponibles expliquent pourquoi.
+- La collecte peut analyser un fichier pendant le transfert du suivant, avec
+  concurrence et file d’attente bornées. Le gain mesuré vient d’un banc simulé.
+
+La Preview conserve ses données dans une bibliothèque dédiée et se met à jour
+manuellement. Elle ne remplace pas KataLog stable et ne reprend pas automatiquement
+sa bibliothèque. Voir la [recette de prérelease](docs/RELEASE-0.8.1-BETA.md),
+l’[audit UX](docs/UX-AUDIT-0.8.1.md) et les
+[mesures de performance](docs/PERFORMANCE-MAP-NAVIGATION.md).
+
 Les mises à jour signées depuis l’app sont disponibles depuis 0.7.0 via
 **Réglages → Rechercher une mise à jour**. Vous choisissez quand installer et
 redémarrer. Les utilisateurs de 0.6.x peuvent passer directement à la dernière
@@ -71,7 +93,8 @@ La collecte utilise une file SQLite durable et importe exactement les fichiers
 reçus, sans créer automatiquement une seconde archive. Les drones ajoutés lors de la collecte
 restent dans le registre, même sans log ni numéro de stock. La comparaison des paramètres conserve
 les valeurs et types ; elle n’attribue pas une cause de panne.
-Le parseur courant est **1.4.0**, avec projection SQLite **7**. Les anciennes
+Le parseur courant est **1.4.0**, avec projection SQLite **8** dans les sources
+de la candidate 0.8.1 (**7** dans la stable 0.8.0). Les anciennes
 analyses sont conservées et leur recalcul est explicite.
 
 ### Diagnostic local
@@ -156,13 +179,14 @@ restent dans une archive distincte et ne sont pas distribuées ici.
 1. Ouvrir **Carte**, sélectionner un client si nécessaire, puis saisir une ville,
    une adresse ou des coordonnées et choisir un rayon. Un log correspond dès
    qu’une portion valide de sa trajectoire traverse cette zone. La recherche
-   porte sur tout le périmètre client, avant la limite d’affichage de la carte.
+   porte sur tout le périmètre client, avant la pagination des résultats.
 2. La recherche utilise les trajectoires complètes disponibles ; celles d’une
    ancienne bibliothèque sont mises en cache à partir des sources accessibles.
-   Les logs qui n’ont pas pu être vérifiés sont annoncés. La carte affiche les
-   **80 logs géolocalisés les plus récents** du périmètre avec un aperçu de
-   **256 points maximum par log** ; ces aperçus ne limitent pas la recherche.
-   Les coupures de données séparent les trajectoires et ne sont jamais reliées.
+   Les logs qui n’ont pas pu être vérifiés sont annoncés. Sur la branche de
+   développement, la carte représente **tous les logs géolocalisés** du périmètre
+   par des marqueurs regroupés. Cliquer sur un groupe zoome ; ouvrir un log
+   affiche sa trajectoire détaillée. Les coupures GPS ne sont jamais reliées.
+   La release 0.8.0 reste limitée aux 80 logs les plus récents.
 3. Ouvrir un log depuis la carte ou l’historique. Sa fenêtre macOS peut être
    déplacée, agrandie et fermée indépendamment ; rouvrir le même log ramène sa
    fenêtre au premier plan. Elle charge ses détails à la demande : carte jusqu’à **4 096 points**, chronologie des alertes, tous les
@@ -230,6 +254,10 @@ La barre **Progression globale** suit le lot courant : octets, fichiers vérifi�
 attentes et erreurs. Jusqu’à **2 drones distincts** transfèrent leurs logs en
 parallèle, avec **1 fichier à la fois par UUID**. Les fichiers déjà vérifiés sont
 reconnus lors de l’inventaire et exclus des nouveaux téléchargements.
+Sur la branche de développement, l’analyse utilise un worker séparé ; un transfert
+vérifié libère son slot réseau immédiatement. Au plus quatre fichiers sont en
+transfert ou en attente d’analyse. Les résultats et limites mesurés figurent dans
+[la validation des performances](docs/PERFORMANCE-MAP-NAVIGATION.md).
 
 La connexion surveille les nouveaux appareils et se rétablit automatiquement.
 Les réglages et UUID autorisés sont enregistrés dans `gcs-settings.json`, la

@@ -3,26 +3,115 @@ import MapKit
 import Combine
 import KataLogCore
 
+/// Lightweight state owned by the workspace so returning to the map keeps its
+/// camera and style. It never retains MKMapView, annotations or log payloads.
+@MainActor
+final class FleetMapPresentationState: ObservableObject {
+    @Published var satellite = false
+    @Published private(set) var selectedLogID: String?
+    @Published private(set) var clusterLogIDs: Set<String>?
+    private var selectionScopeID: String?
+    private var viewport: (key: FleetMapViewportKey, rect: MKMapRect)?
+
+    func reconcile(scopeID: String, availableIDs: Set<String>) {
+        if selectionScopeID != scopeID || clusterLogIDs.map({ !$0.isSubset(of: availableIDs) }) == true {
+            showAllLocations()
+        }
+        if selectionScopeID != scopeID || selectedLogID.map({ !availableIDs.contains($0) }) == true {
+            selectedLogID = nil
+        }
+        selectionScopeID = scopeID
+    }
+
+    func selectCluster(_ ids: [String], availableIDs: Set<String>) {
+        let members = Set(ids).intersection(availableIDs)
+        clusterLogIDs = members.isEmpty ? nil : members
+        selectedLogID = nil
+    }
+
+    func selectLog(_ id: String) { selectedLogID = id }
+    func showAllLocations() { clusterLogIDs = nil }
+
+    func listedMarkers(_ markers: [LibraryMapMarker]) -> [LibraryMapMarker] {
+        guard let clusterLogIDs else { return markers }
+        return markers.filter { clusterLogIDs.contains($0.id) }
+    }
+
+    func rememberViewport(_ rect: MKMapRect, for key: FleetMapViewportKey) {
+        guard !rect.isNull, !rect.isEmpty,
+              rect.origin.x.isFinite, rect.origin.y.isFinite,
+              rect.width.isFinite, rect.height.isFinite else { return }
+        viewport = (key, rect)
+    }
+
+    func viewport(for key: FleetMapViewportKey) -> MKMapRect? {
+        viewport?.key == key ? viewport?.rect : nil
+    }
+}
+
+struct FleetMapViewportKey: Equatable {
+    let scopeID: String
+    let markerSignature: Int
+    let proximity: GeographicProximity?
+
+    init(scopeID: String, markers: [LibraryMapMarker], proximity: GeographicProximity?) {
+        self.scopeID = scopeID
+        self.proximity = proximity
+        var hasher = Hasher()
+        for marker in markers {
+            hasher.combine(marker.id); hasher.combine(marker.latitude); hasher.combine(marker.longitude)
+        }
+        markerSignature = hasher.finalize()
+    }
+}
+
 struct FleetMapView: View {
-    let logs: [FlightLog]
+    let markers: [LibraryMapMarker]
+    let scopeID: String
+    @StateObject private var presentation: FleetMapPresentationState
     var showsHeading = true
     var proximity: GeographicProximity? = nil
     var totalCount: Int? = nil
+    var locatedCount: Int? = nil
     var proximityUnavailableLogs: Int? = nil
     var isSearching = false
     var onProximityChange: ((GeographicProximity?) -> Void)? = nil
-    let onSelectLog: (FlightLog) -> Void
+    let onSelectLog: (String) -> Void
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var places = MapPlaceSearchStore()
     @State private var search = ""
     @State private var radiusMeters: Double = 5_000
     @State private var selectedPlaceName = ""
-    @State private var selectedLogID: String?
     @State private var fitRequest = UUID()
     private var palette: Palette { Palette(dark: colorScheme == .dark) }
-    private var visibleLogs: [FlightLog] { logs.sorted { ($0.date, $0.fileName) > ($1.date, $1.fileName) } }
-    private var mappedCount: Int { visibleLogs.filter { FlightMapGeometry.hasTrack($0) }.count }
-    private var resultCount: Int { totalCount ?? visibleLogs.count }
+    private var visibleMarkers: [LibraryMapMarker] { markers }
+    private var listedMarkers: [LibraryMapMarker] { presentation.listedMarkers(markers) }
+    private var mappedCount: Int { locatedCount ?? markers.count }
+    private var resultCount: Int { totalCount ?? markers.count }
+
+    init(markers: [LibraryMapMarker], showsHeading: Bool = true, proximity: GeographicProximity? = nil,
+         scopeID: String = "", presentation: FleetMapPresentationState? = nil,
+         totalCount: Int? = nil, locatedCount: Int? = nil, proximityUnavailableLogs: Int? = nil,
+         isSearching: Bool = false, onProximityChange: ((GeographicProximity?) -> Void)? = nil,
+         onSelectLog: @escaping (String) -> Void) {
+        self.markers = markers; self.showsHeading = showsHeading; self.proximity = proximity
+        self.scopeID = scopeID
+        _presentation = StateObject(wrappedValue: presentation ?? FleetMapPresentationState())
+        self.totalCount = totalCount; self.locatedCount = locatedCount
+        self.proximityUnavailableLogs = proximityUnavailableLogs; self.isSearching = isSearching
+        self.onProximityChange = onProximityChange; self.onSelectLog = onSelectLog
+    }
+
+    /// Compatibility for the legacy in-memory workspace and previews.
+    init(logs: [FlightLog], onSelectLog: @escaping (FlightLog) -> Void) {
+        let byID = Dictionary(logs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        self.init(markers: logs.sorted { ($0.date, $0.id) > ($1.date, $1.id) }.compactMap { log in
+            guard let point = log.track?.points.first(where: FlightMapGeometry.isValid) else { return nil }
+            return LibraryMapMarker(id: log.id, droneName: log.displayName, date: log.date, fileName: log.fileName,
+                                    durationSeconds: log.durationSeconds, clientName: log.clientName,
+                                    latitude: point.latitude, longitude: point.longitude)
+        }, totalCount: logs.count, onSelectLog: { id in if let log = byID[id] { onSelectLog(log) } })
+    }
     private var radiusLabel: String { MapPlaceSearchStore.radiusLabel(proximity?.radiusMeters ?? radiusMeters) }
 
     var body: some View {
@@ -50,17 +139,24 @@ struct FleetMapView: View {
                 .font(.system(size: 10)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(palette.primary)
-        .onAppear { if let proximity { radiusMeters = proximity.radiusMeters } }
-        .onChange(of: search) { _, _ in places.clear() }
-        .onChange(of: visibleLogs.map(\.id)) { _, ids in
-            if let selectedLogID, !ids.contains(selectedLogID) { self.selectedLogID = nil }
+        .onAppear {
+            if let proximity { radiusMeters = proximity.radiusMeters }
+            reconcileSelection()
         }
+        .onChange(of: search) { _, _ in places.clear() }
+        .onChange(of: visibleMarkers.map(\.id)) { _, _ in reconcileSelection() }
+        .onChange(of: scopeID) { _, _ in reconcileSelection() }
         .onChange(of: proximity) { _, value in
+            presentation.showAllLocations()
             if let value { radiusMeters = value.radiusMeters }
             else { search = ""; selectedPlaceName = "" }
             fitRequest = UUID()
         }
         .onDisappear { places.cancel() }
+    }
+
+    private func reconcileSelection() {
+        presentation.reconcile(scopeID: scopeID, availableIDs: Set(markers.map(\.id)))
     }
 
     private var searchControls: some View {
@@ -125,9 +221,12 @@ struct FleetMapView: View {
     }
 
     private var mapCanvas: some View {
-        FlightTrackMap(logs: visibleLogs, fitRequest: fitRequest, proximity: proximity, onSelectLog: { log in
-            selectedLogID = log.id
-            onSelectLog(log)
+        FleetOverviewMap(markers: visibleMarkers, fitRequest: fitRequest, proximity: proximity, isSearching: isSearching,
+                         scopeID: scopeID, presentation: presentation, onSelectCluster: { ids in
+            presentation.selectCluster(ids, availableIDs: Set(markers.map(\.id)))
+        }, onSelectLog: { id in
+            presentation.selectLog(id)
+            onSelectLog(id)
         })
     }
 
@@ -135,12 +234,20 @@ struct FleetMapView: View {
         BentoPanel(palette: palette) {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 6) {
+                    if presentation.clusterLogIDs != nil {
+                        Button { presentation.showAllLocations() } label: {
+                            Label("Tous les lieux", systemImage: "arrow.left")
+                        }
+                        .buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true))
+                        .accessibilityIdentifier("map.showAllLocations")
+                        .help("Afficher à nouveau tous les logs de la sélection dans cette liste")
+                    }
                     HStack {
-                        Text(proximity == nil ? "Logs géolocalisés" : "\(resultCount) logs à proximité")
+                        Text(presentation.clusterLogIDs != nil ? "\(listedMarkers.count) logs à cet endroit" : (isSearching && markers.isEmpty ? "Chargement des lieux…" : (proximity == nil ? "\(mappedCount) logs géolocalisés" : "\(resultCount) logs à proximité")))
                             .font(.system(size: 15, weight: .semibold)).tracking(-0.25)
                         if isSearching { ProgressView().controlSize(.small) }
                     }
-                    Text(proximity == nil ? "Positions enregistrées dans vos logs." : "Trajectoires passant dans un rayon de \(radiusLabel).")
+                    Text(presentation.clusterLogIDs != nil ? "Choisissez un log pour ouvrir sa trajectoire." : (proximity == nil ? "Un repère GPS par log. Ouvrez un log pour sa trajectoire." : "Trajectoires passant dans un rayon de \(radiusLabel)."))
                         .font(.system(size: 11)).foregroundStyle(palette.secondary)
                     if proximity != nil && !selectedPlaceName.isEmpty {
                         Text(selectedPlaceName).font(.caption).foregroundStyle(palette.secondary).lineLimit(2)
@@ -148,18 +255,18 @@ struct FleetMapView: View {
                 }
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 6) {
-                        ForEach(visibleLogs) { log in recordingRow(log) }
-                        if visibleLogs.isEmpty && !isSearching {
+                        ForEach(listedMarkers) { marker in recordingRow(marker) }
+                        if listedMarkers.isEmpty && !isSearching {
                             Text(proximity == nil ? "Aucune trajectoire disponible dans cette sélection." : "Aucune trajectoire exploitable ne passe dans cette zone. Essayez un rayon plus grand.")
                                 .font(.system(size: 12)).foregroundStyle(palette.secondary).padding(.vertical, 20)
                         }
                     }
                 }
                 Divider().overlay(palette.border)
-                Text(proximity == nil ? "\(mappedCount) trajectoires affichées." : "Recherche dans toute la bibliothèque du client sélectionné.")
+                Text(proximity == nil ? "\(markers.count) repères chargés sur \(mappedCount) · \(max(0, resultCount - mappedCount)) logs sans position GPS." : "Recherche dans tous les logs correspondant aux filtres.")
                     .font(.system(size: 10)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
-                if resultCount > visibleLogs.count {
-                    Text("\(visibleLogs.count) logs affichés sur \(resultCount). Resserrez le rayon ou les filtres pour voir les autres.")
+                if mappedCount > markers.count {
+                    Text(isSearching ? "Chargement des repères restants…" : "Chargement incomplet : \(markers.count) repères sur \(mappedCount). Actualisez la carte.")
                         .font(.system(size: 10)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Text("Les logs sans trajectoire restent consultables dans l’historique.")
@@ -173,14 +280,14 @@ struct FleetMapView: View {
         }
     }
 
-    private func recordingRow(_ log: FlightLog) -> some View {
+    private func recordingRow(_ log: LibraryMapMarker) -> some View {
         Button {
-            selectedLogID = log.id
-            onSelectLog(log)
+            presentation.selectLog(log.id)
+            onSelectLog(log.id)
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
-                    Text(log.displayName).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                    Text(log.droneName).font(.system(size: 12, weight: .semibold)).lineLimit(1)
                     Spacer(minLength: 0)
                     BentoIcon(symbol: "chevron.right", size: 11).foregroundStyle(palette.secondary)
                 }
@@ -190,12 +297,229 @@ struct FleetMapView: View {
                 Text(log.fileName).font(.system(size: 10)).foregroundStyle(palette.secondary).lineLimit(1)
             }
             .foregroundStyle(palette.primary).padding(12).frame(maxWidth: .infinity, alignment: .leading)
-            .background(selectedLogID == log.id ? palette.raised : .clear, in: RoundedRectangle(cornerRadius: 12))
+            .background(presentation.selectedLogID == log.id ? palette.raised : .clear, in: RoundedRectangle(cornerRadius: 12))
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain).help("Ouvrir la fenêtre de \(log.fileName)")
         .accessibilityIdentifier("map.openFlight.\(log.id)")
     }
+}
+
+/// MKMapView clusters annotations as the camera moves. Every loaded log has
+/// an annotation; no recency/viewport truncation can erase an older location.
+private struct FleetOverviewMap: View {
+    let markers: [LibraryMapMarker]
+    let fitRequest: UUID
+    let proximity: GeographicProximity?
+    let isSearching: Bool
+    let scopeID: String
+    @ObservedObject var presentation: FleetMapPresentationState
+    let onSelectCluster: ([String]) -> Void
+    let onSelectLog: (String) -> Void
+    @State private var action = OverviewMapAction()
+    @Environment(\.colorScheme) private var colorScheme
+    private var palette: Palette { Palette(dark: colorScheme == .dark) }
+
+    var body: some View {
+        FlightPanel(padding: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                ZStack(alignment: .topLeading) {
+                    if markers.isEmpty && isSearching {
+                        ProgressView("Chargement des lieux…")
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if markers.isEmpty && proximity == nil {
+                        FlightEmptyState(symbol: "location.slash", title: "Aucune position GPS affichable",
+                                         detail: "Les logs sans position GPS restent disponibles dans l’historique.")
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        ClusteredOverviewMap(markers: markers, proximity: proximity, scopeID: scopeID,
+                                             presentation: presentation, action: action,
+                                             onSelectCluster: onSelectCluster, onSelectLog: onSelectLog)
+                    }
+                    HStack(spacing: 8) {
+                        Button("Plan") { presentation.satellite = false }
+                            .accessibilityIdentifier("map.plan").accessibilityValue(presentation.satellite ? "Non sélectionné" : "Sélectionné")
+                        Button("Satellite") { presentation.satellite = true }
+                            .accessibilityIdentifier("map.satellite").accessibilityValue(presentation.satellite ? "Sélectionné" : "Non sélectionné")
+                        Spacer()
+                        Button { action = .init(zoom: 1.7) } label: { Image(systemName: "minus") }
+                            .help("Dézoomer").accessibilityLabel("Dézoomer").accessibilityIdentifier("map.zoomOut")
+                        Button { action = .init(zoom: 1 / 1.7) } label: { Image(systemName: "plus") }
+                            .help("Zoomer").accessibilityLabel("Zoomer").accessibilityIdentifier("map.zoomIn")
+                        Button { action = .init() } label: { Image(systemName: "scope") }
+                            .help("Afficher tous les repères").accessibilityLabel("Recentrer la carte").accessibilityIdentifier("map.fit")
+                    }
+                    .buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true))
+                    .padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10)).padding(12)
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Les nombres regroupent les logs proches. Cliquez sur un groupe pour voir ses logs dans la liste, ou sur un repère pour ouvrir sa trajectoire.")
+                    if proximity != nil {
+                        Text("Chaque repère montre l’échantillon GPS enregistré le plus proche du lieu. Il peut être hors du rayon si la trajectoire traverse la zone entre deux échantillons.")
+                    }
+                    Label("Le fond Apple dépend du réseau et de son cache ; les positions des logs restent locales.", systemImage: "network")
+                }
+                .font(.system(size: 10)).foregroundStyle(palette.secondary).padding(14)
+            }
+        }
+        .onChange(of: fitRequest) { _, _ in action = .init() }
+    }
+}
+
+private struct OverviewMapAction: Equatable {
+    var id = UUID()
+    var zoom: Double? = nil
+}
+
+private struct ClusteredOverviewMap: NSViewRepresentable {
+    let markers: [LibraryMapMarker]
+    let proximity: GeographicProximity?
+    let scopeID: String
+    let presentation: FleetMapPresentationState
+    let action: OverviewMapAction
+    let onSelectCluster: ([String]) -> Void
+    let onSelectLog: (String) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeNSView(context: Context) -> MKMapView {
+        let map = MKMapView()
+        map.delegate = context.coordinator
+        map.showsUserLocation = false
+        map.pointOfInterestFilter = .excludingAll
+        map.showsCompass = true
+        map.showsScale = true
+        map.register(MKMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: "flight")
+        map.register(MKMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: "cluster")
+        return map
+    }
+    func updateNSView(_ map: MKMapView, context: Context) {
+        let coordinator = context.coordinator
+        coordinator.onSelectLog = onSelectLog
+        coordinator.onSelectCluster = onSelectCluster
+        coordinator.presentation = presentation
+        map.mapType = presentation.satellite ? .satellite : .standard
+        let changed = markers != coordinator.markers
+        let areaChanged = coordinator.proximity != proximity
+        let scopeChanged = coordinator.viewportKey?.scopeID != scopeID
+        if changed || areaChanged || scopeChanged {
+            coordinator.viewportKey = FleetMapViewportKey(scopeID: scopeID, markers: markers, proximity: proximity)
+        }
+        if changed {
+            let wanted = Dictionary(markers.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            let removed = coordinator.annotations.values.filter { wanted[$0.marker.id] != $0.marker }
+            map.removeAnnotations(removed)
+            for annotation in removed { coordinator.annotations.removeValue(forKey: annotation.marker.id) }
+            let added = markers.filter { coordinator.annotations[$0.id] == nil }.map(OverviewLogAnnotation.init)
+            for annotation in added { coordinator.annotations[annotation.marker.id] = annotation }
+            map.addAnnotations(added)
+            coordinator.markers = markers
+        }
+        if areaChanged {
+            map.removeOverlays(map.overlays)
+            if let proximity {
+                map.addOverlay(MKCircle(center: .init(latitude: proximity.latitude, longitude: proximity.longitude), radius: proximity.radiusMeters))
+            }
+            coordinator.proximity = proximity
+        }
+        if coordinator.actionID == nil {
+            coordinator.actionID = action.id
+            if let key = coordinator.viewportKey, let rect = presentation.viewport(for: key) {
+                map.setVisibleMapRect(rect, animated: false)
+            } else { coordinator.fit(map) }
+        } else if action.id != coordinator.actionID {
+            coordinator.actionID = action.id
+            if let factor = action.zoom {
+                let rect = map.visibleMapRect
+                map.setVisibleMapRect(MKMapRect(x: rect.midX - rect.width * factor / 2,
+                                                y: rect.midY - rect.height * factor / 2,
+                                                width: max(1, rect.width * factor), height: max(1, rect.height * factor)), animated: true)
+            } else { coordinator.fit(map) }
+        } else if changed || areaChanged || scopeChanged { coordinator.fit(map) }
+        coordinator.cameraReady = true
+    }
+
+    @MainActor final class Coordinator: NSObject, MKMapViewDelegate {
+        var markers: [LibraryMapMarker] = []
+        var annotations: [String: OverviewLogAnnotation] = [:]
+        var proximity: GeographicProximity?
+        var actionID: UUID?
+        var onSelectCluster: (([String]) -> Void)?
+        var onSelectLog: ((String) -> Void)?
+        weak var presentation: FleetMapPresentationState?
+        var viewportKey: FleetMapViewportKey?
+        var cameraReady = false
+
+        func fit(_ map: MKMapView) {
+            var rect = bounds(Array(annotations.values))
+            for overlay in map.overlays { rect = rect.union(overlay.boundingMapRect) }
+            guard !rect.isNull else { return }
+            map.setVisibleMapRect(padded(rect), edgePadding: framingInsets, animated: false)
+        }
+        // Reserve space for the floating controls and the marker heads.
+        private var framingInsets: NSEdgeInsets { NSEdgeInsets(top: 88, left: 40, bottom: 40, right: 56) }
+        private func bounds(_ annotations: [any MKAnnotation]) -> MKMapRect {
+            annotations.reduce(MKMapRect.null) { rect, annotation in
+                let point = MKMapPoint(annotation.coordinate)
+                return rect.union(MKMapRect(x: point.x, y: point.y, width: 0, height: 0))
+            }
+        }
+        private func padded(_ rect: MKMapRect) -> MKMapRect {
+            rect.insetBy(dx: -max(500, rect.width * 0.18), dy: -max(500, rect.height * 0.18))
+        }
+        func mapView(_ mapView: MKMapView, viewFor annotation: any MKAnnotation) -> MKAnnotationView? {
+            let cluster = annotation is MKClusterAnnotation
+            guard cluster || annotation is OverviewLogAnnotation else { return nil }
+            let view = mapView.dequeueReusableAnnotationView(withIdentifier: cluster ? "cluster" : "flight", for: annotation) as! MKMarkerAnnotationView
+            view.annotation = annotation
+            view.clusteringIdentifier = cluster ? nil : "flight-locations"
+            view.canShowCallout = false
+            view.markerTintColor = .labelColor
+            view.glyphTintColor = .windowBackgroundColor
+            view.glyphText = (annotation as? MKClusterAnnotation).map { String($0.memberAnnotations.count) }
+            view.glyphImage = cluster ? nil : NSImage(systemSymbolName: "airplane", accessibilityDescription: "Log")
+            view.displayPriority = cluster ? .defaultHigh : .defaultLow
+            view.titleVisibility = .hidden
+            view.subtitleVisibility = .hidden
+            if let group = annotation as? MKClusterAnnotation {
+                view.setAccessibilityLabel("\(group.memberAnnotations.count) logs à cet endroit")
+                view.setAccessibilityHelp("Afficher les logs de ce groupe dans la liste")
+            } else if let log = annotation as? OverviewLogAnnotation {
+                view.setAccessibilityLabel("\(log.marker.droneName), \(FlightUIFormat.date(log.marker.date)), \(log.marker.fileName)")
+                view.setAccessibilityHelp("Ouvrir la trajectoire de ce log")
+            }
+            return view
+        }
+        func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
+            guard let annotation = view.annotation else { return }
+            if let cluster = annotation as? MKClusterAnnotation {
+                let ids = cluster.memberAnnotations.compactMap { ($0 as? OverviewLogAnnotation)?.marker.id }
+                if !ids.isEmpty { onSelectCluster?(ids) }
+                mapView.setVisibleMapRect(padded(bounds(cluster.memberAnnotations)), edgePadding: framingInsets, animated: true)
+            } else if let log = annotation as? OverviewLogAnnotation, annotations[log.marker.id] === log {
+                onSelectLog?(log.marker.id)
+            }
+            mapView.deselectAnnotation(annotation, animated: false)
+        }
+        func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+            guard cameraReady, let viewportKey else { return }
+            presentation?.rememberViewport(mapView.visibleMapRect, for: viewportKey)
+        }
+        func mapView(_ mapView: MKMapView, rendererFor overlay: any MKOverlay) -> MKOverlayRenderer {
+            guard let circle = overlay as? MKCircle else { return MKOverlayRenderer(overlay: overlay) }
+            let renderer = MKCircleRenderer(circle: circle)
+            renderer.fillColor = NSColor.labelColor.withAlphaComponent(0.10)
+            renderer.strokeColor = NSColor.labelColor.withAlphaComponent(0.7)
+            renderer.lineWidth = 1
+            return renderer
+        }
+    }
+}
+
+private final class OverviewLogAnnotation: NSObject, MKAnnotation {
+    let marker: LibraryMapMarker
+    init(_ marker: LibraryMapMarker) { self.marker = marker }
+    var coordinate: CLLocationCoordinate2D { .init(latitude: marker.latitude, longitude: marker.longitude) }
+    var title: String? { marker.droneName + " · " + marker.date }
 }
 
 struct MapSearchPlace: Identifiable, Sendable {
@@ -532,10 +856,6 @@ struct FlightTrackMap: View {
                 Text("Un repère par type et par log, au plus 40. Les messages complets sont dans la fiche du vol.")
                     .font(.system(size: 10)).foregroundStyle(style.secondary)
             }
-            if mappedLogs.count > 80 {
-                Text("80 logs géolocalisés récents affichés sur \(mappedLogs.count). Filtrez la liste pour explorer les autres trajectoires.")
-                    .font(.system(size: 10)).foregroundStyle(style.secondary)
-            }
             if logs.count == 1, let track = logs.first?.track {
                 Text("Source : \(track.source) · \(track.points.count) / \(track.originalPointCount) points conservés. Les interruptions sont séparées.")
                     .font(.system(size: 10)).foregroundStyle(style.secondary)
@@ -588,8 +908,8 @@ enum FlightMapGeometry {
         CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude)
     }
     static func hasTrack(_ log: FlightLog) -> Bool { log.track?.points.contains(where: isValid) ?? false }
-    static func displayedLogs(_ logs: [FlightLog], limit: Int = 80) -> [FlightLog] {
-        Array(logs.filter(hasTrack).sorted { ($0.date, $0.fileName, $0.id) > ($1.date, $1.fileName, $1.id) }.prefix(max(0, limit)))
+    static func displayedLogs(_ logs: [FlightLog]) -> [FlightLog] {
+        logs.filter(hasTrack).sorted { ($0.date, $0.fileName, $0.id) > ($1.date, $1.fileName, $1.id) }
     }
     static func segments(_ logs: [FlightLog]) -> [FlightMapSegment] {
         logs.flatMap { log in

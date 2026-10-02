@@ -1,5 +1,6 @@
 import XCTest
 import Combine
+import CryptoKit
 import Darwin
 import AppKit
 import SwiftUI
@@ -158,7 +159,7 @@ time.sleep(30)
     }
 
     func fixture(mode: String, snapshot: (() -> FleetSnapshot)? = nil,
-                 importer: ((URL) async throws -> FleetSnapshot)? = nil,
+                 importer: ((URL, String?) async throws -> FleetSnapshot)? = nil,
                  initialState: GCSCollectionState? = nil, configure: Bool = true,
                  stateBuilder: ((URL) -> GCSCollectionState)? = nil) throws -> (GCSStore, URL) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("katalog-store-\(UUID().uuidString)")
@@ -176,12 +177,13 @@ ids=['0102030405060708090A0B0C','1112131415161718191A1B1C']
 if cmd=='discover':
     emit('connection',connected=True)
     while root.exists():
-        visible=ids[1:] if mode=='offline' else (ids+[ids[0]] if mode=='duplicate' else ids)
+        visible=ids[:1] if mode=='pipeline-benchmark' else (ids[1:] if mode=='offline' else (ids+[ids[0]] if mode=='duplicate' else ids))
         if mode=='invalid-uuid': visible=['not-a-drone-uuid']
         emit('drones',drones=[dict(uuid=u,time_usec=time.time()*1e6,arming_state=2 if mode=='armed' and u==ids[0] else 1) for u in visible]);time.sleep(.15)
     sys.exit(0)
 u=arg('--uuid')
 paths=['/fs/microsd/log/2026-09-01/a.ulg','/fs/microsd/log/2026-09-01/b.ulg']
+if mode=='pipeline-benchmark': paths=['/fs/microsd/log/2026-09-01/'+str(i)+'.ulg' for i in range(8)]
 if cmd=='inventory':
     if mode=='inventory-error' and u==ids[1]:
         emit('error',message='simulated missing inventory',retryable=False);sys.exit(1)
@@ -209,7 +211,7 @@ else:
     os.write(fd,(json.dumps(dict(uuid=u,path=p,attempt=attempt,time=time.time(),host=arg('--host'),destination=arg('--destination')))+'\n').encode());os.close(fd)
     emit('transfer_started',uuid=u,path=p,timeoutSeconds=300)
     emit('progress',uuid=u,path=p,bytes=64 if mode=='phases' else 16,total=64,phase='drone')
-    time.sleep(2 if mode=='stop' else .6)
+    time.sleep(.15 if mode=='pipeline-benchmark' else (2 if mode=='stop' else .6))
     emit('transfer_finished',uuid=u,path=p)
     emit('phase',uuid=u,path=p,bytes=0,total=64,phase='http')
     emit('progress',uuid=u,path=p,bytes=8,total=64,phase='http')
@@ -1062,7 +1064,7 @@ else:
         var imports = 0
         var importRoot: URL?
         var files: [GCSTransfer] = []
-        let (store, root) = try fixture(mode: "normal", snapshot: { library }, importer: { collectedFile in
+        let (store, root) = try fixture(mode: "normal", snapshot: { library }, importer: { collectedFile, _ in
             imports += 1
             XCTAssertEqual((collectedFile.deletingLastPathComponent().path as NSString).standardizingPath,
                            importRoot.map { ($0.path as NSString).standardizingPath })
@@ -1105,7 +1107,7 @@ else:
 
     func testStaleParserReturnedByImportCannotBecomeCompleteOrTriggerFTPAgain() async throws {
         var downloaded: [GCSTransfer] = []
-        let (store, root) = try fixture(mode: "normal", importer: { file in
+        let (store, root) = try fixture(mode: "normal", importer: { file, _ in
             let job = try XCTUnwrap(downloaded.first { $0.localPath == file.path })
             var snapshot = FleetSnapshot.empty
             snapshot.logs = [try self.log(hash: XCTUnwrap(job.sha256), parserVersion: "1.0.0")]
@@ -1121,6 +1123,221 @@ else:
         try await waitUntil { !store.isBusy && store.batchProgress.failedCount == 4 }
         XCTAssertTrue(store.queue.allSatisfy { $0.state == "failed" && $0.attemptCount == 1 && $0.localPath != nil })
         XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("trace.jsonl")), before)
+    }
+
+    func testSlowAnalysisReleasesTransfersAndBoundsTheVerifiedBacklog() async throws {
+        var release = false, imports = 0, active = 0, peak = 0
+        var importedPaths = Set<String>()
+        let (store, root) = try fixture(mode: "pipeline-benchmark", importer: { file, _ in
+            imports += 1; active += 1; peak = max(peak, active)
+            defer { active -= 1 }
+            XCTAssertTrue(importedPaths.insert(file.path).inserted, "Every source enters the analyzer only once.")
+            while !release { try await Task.sleep(for: .milliseconds(10)) }
+            return try self.analyzedSnapshot(file)
+        })
+        defer { release = true; store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        store.autoImport = true
+        try await waitUntil { store.canCollectAll }
+        store.collectAll()
+        try await waitUntil { store.bufferedAnalysisCount == store.maxBufferedImports && store.activeTransferCount == 0 }
+        XCTAssertEqual(imports, 1, "A slow analyzer cannot occupy the transfer slot or run concurrently.")
+        XCTAssertEqual(store.queue.filter { $0.localPath != nil }.count, 4)
+        XCTAssertEqual(store.queue.filter(\.isPending).count, 4)
+        XCTAssertEqual(store.batchProgress.completedCount, 0)
+        XCTAssertLessThan(store.collectionFraction, 1)
+        XCTAssertTrue(store.isBusy)
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(try traceCount(root), 4, "Backpressure must prevent an unbounded disk-analysis backlog.")
+        let recovered = GCSStore(storageDirectory: root)
+        XCTAssertEqual(recovered.queue.filter { $0.localPath != nil && $0.state == "interrupted" }.count, 4)
+        XCTAssertEqual(recovered.activeAnalysisCount, 0, "A relaunch must require explicit recovery.")
+        release = true
+        try await waitUntil { !store.isBusy && store.batchProgress.completedCount == 8 }
+        XCTAssertEqual(imports, 8); XCTAssertEqual(peak, 1)
+        XCTAssertEqual(try traceCount(root), 8)
+    }
+
+    func testAnalysisOverlapKeepsTwoTransfersAndOneTransferPerDrone() async throws {
+        var release = false, imports = 0, peakDownloads = 0
+        let (store, root) = try fixture(mode: "normal", importer: { file, _ in
+            imports += 1
+            while !release { try await Task.sleep(for: .milliseconds(10)) }
+            return try self.analyzedSnapshot(file)
+        })
+        defer { release = true; store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        let observation = store.$queue.sink { queue in
+            let downloads = queue.filter { $0.state == "downloading" }
+            peakDownloads = max(peakDownloads, downloads.count)
+            XCTAssertLessThanOrEqual(downloads.count, 2)
+            XCTAssertEqual(Set(downloads.map(\.droneUUID)).count, downloads.count, "A drone cannot have two active FTP jobs.")
+        }
+        defer { observation.cancel() }
+        store.autoImport = true
+        try await waitUntil { store.canCollectAll }
+        store.collectAll()
+        try await waitUntil { store.bufferedAnalysisCount == 4 && store.activeTransferCount == 0 }
+        XCTAssertEqual(imports, 1)
+        XCTAssertEqual(peakDownloads, 2)
+        XCTAssertEqual(store.batchProgress.completedCount, 0)
+        release = true
+        try await waitUntil { !store.isBusy && store.batchProgress.completedCount == 4 }
+        XCTAssertEqual(imports, 4)
+        XCTAssertEqual(try traceCount(root), 4)
+    }
+
+    func testPauseDrainsVerifiedAnalysesThenResumeContinuesPendingTransfers() async throws {
+        var release = false, imports = 0
+        let (store, root) = try fixture(mode: "pipeline-benchmark", importer: { file, _ in
+            imports += 1
+            while !release { try await Task.sleep(for: .milliseconds(10)) }
+            return try self.analyzedSnapshot(file)
+        })
+        defer { release = true; store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        store.autoImport = true
+        try await waitUntil { store.canCollectAll }
+        store.collectAll()
+        try await waitUntil { store.activeAnalysisCount == 1 }
+        store.pauseQueue()
+        try await waitUntil { store.activeTransferCount == 0 }
+        let verifiedCount = store.bufferedAnalysisCount
+        let requests = try traceCount(root)
+        XCTAssertGreaterThan(verifiedCount, 0); XCTAssertLessThan(verifiedCount, 8)
+        release = true
+        try await waitUntil { !store.isBusy }
+        XCTAssertEqual(imports, verifiedCount)
+        XCTAssertEqual(store.batchProgress.completedCount, verifiedCount)
+        XCTAssertEqual(store.queue.filter(\.isPending).count, 8 - verifiedCount)
+        XCTAssertEqual(try traceCount(root), requests)
+        XCTAssertTrue(store.isQueuePaused)
+        store.resumeQueue()
+        try await waitUntil { !store.isBusy && store.batchProgress.completedCount == 8 }
+        XCTAssertEqual(imports, 8); XCTAssertEqual(try traceCount(root), 8)
+    }
+
+    func testStoppedAnalysisBacklogSurvivesRestartAndKeepsCapturedClientOnRetry() async throws {
+        var firstImportStarted = false
+        let (store, root) = try fixture(mode: "pipeline-benchmark", importer: { _, client in
+            XCTAssertEqual(client, "CLIENT-A")
+            firstImportStarted = true
+            try await Task.sleep(for: .seconds(30))
+            throw CancellationError()
+        }, stateBuilder: { root in
+            var state = GCSCollectionState(downloadDirectory: root.path)
+            state.collectionClientID = "CLIENT-A"
+            return state
+        })
+        defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        store.autoImport = true
+        try await waitUntil { store.canCollectAll }
+        store.collectAll()
+        try await waitUntil { firstImportStarted && store.bufferedAnalysisCount == 4 && store.activeTransferCount == 0 }
+        let originalIDs = Set(store.queue.map(\.id))
+        store.stopCollection()
+        store.retryFailed() // Cancellation must drain before an explicit retry can mutate jobs.
+        XCTAssertTrue(store.isStopping)
+        XCTAssertTrue(store.isBusy)
+        XCTAssertTrue(store.queue.allSatisfy { $0.state == "stopped" })
+        try await waitUntil { !store.isBusy }
+        XCTAssertEqual(store.activeAnalysisCount, 0)
+        XCTAssertEqual(store.queue.filter { $0.localPath != nil && $0.sha256 != nil }.count, 4)
+        store.disconnect()
+        var clients: [String?] = []
+        let restored = GCSStore(storageDirectory: root, collector: root.appendingPathComponent("collector.py"), importer: { file, client in
+            clients.append(client)
+            return try self.analyzedSnapshot(file)
+        })
+        defer { restored.stopCollection(); restored.disconnect() }
+        XCTAssertTrue(restored.isQueuePaused)
+        XCTAssertEqual(Set(restored.queue.map(\.id)), originalIDs)
+        XCTAssertTrue(restored.queue.allSatisfy { $0.state == "stopped" && $0.clientID == "CLIENT-A" })
+        restored.chooseCollectionClient("")
+        restored.connect()
+        try await waitUntil { restored.canCollectAll }
+        XCTAssertEqual(try traceCount(root), 4, "Reconnection alone must not restart stopped work.")
+        restored.retryFailed()
+        try await waitUntil { !restored.isBusy && restored.batchProgress.completedCount == 8 }
+        XCTAssertEqual(clients.count, 8)
+        XCTAssertTrue(clients.allSatisfy { $0 == "CLIENT-A" }, "Imports must use the client captured with each job.")
+        XCTAssertEqual(try traceCount(root), 8, "Verified cached files must not request FTP again after retry.")
+        XCTAssertEqual(Set(restored.queue.map(\.id)), originalIDs)
+    }
+
+    func testAnalysisFailureKeepsVerifiedCacheAndRequiresExplicitRetry() async throws {
+        var failFirst = true, imports = 0
+        let (store, root) = try fixture(mode: "pipeline-benchmark", importer: { file, _ in
+            imports += 1
+            if failFirst { failFirst = false; throw AnalysisError.engine("Synthetic analysis failure") }
+            return try self.analyzedSnapshot(file)
+        })
+        defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        store.autoImport = true
+        try await waitUntil { store.canCollectAll }
+        store.collectAll()
+        try await waitUntil { !store.isBusy && store.queue.count == 8 }
+        XCTAssertEqual(imports, 8)
+        XCTAssertEqual(store.batchProgress.failedCount, 1)
+        XCTAssertEqual(store.batchProgress.completedCount, 7)
+        XCTAssertTrue(store.queue.filter { $0.state == "failed" }.allSatisfy { $0.localPath != nil && $0.sha256 != nil })
+        let requests = try traceCount(root)
+        store.retryFailed()
+        try await waitUntil { !store.isBusy && store.queue.allSatisfy { $0.state == "complete" } }
+        XCTAssertEqual(imports, 9)
+        XCTAssertEqual(try traceCount(root), requests)
+    }
+
+    private func traceCount(_ root: URL) throws -> Int {
+        try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8).split(separator: "\n").count
+    }
+
+    private func analyzedSnapshot(_ file: URL) throws -> FleetSnapshot {
+        let hash = SHA256.hash(data: try Data(contentsOf: file)).map { String(format: "%02x", $0) }.joined()
+        var snapshot = FleetSnapshot.empty
+        snapshot.logs = [try log(hash: hash, parserVersion: AnalysisService.parserVersion)]
+        return snapshot
+    }
+
+    /// The same delayed collector and analyzer run against the baseline and optimized store.
+    /// No sockets, GCS access or real logs: the timing includes local process/persistence overhead.
+    func testDelayedCollectionPipelineBenchmark() async throws {
+        var imports = 0
+        var firstAnalysisStarted: Double?
+        var lastAnalysisEnded: Double = 0
+        let (store, root) = try fixture(mode: "pipeline-benchmark", importer: { file, _ in
+            imports += 1
+            if firstAnalysisStarted == nil { firstAnalysisStarted = ProcessInfo.processInfo.systemUptime }
+            try await Task.sleep(for: .milliseconds(300))
+            let hash = SHA256.hash(data: try Data(contentsOf: file)).map { String(format: "%02x", $0) }.joined()
+            var snapshot = FleetSnapshot.empty
+            snapshot.logs = [try self.log(hash: hash, parserVersion: AnalysisService.parserVersion)]
+            lastAnalysisEnded = ProcessInfo.processInfo.systemUptime
+            return snapshot
+        })
+        defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        store.autoImport = true
+        try await waitUntil { store.canCollectAll }
+        let started = ProcessInfo.processInfo.systemUptime
+        store.collectAll()
+        try await waitUntil { store.queue.count == 8 && !store.isBusy && store.batchProgress.completedCount == 8 }
+        let elapsed = lastAnalysisEnded - started
+        XCTAssertEqual(imports, 8)
+        XCTAssertTrue(store.queue.allSatisfy { $0.state == "complete" })
+        let transfers = try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8).split(separator: "\n")
+        XCTAssertEqual(transfers.count, 8)
+        let firstTrace = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(transfers[0].utf8)) as? [String: Any])
+        let lastTrace = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(transfers[7].utf8)) as? [String: Any])
+        let startsSpan = try XCTUnwrap(lastTrace["time"] as? Double) - XCTUnwrap(firstTrace["time"] as? Double)
+        let measurement: [String: Any] = ["jobs": 8, "drones": 1, "downloadDelaySeconds": 0.15,
+            "analysisDelaySeconds": 0.3, "elapsedSeconds": elapsed, "transferStartsSpanSeconds": startsSpan,
+            "firstAnalysisSeconds": (firstAnalysisStarted ?? started) - started,
+            "networkRequests": 0, "physicalFleetQualified": false]
+        print("GCS_PIPELINE_BENCHMARK " + String(decoding: try JSONSerialization.data(withJSONObject: measurement, options: .sortedKeys), as: UTF8.self))
+        if let artifacts = ProcessInfo.processInfo.environment["KATALOG_GCS_ARTIFACTS"] {
+            let directory = URL(fileURLWithPath: artifacts)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let variant = ProcessInfo.processInfo.environment["KATALOG_PIPELINE_VARIANT"] ?? "optimized"
+            try JSONSerialization.data(withJSONObject: measurement, options: [.prettyPrinted, .sortedKeys])
+                .write(to: directory.appendingPathComponent("gcs-pipeline-\(variant).json"))
+        }
     }
 
     private func log(hash: String, status: String = "ok", parserVersion: String) throws -> FlightLog {

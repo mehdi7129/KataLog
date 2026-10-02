@@ -57,12 +57,19 @@ final class GCSStore: ObservableObject {
     private let initialDestination: URL?
     private let collectorOverride: URL?
     private let snapshotOverride: (() -> FleetSnapshot)?
-    private let importOverride: ((URL) async throws -> FleetSnapshot)?
+    private let importOverride: ((URL, String?) async throws -> FleetSnapshot)?
     private let directoryIssueOverride: ((URL) -> String?)?
     private weak var library: LibraryStore?
     private var discoveryTask: Task<Void, Never>?
     private var inventoryTask: Task<Void, Never>?
     private var transferTasks: [String: Task<Void, Never>] = [:]
+    private var analysisTask: Task<Void, Never>?
+    private var activeAnalysisID: String?
+    // Reserve capacity for both verified files and downloads already in flight.
+    // This bounds the analysis backlog without keeping a network slot during parsing.
+    let maxBufferedImports = 4
+    var activeAnalysisCount: Int { analysisTask == nil ? 0 : 1 }
+    var bufferedAnalysisCount: Int { queue.lazy.filter { $0.state == "importing" }.count }
     @Published private(set) var isScanningFleet = false
     @Published private(set) var inventoryErrors: [String] = []
     @Published private(set) var expectedInventoryUUIDs: Set<String> = []
@@ -81,7 +88,7 @@ final class GCSStore: ObservableObject {
         if let queueRepository, let count = try? queueRepository.retryableCount(authorizedUUIDs: allowedUUIDs) { return count }
         return queue.filter { ["failed", "interrupted", "stopped"].contains($0.state) && allowedUUIDs.contains($0.droneUUID) }.count
     }
-    var isStopping: Bool { queue.contains { transferTasks[$0.id] != nil && $0.state == "stopped" } }
+    var isStopping: Bool { queue.contains { (transferTasks[$0.id] != nil || activeAnalysisID == $0.id) && $0.state == "stopped" } }
     var diagnosticJobCount: Int? {
         if let queueRepository { return try? queueRepository.transferCount(overlay: dirtyTransfers) }
         return queueStorageIssue == nil ? queue.count : nil
@@ -131,6 +138,9 @@ final class GCSStore: ObservableObject {
         if progress.stoppedCount > 0 && progress.activeCount == 0 && progress.pendingCount == 0 { return "Collecte arrêtée · les fichiers déjà vérifiés sont conservés." }
         if progress.completedCount == progress.totalCount { return "Collecte terminée · tous les fichiers ont été vérifiés." }
         if isQueuePaused { return progress.activeCount == 0 ? "Collecte en pause" : "Pause demandée · les fichiers en cours se terminent" }
+        if activeTransferCount == 0 && bufferedAnalysisCount > 0 {
+            return "Analyse des fichiers collectés · \(bufferedAnalysisCount) restant\(bufferedAnalysisCount == 1 ? "" : "s")"
+        }
         if progress.activeCount > 0 { return "Collecte en cours · jusqu’à \(maxConcurrentDownloads) drones simultanément" }
         if queue.contains(where: { $0.state == "retrying" }) { return "Nouvel essai automatique programmé pour les transferts interrompus." }
         if progress.pendingCount > 0 { return "En attente d’un drone disponible ou de la fin du transfert GCS précédent." }
@@ -140,7 +150,7 @@ final class GCSStore: ObservableObject {
     }
     var downloadDirectoryIssue: String? { directoryIssue(downloadDirectory) }
     var canStopCollection: Bool { isBusy || queue.contains(where: \.isPending) }
-    private func updateBusy() { isBusy = inventoryTask != nil || !transferTasks.isEmpty }
+    private func updateBusy() { isBusy = inventoryTask != nil || !transferTasks.isEmpty || analysisTask != nil || bufferedAnalysisCount > 0 }
     private func isRemoteBusy(_ uuid: String) -> Bool {
         (inventoryBusyUntil[uuid] ?? .distantPast) > Date() || queue.contains { $0.droneUUID == uuid && ($0.remoteBusyUntil ?? .distantPast) > Date() }
     }
@@ -153,7 +163,7 @@ final class GCSStore: ObservableObject {
 
     init(storageDirectory: URL? = nil, collector: URL? = nil,
          snapshot: (() -> FleetSnapshot)? = nil,
-         importer: ((URL) async throws -> FleetSnapshot)? = nil,
+         importer: ((URL, String?) async throws -> FleetSnapshot)? = nil,
          directoryIssue: ((URL) -> String?)? = nil,
          previewConfiguration: AppPreviewConfiguration = AppPreviewConfiguration(),
          applicationSupportDirectory: URL? = nil) {
@@ -619,9 +629,11 @@ final class GCSStore: ObservableObject {
         guard !file.isDownloaded else { return }
         if selectedFileIDs.contains(file.id) { selectedFileIDs.remove(file.id) } else { selectedFileIDs.insert(file.id) }
     }
-    func selectAllFiles() {
-        let pending = Set(files.filter { !$0.isDownloaded }.map(\.id))
-        selectedFileIDs = selectedFileIDs == pending ? [] : pending
+    func selectAllFiles(visibleIDs: Set<String>? = nil) {
+        let pending = Set(files.filter { !$0.isDownloaded && (visibleIDs?.contains($0.id) ?? true) }.map(\.id))
+        guard !pending.isEmpty else { return }
+        if pending.isSubset(of: selectedFileIDs) { selectedFileIDs.subtract(pending) }
+        else { selectedFileIDs.formUnion(pending) }
     }
     private func beginBatchIfNeeded(preserveInventories: Bool = false) {
         destinationPreviewFileCount = nil
@@ -779,7 +791,7 @@ final class GCSStore: ObservableObject {
         guard permitMutation() else { return }
         isQueuePaused = true
         library?.diagnostics.record(.collectionPaused, correlation: currentBatchID)
-        statusMessage = activeTransferCount > 0 ? "Pause après les fichiers en cours." : "File en pause"
+        statusMessage = activeTransferCount > 0 || bufferedAnalysisCount > 0 ? "Pause après les fichiers en cours." : "File en pause"
         persist()
     }
     func resumeQueue() { guard permitMutation() else { return }; isQueuePaused = false; library?.diagnostics.record(.collectionStarted, correlation: currentBatchID); persist(); runQueue() }
@@ -789,6 +801,7 @@ final class GCSStore: ObservableObject {
         if let uuid = activeInventoryUUID { inventoryBusyUntil[uuid] = Date().addingTimeInterval(21) }
         inventoryTask?.cancel()
         for task in transferTasks.values { task.cancel() }
+        analysisTask?.cancel()
         for i in queue.indices where queue[i].isPending || queue[i].isActive {
             queue[i].state = "stopped"; queue[i].nextRetryAt = nil
             queue[i].error = "Arrêt demandé. Le fichier pourra être relancé ; les fichiers déjà vérifiés sont conservés."
@@ -829,6 +842,7 @@ final class GCSStore: ObservableObject {
         return true
     }
     private func runQueue() {
+        runAnalysisQueue()
         guard !isReadOnly, !isMaintenanceBlocked, queueStorageIssue == nil, inventoryTask == nil, !isQueuePaused, isConnected, let currentHost = connectedHost, let script else { return }
         let available = Set(drones.filter { allowedUUIDs.contains($0.uuid) && $0.isOnline && $0.armed != true && (inventoryBusyUntil[$0.uuid] ?? .distantPast) <= Date() }.map(\.uuid))
         var retargeted = false
@@ -843,7 +857,8 @@ final class GCSStore: ObservableObject {
                 retargeted = true
             }
         }
-        let jobs = GCSQueuePolicy.nextJobs(queue: queue, activeIDs: Set(transferTasks.keys), availableUUIDs: available, host: currentHost)
+        let importCapacity = max(0, maxBufferedImports - bufferedAnalysisCount - transferTasks.count)
+        let jobs = GCSQueuePolicy.nextJobs(queue: queue, activeIDs: Set(transferTasks.keys), availableUUIDs: available, host: currentHost).prefix(importCapacity)
         for id in jobs {
             guard let index = queueIDIndex[id] else { continue }
             queue[index].state = "downloading"; queue[index].error = nil
@@ -906,33 +921,14 @@ final class GCSStore: ObservableObject {
             }
             try Task.checkCancellation()
             guard downloaded else { throw AnalysisError.engine("Aucun fichier complet reçu.") }
-            let shouldImport = autoImport
-            queue[index].state = shouldImport ? "importing" : "downloaded"
-            if shouldImport { queue[index].phase = "import"; dirtyTransferIDs.insert(id) }
-            persist()
-            // Import errors should not automatically retry a network download which already succeeded.
-            retryable = false; diagnosticFailure = .analysisFailed
-            if shouldImport, let local = queue[index].localPath {
-                // The scanner accepts one file: siblings are never walked again after each completion.
-                let collectedFile = URL(fileURLWithPath: local)
-                let result: FleetSnapshot
-                if let importOverride { result = try await importOverride(collectedFile) }
-                else if let library { result = try await library.importCollectedFolder(collectedFile, expectedLogID: queue[index].sha256, clientID: job.clientID) }
-                else { throw AnalysisError.unavailable("La bibliothèque doit être ouverte pour analyser le fichier collecté.") }
-                try Task.checkCancellation()
-                guard let log = result.logs.first(where: { $0.id == queue[index].sha256 }), log.status != "error",
-                      log.metadata["parserVersion"] == AnalysisService.parserVersion else {
-                    throw AnalysisError.engine("Le fichier a été téléchargé, mais sa lecture ULog a échoué. Voir la bibliothèque.")
-                }
-                queue[index].state = "complete"
-                knownAnalysisHashes.insert(log.id)
-                if log.status == "partial" { queue[index].error = "Analyse partielle : consultez la couverture du log." }
-            }
-            library?.diagnostics.record(.transferCompleted, correlation: diagnosticCorrelation, metrics: [.bytes: job.size, .totalBytes: job.size])
-            let completed = batchProgress
-            if completed.totalCount > 0 && completed.completedCount == completed.totalCount { library?.diagnostics.record(.collectionCompleted, correlation: currentBatchID, metrics: [.items: Int64(completed.totalCount)]) }
-            if selectedUUID == job.droneUUID, let f = files.firstIndex(where: { $0.path == job.remotePath }) { files[f].isDownloaded = true }
-            statusMessage = shouldImport ? "\(job.filename) récupéré et analysé" : "\(job.filename) récupéré"
+            // The collector has exited after verified publication. Persist the analysis
+            // obligation before this worker releases its network/per-drone slot.
+            retryable = false; diagnosticFailure = .storageUnavailable
+            queue[index].state = autoImport ? "importing" : "downloaded"
+            if autoImport { queue[index].phase = "import" }
+            dirtyTransferIDs.insert(id)
+            try saveState()
+            if !autoImport { finishTransfer(job: job, analyzed: false) }
         } catch {
             if Task.isCancelled {
                 library?.diagnostics.record(.transferCompleted, code: .cancelled, correlation: diagnosticCorrelation)
@@ -948,6 +944,69 @@ final class GCSStore: ObservableObject {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private func runAnalysisQueue() {
+        // Pause drains files whose transfer already finished; stop marks them stopped
+        // and cancels the one analyzer. Importing remains a durable unfinished state.
+        guard !isReadOnly, !isMaintenanceBlocked, queueStorageIssue == nil, analysisTask == nil,
+              let job = queue.first(where: { $0.state == "importing" && transferTasks[$0.id] == nil }) else { return }
+        activeAnalysisID = job.id
+        analysisTask = Task { [weak self] in await self?.analyze(job: job) }
+        updateBusy()
+    }
+
+    private func analyze(job: GCSTransfer) async {
+        let id = job.id
+        guard let index = queueIDIndex[id] else { analysisTask = nil; activeAnalysisID = nil; updateBusy(); return }
+        let correlation = (job.batchID ?? currentBatchID) + id
+        defer {
+            dirtyTransferIDs.insert(id); analysisTask = nil; activeAnalysisID = nil
+            updateBusy(); persist(); runQueue()
+        }
+        do {
+            try Task.checkCancellation()
+            guard let local = job.localPath else { throw AnalysisError.engine("Le fichier collecté est introuvable.") }
+            let collectedFile = URL(fileURLWithPath: local)
+            let result: FleetSnapshot
+            if let importOverride { result = try await importOverride(collectedFile, job.clientID) }
+            else if let library { result = try await library.importCollectedFolder(collectedFile, expectedLogID: job.sha256, clientID: job.clientID) }
+            else { throw AnalysisError.unavailable("La bibliothèque doit être ouverte pour analyser le fichier collecté.") }
+            try Task.checkCancellation()
+            guard let log = result.logs.first(where: { $0.id == job.sha256 }), log.status != "error",
+                  log.metadata["parserVersion"] == AnalysisService.parserVersion else {
+                throw AnalysisError.engine("Le fichier a été téléchargé, mais sa lecture ULog a échoué. Voir la bibliothèque.")
+            }
+            queue[index].state = "complete"
+            dirtyTransferIDs.insert(id)
+            knownAnalysisHashes.insert(log.id)
+            if log.status == "partial" { queue[index].error = "Analyse partielle : consultez la couverture du log." }
+            finishTransfer(job: job, analyzed: true)
+        } catch {
+            if Task.isCancelled {
+                library?.diagnostics.record(.transferCompleted, code: .cancelled, correlation: correlation)
+                if queue[index].state != "stopped" {
+                    queue[index].state = "interrupted"; queue[index].error = "Collecte interrompue. Relancez le fichier pour reprendre."
+                }
+            } else {
+                // Analysis failures retain the verified local file and never trigger
+                // automatic FTP retries. Explicit retry rechecks the existing cache.
+                queue[index].state = "failed"; queue[index].error = error.localizedDescription
+                errorMessage = error.localizedDescription
+                library?.diagnostics.record(.transferCompleted, code: .analysisFailed, correlation: correlation)
+            }
+        }
+    }
+
+    private func finishTransfer(job: GCSTransfer, analyzed: Bool) {
+        library?.diagnostics.record(.transferCompleted, correlation: (job.batchID ?? currentBatchID) + job.id,
+                                    metrics: [.bytes: job.size, .totalBytes: job.size])
+        let completed = batchProgress
+        if completed.totalCount > 0 && completed.completedCount == completed.totalCount {
+            library?.diagnostics.record(.collectionCompleted, correlation: currentBatchID, metrics: [.items: Int64(completed.totalCount)])
+        }
+        if selectedUUID == job.droneUUID, let index = files.firstIndex(where: { $0.path == job.remotePath }) { files[index].isDownloaded = true }
+        statusMessage = analyzed ? "\(job.filename) récupéré et analysé" : "\(job.filename) récupéré"
     }
 
     func chooseDownloadDirectory() {
@@ -1085,6 +1144,7 @@ final class GCSStore: ObservableObject {
         if let uuid = activeInventoryUUID { inventoryBusyUntil[uuid] = Date().addingTimeInterval(21) }
         discoveryTask?.cancel(); inventoryTask?.cancel(); refreshTask?.cancel()
         for task in transferTasks.values { task.cancel() }
+        analysisTask?.cancel()
         for i in queue.indices where queue[i].isPending || queue[i].isActive { queue[i].recoverAfterRelaunch(); dirtyTransferIDs.insert(queue[i].id) }
         persist()
     }

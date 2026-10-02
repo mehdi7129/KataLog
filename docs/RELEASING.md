@@ -101,6 +101,10 @@ KATALOG_NOTARY_PROFILE=MON_PROFIL \
   bash tools/build-dmg.sh
 ```
 
+`KATALOG_DMG_PYTHON=python3.13` permet aussi de choisir l’interpréteur lors de la
+création d’un nouveau venv. Le script vérifie Python 3.10 minimum, y compris
+pour un venv existant, avant de lancer l’installation des dépendances.
+
 Le script installe uniquement ses outils de build dans un venv temporaire, avec
 requirements et hashes épinglés. Il génère la fenêtre monochrome et le lien
 Applications, vérifie l’image ainsi que la copie du bundle sur le volume monté,

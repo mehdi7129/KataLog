@@ -19,10 +19,11 @@ import uuid
 from signal_assessment import SignalAccumulator
 
 QUERY_VERSION = 1
-PROJECTION_VERSION = 7
+PROJECTION_VERSION = 8
 MESSAGE_METADATA_FIELDS = ('source', 'tag', 'rawTimestamp', 'rawLogLevel', 'sourceIndex')
 MAX_QUERY_BYTES = 4 * 1024 * 1024
 MAX_PAGE_SIZE = 200
+MAX_MAP_PAGE_SIZE = 5000
 PRIORITIES = {"EMERGENCY": 8, "ALERT": 7, "CRITICAL": 6, "ERROR": 5, "WARNING": 4, "WARN": 4, "NOTICE": 3, "INFO": 2, "DEBUG": 1}
 
 
@@ -47,7 +48,7 @@ def initialize(db):
     db.execute('PRAGMA cache_size=-131072')
     tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     version = db.execute("SELECT value FROM kl_meta WHERE key='projectionVersion'").fetchone() if 'kl_meta' in tables else None
-    if version and int(version[0]) not in (1, 2, 3, 4, 5, 6, PROJECTION_VERSION):
+    if version and int(version[0]) not in (1, 2, 3, 4, 5, 6, 7, PROJECTION_VERSION):
         raise ValueError("Version d’index de bibliothèque non prise en charge.")
     if not version or int(version[0]) != PROJECTION_VERSION:
         database = db.execute('PRAGMA database_list').fetchone()[2]
@@ -68,7 +69,7 @@ def initialize(db):
                 db.execute('DROP TRIGGER IF EXISTS ' + name)
             for name in ('kl_messages', 'kl_events', 'kl_event_cache', 'kl_definitions', 'kl_definition_presence', 'kl_group_stats', 'kl_family_stats', 'kl_groups', 'kl_logs', 'kl_dirty', 'kl_meta'):
                 db.execute('DROP TABLE IF EXISTS ' + name)
-        elif version and int(version[0]) not in (3, 4, 5, 6, PROJECTION_VERSION):
+        elif version and int(version[0]) not in (3, 4, 5, 6, 7, PROJECTION_VERSION):
             raise ValueError("Version d’index de bibliothèque non prise en charge.")
     db.executescript("""
         CREATE TABLE IF NOT EXISTS kl_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
@@ -172,7 +173,7 @@ def initialize(db):
     """)
     if 'metadata_json' not in {row[1] for row in db.execute('PRAGMA table_info(kl_messages)')}:
         db.execute('ALTER TABLE kl_messages ADD COLUMN metadata_json TEXT')
-    for name, sql_type in (('flight_seconds', 'REAL'), ('signal_messages_json', 'TEXT')):
+    for name, sql_type in (('flight_seconds', 'REAL'), ('signal_messages_json', 'TEXT'), ('map_marker', 'TEXT')):
         if name not in {row[1] for row in db.execute('PRAGMA table_info(kl_logs)')}:
             db.execute('ALTER TABLE kl_logs ADD COLUMN ' + name + ' ' + sql_type)
     if 'signal_events_json' not in {row[1] for row in db.execute('PRAGMA table_info(kl_event_cache)')}:
@@ -183,6 +184,7 @@ def initialize(db):
     event_migration = bool(version and int(version[0]) in (3, 4))
     metadata_migration = bool(version and int(version[0]) in (3, 4, 5))
     signal_migration = bool(version and int(version[0]) in (3, 4, 5, 6))
+    map_migration = bool(version and int(version[0]) in (3, 4, 5, 6, 7))
     db.execute("INSERT OR IGNORE INTO kl_meta(key,value) VALUES('revision','0')")
     built = db.execute("SELECT value FROM kl_meta WHERE key='initialized'").fetchone()
     definition_cache = {}
@@ -253,7 +255,13 @@ def initialize(db):
                     if metadata:
                         db.execute('UPDATE kl_messages SET metadata_json=? WHERE log_id=? AND sequence=?',
                                    (json.dumps(metadata, ensure_ascii=False, allow_nan=False), identity, sequence))
-        if event_migration or metadata_migration or signal_migration:
+        if map_migration:
+            # Only the compact overview is backfilled; no original file is
+            # opened and neither canonical analyses nor GPS tracks change.
+            from library_map_overview import projected_marker
+            for identity, summary in db.execute('SELECT id,summary FROM logs'):
+                db.execute('UPDATE kl_logs SET map_marker=? WHERE id=?', (projected_marker(json.loads(summary)), identity))
+        if event_migration or metadata_migration or signal_migration or map_migration:
             db.execute("UPDATE kl_meta SET value=? WHERE key='projectionVersion'", (str(PROJECTION_VERSION),))
             db.execute("UPDATE kl_meta SET value=CAST(value AS INTEGER)+1 WHERE key='revision'")
         db.commit()
@@ -298,8 +306,9 @@ def project_log(db, identity, summary, definition_cache=None):
                (identity, checksum, log["droneID"], log["droneName"], gcs_uuid, metadata.get("gcsIdentityStatus", "unavailable"),
                 stamp, day, log.get("status", "error"), float(log.get("durationSeconds", 0)), int(bool(log.get("failsafeObserved"))),
                 normalized(" ".join(str(value) for value in fields)), json.dumps(projection, ensure_ascii=False, allow_nan=False), len(message_list), alerts))
-    db.execute('UPDATE kl_logs SET flight_seconds=?,signal_messages_json=? WHERE id=?',
-               (flight_seconds, json.dumps(signals.observations(), ensure_ascii=False, allow_nan=False), identity))
+    from library_map_overview import projected_marker
+    db.execute('UPDATE kl_logs SET flight_seconds=?,signal_messages_json=?,map_marker=? WHERE id=?',
+               (flight_seconds, json.dumps(signals.observations(), ensure_ascii=False, allow_nan=False), projected_marker(log), identity))
     db.execute("DELETE FROM kl_messages WHERE log_id=?", (identity,))
     for index, message in enumerate(message_list):
         text, level = str(message.get("text", "")), str(message.get("level", "UNKNOWN"))
@@ -451,7 +460,7 @@ def parse_request(request):
     scope = {field: string_list(raw.get(field, []), field) for field in ("droneKeys", "families", "levels", "statuses", 'logIDs')}
     scope['clientID'] = ('' if raw.get('clientID') == '' else library_clients.validate_id(raw.get('clientID'), optional=True))
     proximity = library_proximity.validate(request.get('proximity'))
-    if proximity is not None and request.get('kind', 'logs') != 'map':
+    if proximity is not None and request.get('kind', 'logs') not in ('map', 'map-overview'):
         raise ValueError('La recherche de proximité est réservée à la carte.')
     for field, default in (("includeUnknownDates", True), ("alertOnly", False), ("includeMasked", False)):
         if not isinstance(raw.get(field, default), bool):
@@ -474,10 +483,11 @@ def parse_request(request):
             raise ValueError("Recherche invalide.")
         scope[field] = normalized(raw.get(field, ""))
     limit = request.get("limit", MAX_PAGE_SIZE)
-    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= MAX_PAGE_SIZE:
-        raise ValueError("Taille de page invalide (1 à 200).")
+    maximum = MAX_MAP_PAGE_SIZE if request.get('kind') == 'map-overview' else MAX_PAGE_SIZE
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= maximum:
+        raise ValueError(f"Taille de page invalide (1 à {maximum}).")
     kind = request.get("kind", "logs")
-    if kind not in ("logs", "groups", "messages", 'drones', 'map', 'group-keys', 'events', 'catalogue'):
+    if kind not in ("logs", "groups", "messages", 'drones', 'map', 'map-overview', 'group-keys', 'events', 'catalogue'):
         raise ValueError("Type de requête non pris en charge.")
     if kind == 'map':
         limit = min(limit, 80)
@@ -848,7 +858,11 @@ def query(db, request, read_only=False):
         proximity_unavailable = None
         if request.get('proximity') is not None:
             from library_proximity import prepare_scope, validate
-            scope, proximity_unavailable = prepare_scope(db, scope, validate(request['proximity']), read_only)
+            scope, proximity_unavailable = prepare_scope(db, scope, validate(request['proximity']), read_only,
+                                                        overview=kind == 'map-overview')
+        if kind == 'map-overview':
+            from library_map_overview import query_page
+            return query_page(db, request, scope, limit, revision, scope_hash, offset, proximity_unavailable)
         if kind == 'catalogue':
             entries_sql = "SELECT 'family' AS kind,family AS value FROM kl_definitions UNION SELECT 'family',family FROM kl_family_overrides UNION SELECT 'level',level FROM kl_definitions"
             entry_params = []

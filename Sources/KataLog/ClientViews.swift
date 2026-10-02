@@ -54,6 +54,7 @@ struct ClientDestinationPicker: View {
     @ObservedObject var clients: ClientStore
     @Binding var selection: String
     var title = "Client destinataire"
+    var replacesExistingAssignment = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -79,7 +80,7 @@ struct ClientDestinationPicker: View {
                 .accessibilityValue(clients.scopeLabel(for: selection))
         }
         .accessibilityIdentifier("clients.destination")
-        .help("Les nouveaux logs sont attribués à ce client. Les fichiers déjà connus conservent leur attribution.")
+        .help(replacesExistingAssignment ? "L’attribution des logs sélectionnés sera remplacée par ce client." : "Les nouveaux logs sont attribués à ce client. Les fichiers déjà connus conservent leur attribution.")
     }
 }
 
@@ -197,7 +198,7 @@ struct ClientAssignmentView: View {
             Text("Attribuer les logs").font(.system(size: 24, weight: .semibold))
             Text("\(logCount) logs concernés · \(clients.scopeLabel(for: scope.clientID))")
                 .foregroundStyle(palette.secondary)
-            ClientDestinationPicker(clients: clients, selection: $destination)
+            ClientDestinationPicker(clients: clients, selection: $destination, replacesExistingAssignment: true)
             Text("Cette action remplace l’attribution des logs sélectionnés. Elle ne duplique ni les drones ni les fichiers. Choisissez « Sans client » pour retirer leur attribution.")
                 .foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
             if let error { Text(error).foregroundStyle(palette.red).fixedSize(horizontal: false, vertical: true) }

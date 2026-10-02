@@ -12,6 +12,7 @@ struct Workspace06View: View {
     @StateObject private var sourcesSummary: SourcesImportStore
     @StateObject private var updates: UpdateStore
     @StateObject private var reportPreview = ReportPreviewStore()
+    @StateObject private var fleetMapPresentation = FleetMapPresentationState()
     @StateObject private var diagnostics: DiagnosticStore
     @State private var page: Page = .overview
     @State private var showingScope = false
@@ -85,7 +86,14 @@ struct Workspace06View: View {
     private var themeSelection: Binding<String> { Binding(get: { WorkspaceAppearance.selection(for: views.state.theme) }, set: { value in edit { try views.setTheme(value) } }) }
     private var busy: Bool { library.isImporting || library.isMaintainingLibrary || library.isQuerying || library.isLoading || library.isLoadingFlight }
     private var mutationBusy: Bool { busy || gcs.isBusy || library.activeDetailLoads > 0 || diagnostics.isExporting || diagnostics.isFetchingGCS }
-    private var queryResultsUnavailable: Bool { library.isQuerying || library.queryWasCancelled || library.queryError != nil }
+    private var queryResultsUnavailable: Bool {
+        switch page {
+        case .overview, .history: return !library.historyResultsCurrent
+        case .alerts: return selectedGroup == nil ? !library.groupResultsCurrent : !library.occurrenceResultsCurrent
+        case .drones: return !library.droneResultsCurrent
+        default: return false
+        }
+    }
     private var reportOptions: ReportExportOptions {
         .init(format: reportFormat, excludePaths: sharedReport, excludeIdentity: sharedReport,
               excludeCoordinates: sharedReport, includeCachedDetails: cachedDetails)
@@ -110,7 +118,7 @@ struct Workspace06View: View {
                     VStack(alignment: .leading, spacing: BentoTokens.spacing) {
                         if page != .collection { header }
                         notices
-                        if [.overview, .history, .alerts, .events, .map].contains(page), views.state.activeScope != clientOnlyScope || !views.state.maskedMessageKeys.isEmpty { scopeBar }
+                        if [.overview, .history, .alerts, .events, .map, .reports].contains(page), views.state.activeScope != clientOnlyScope || !views.state.maskedMessageKeys.isEmpty { scopeBar }
                         if [.overview, .history, .alerts, .drones].contains(page), queryResultsUnavailable {
                             queryPlaceholder
                         } else { switch page {
@@ -148,11 +156,11 @@ struct Workspace06View: View {
         }
         .onChange(of: page) { _, value in
             library.historySortOverride = value == .overview ? "recent" : nil
-            selectedGroup = nil
+            selectedGroup = nil; groupCursors = [nil]
             if value == .alerts, let group = pendingOverviewGroup {
                 pendingOverviewGroup = nil; selectedGroup = group; groupCursors = [nil]
                 library.loadOccurrences(groupID: group.id)
-            } else { pendingOverviewGroup = nil; reload(value) }
+            } else { pendingOverviewGroup = nil; reload(value, usingCache: true) }
         }
         .onChange(of: views.state.activeScope) { _, _ in historyCursors = [nil]; groupCursors = [nil]; selectedGroup = nil; selectedHistoryLogs = [] }
         .onChange(of: advancedMode) { _, enabled in if !enabled && page == .events { page = .overview } }
@@ -171,7 +179,7 @@ struct Workspace06View: View {
     }
     private var navigationSheets: some View {
         observedWorkspace
-        .sheet(isPresented: $showingScope, onDismiss: { library.loadHistory(); focusedControl = .scope }) { ScopeEditor06(library: library) }
+        .sheet(isPresented: $showingScope, onDismiss: { focusedControl = .scope }) { ScopeEditor06(library: library) }
         .sheet(isPresented: $showingAssignment) {
             ClientAssignmentView(library: library, scope: assignmentScope,
                 logCount: selectedHistoryLogs.isEmpty ? (totals?.logs ?? 0) : selectedHistoryLogs.count) { selectedHistoryLogs = [] }
@@ -195,7 +203,7 @@ struct Workspace06View: View {
     private var librarySheets: some View {
         navigationSheets
         .sheet(isPresented: Binding(get: { restorePreview != nil }, set: { if !$0 { restorePreview = nil; restoreCandidate = nil } }), onDismiss: { focusedControl = .restore }) { restoreSheet }
-        .sheet(isPresented: $showingDiagnostic, onDismiss: { diagnostics.dismiss(); focusedControl = .diagnostic }) {
+        .sheet(isPresented: $showingDiagnostic, onDismiss: { diagnostics.dismiss(); diagnostics.load(report: currentDiagnosticReport()); focusedControl = .diagnostic }) {
             DiagnosticView(store: diagnostics, host: gcs.host, readOnly: library.isReadOnly, externalBusy: mutationBusy || library.isExporting,
                 refresh: { diagnostics.load(report: currentDiagnosticReport()) }, close: { showingDiagnostic = false })
                 .preferredColorScheme(theme)
@@ -319,9 +327,10 @@ struct Workspace06View: View {
     private var headerActions: some View {
         HStack(spacing: 9) {
             if busy { ProgressView().controlSize(.small).accessibilityLabel("Opération en cours") }
-            Button { reload(page) } label: { BentoIcon(symbol: "arrow.clockwise", size: 14) }
+            if page != .settings { Button { reload(page) } label: { BentoIcon(symbol: "arrow.clockwise", size: 14) }
                 .help("Actualiser").accessibilityLabel("Actualiser").disabled(busy).focused($focusedControl, equals: .refresh)
-            if [.overview, .history, .alerts, .events, .map].contains(page) {
+            }
+            if [.overview, .history, .alerts, .events, .map, .reports].contains(page) {
                 Button("Filtrer", systemImage: "line.3.horizontal.decrease") { showingScope = true }
                     .disabled(busy).focused($focusedControl, equals: .scope).keyboardShortcut("f", modifiers: .command)
             }
@@ -569,8 +578,8 @@ struct Workspace06View: View {
     private var overviewMetrics: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 120), spacing: 0, alignment: .topLeading), count: 4), alignment: .leading, spacing: 14) {
             metric("Drones scannés", value: totals.map { $0.scannedDrones.formatted() } ?? "—", note: "", help: LibraryHelp.drones + "\n\(totals?.provisionalDrones ?? 0) identités provisoires, comptées à part.")
-            metric("Logs enregistrés", value: totals.map { $0.logs.formatted() } ?? "—", note: "Copies identiques dédupliquées", help: "Logs uniques dans la sélection. Les fichiers illisibles restent dans l’historique ; leur qualité de lecture est indiquée séparément.")
-            metric("Temps de vol cumulé", value: totals?.measuredFlightSeconds.map(FlightUIFormat.duration) ?? "Indisponible", note: totals.map { FlightUIFormat.duration($0.recordedSeconds) + " enregistrées" } ?? "", help: LibraryHelp.flightDuration + "\n" + LibraryHelp.recordedDuration + "\n\(totals?.flightLogCount ?? 0) / \(totals?.logs ?? 0) logs avec temps de vol mesuré.")
+            metric("Logs enregistrés", value: totals.map { $0.logs.formatted() } ?? "—", note: "", help: "Logs uniques dans la sélection. Les fichiers illisibles restent dans l’historique ; leur qualité de lecture est indiquée séparément.")
+            metric("Temps de vol cumulé", value: totals?.measuredFlightSeconds.map(FlightUIFormat.duration) ?? "Indisponible", note: "", help: LibraryHelp.flightDuration + "\n\(totals?.flightLogCount ?? 0) / \(totals?.logs ?? 0) logs avec temps de vol mesuré. Le temps passé au sol est exclu.")
             metric("Logs avec alerte", value: totals.map { $0.alertLogs.formatted() } ?? "—", note: totals.map { "Sur \($0.validLogs) logs lus" } ?? "", help: LibraryHelp.alerts)
         }.padding(.vertical, 18).background(palette.sidebar.opacity(0.7), in: RoundedRectangle(cornerRadius: 14))
     }
@@ -787,6 +796,8 @@ struct Workspace06View: View {
                 }
                 Divider()
                 Text("Messages d’origine").font(.system(size: 13, weight: .semibold))
+                ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
                 ForEach(library.occurrencePage?.occurrences ?? []) { item in
                     VStack(alignment: .leading, spacing: 9) {
                         Text(item.message.text).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
@@ -795,11 +806,13 @@ struct Workspace06View: View {
                             MessageClassificationControl(message: item.message, store: library.annotations, families: Array(totals?.familyLogCounts.keys ?? Dictionary<String, Int>().keys)).padding(.top, 8)
                         }.font(.system(size: 10))
                         Button("Voir le log", systemImage: "arrow.up.right") {
-                            var scope = clientOnlyScope; scope.logIDs = [item.logID]; edit { try views.chooseScope(scope); page = .history }
-                        }.buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true))
+                            library.openMapFlight(logID: item.logID)
+                        }.buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true)).disabled(library.isLoadingFlight)
                     }.padding(.vertical, 5)
                     Divider()
                 }
+                }
+                }.frame(maxHeight: 420)
                 pagination(cursors: $groupCursors, next: library.occurrencePage?.nextCursor) { library.loadOccurrences(groupID: group.id, cursor: $0) }
             } else {
                 BentoIcon(symbol: "text.book.closed", size: 23).foregroundStyle(palette.secondary)
@@ -821,11 +834,12 @@ struct Workspace06View: View {
     }
     private var map: some View {
         VStack(alignment: .leading, spacing: 14) {
-            FleetMapView(logs: library.mapPage?.snapshot.logs ?? [], showsHeading: false,
-                proximity: library.mapProximity, totalCount: library.mapPage?.totals.logs,
+            FleetMapView(markers: library.mapPage?.markers ?? [], showsHeading: false,
+                proximity: library.mapProximity, scopeID: library.mapPage?.scopeHash ?? "", presentation: fleetMapPresentation,
+                totalCount: library.mapPage?.totalLogs, locatedCount: library.mapPage?.locatedLogs,
                 proximityUnavailableLogs: library.mapPage?.proximityUnavailableLogs, isSearching: library.isQuerying,
-                onProximityChange: { library.loadMap(proximity: $0) }, onSelectLog: open)
-            Text("La recherche porte sur tous les logs du périmètre client. Les trajectoires affichées peuvent être limitées pour conserver une carte fluide.")
+                onProximityChange: { library.loadMap(proximity: $0) }, onSelectLog: { library.openMapFlight(logID: $0) })
+            Text("Tous les lieux de la sélection sont représentés. Ouvrez un log pour consulter sa trajectoire détaillée.")
                 .font(.system(size: 10)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -891,7 +905,8 @@ struct Workspace06View: View {
     }
     private func registryActions(_ drone: LibraryDrone) -> some View {
         HStack(spacing: 8) {
-            Button("Historique") { var scope = clientOnlyScope; scope.droneKeys = [drone.id]; edit { try views.chooseScope(scope); page = .history } }.disabled(drone.logCount == 0 || busy)
+            Button("Historique") { var scope = SelectionScope(); scope.droneKeys = [drone.id]; edit { try views.chooseScope(scope); page = .history } }
+                .help("Voir les logs de ce drone pour tous les clients.").disabled(drone.logCount == 0 || busy)
             Button(drone.stockNumber == nil ? "Identifier" : "Modifier") { identity = DroneIdentityTarget(key: drone.id, sourceName: drone.name) }.disabled(library.isReadOnly || busy)
         }.buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true))
     }
@@ -1371,8 +1386,16 @@ struct Workspace06View: View {
                 appearanceSettings
                 UpdateSettingsView(store: updates, readOnly: library.isReadOnly)
             }
-            diagnosticSettings
-            applicationResetCard
+            if advancedMode { diagnosticSettings }
+            else { panel {
+                Text("Aide et diagnostic").font(.system(size: 16, weight: .semibold))
+                Text("En cas de problème, préparez un fichier pour le support. Aucun envoi automatique.")
+                    .foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
+                Button("Préparer un diagnostic…", systemImage: "stethoscope") { makeDiagnostic() }
+                    .focused($focusedControl, equals: .diagnostic).accessibilityIdentifier("diagnostic.open")
+            } }
+            DisclosureGroup("Réinitialisation") { applicationResetCard.padding(.top, 14) }
+                .foregroundStyle(palette.secondary)
         }
         .onAppear { diagnostics.load(report: currentDiagnosticReport()) }
     }
@@ -1450,6 +1473,7 @@ struct Workspace06View: View {
                 }
             }.toggleStyle(.switch).controlSize(.small).tint(palette.mint)
                 .disabled(library.isReadOnly || mutationBusy).accessibilityIdentifier("settings.advancedMode")
+                .accessibilityLabel("Accès avancé").accessibilityHint("Affiche les données techniques et les événements PX4.")
         }.frame(minHeight: 205, alignment: .top)
     }
     private var libraryResetCard: some View {
@@ -1506,7 +1530,8 @@ struct Workspace06View: View {
     private func metric(_ title: String, value: String, note: String, help: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(value).font(.system(size: value == "Indisponible" ? 15 : 27, weight: .semibold)).tracking(-0.6).monospacedDigit()
-            HStack(spacing: 3) { Text(title).font(.system(size: 11)).foregroundStyle(palette.secondary); if let help { LibraryHelpButton(title: title, text: help) } }
+                .lineLimit(1).minimumScaleFactor(0.65)
+            HStack(spacing: 3) { Text(title).font(.system(size: 11)).foregroundStyle(palette.secondary).lineLimit(1).minimumScaleFactor(0.75); if let help { LibraryHelpButton(title: title, text: help).fixedSize() } }
             if !note.isEmpty { Text(note).font(.system(size: 10)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true) }
         }.padding(.horizontal, 14).frame(maxWidth: .infinity, minHeight: note.isEmpty ? 40 : 68, alignment: .topLeading)
     }
@@ -1525,7 +1550,17 @@ struct Workspace06View: View {
     private func moveAxis(_ family: String, in axes: [String], by offset: Int) {
         edit { try views.setProfileAxes(AlertProfile06.moving(family, in: axes, by: offset)); library.statusMessage = "Ordre des axes enregistré. Les valeurs et les familles restent inchangées." }
     }
-    private func reload(_ value: Page) { switch value { case .drones: library.loadAuxiliary(kind: "drones", search: registrySearch); case .map: library.loadAuxiliary(kind: "map"); case .storage: storage.load(); case .collection: break; default: library.loadHistory() } }
+    private func reload(_ value: Page, usingCache: Bool = false) {
+        if !usingCache { library.invalidateNavigationCache() }
+        switch value {
+        case .drones: library.loadAuxiliary(kind: "drones", search: registrySearch, usingCache: usingCache)
+        case .map: library.loadAuxiliary(kind: "map", usingCache: usingCache)
+        case .storage: storage.load()
+        case .reports: if !usingCache { refreshReportPreview() }
+        case .collection, .settings: break
+        default: library.loadHistory(usingCache: usingCache)
+        }
+    }
     private func date(_ value: String) -> String { SelectionScope.calendarDay(value) ?? "Date inconnue" }
     private func observationDate(_ value: String) -> String {
         guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "Date inconnue" }

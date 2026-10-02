@@ -21,7 +21,7 @@ Boutons discrets sans contour ni fond permanent, survol et focus visibles. Thèm
 
 Les drones éligibles connectés à la GCS sont directement collectables. L'attribution à un client et le numéro de stock sont indépendants. Chaque travail en file conserve son client destinataire ; changer le sélecteur après son démarrage ne réattribue pas ses logs. Les protections existantes contre les transferts simultanés incompatibles et les appareils signalés armés sont conservées.
 
-La carte recherche une ville, une adresse ou des coordonnées avec un rayon. Les noms de lieux dépendent du service Apple. Les anciennes trajectoires complètes sont mises en cache lorsque leurs sources sont accessibles, puis restent recherchables hors ligne. Un log correspond dès qu'une portion de sa trajectoire traverse la zone. La recherche s'applique avant la limite d'affichage et annonce les logs dont la trajectoire complète n'a pas pu être vérifiée. Aucune liaison n'est inventée dans une lacune GPS.
+La carte recherche une ville, une adresse ou des coordonnées avec un rayon. Les noms de lieux dépendent du service Apple. Les anciennes trajectoires complètes sont mises en cache lorsque leurs sources sont accessibles, puis restent recherchables hors ligne. Un log correspond dès qu'une portion de sa trajectoire traverse la zone. La recherche s'applique avant la pagination de la carte et annonce les logs dont la trajectoire complète n'a pas pu être vérifiée. Aucune liaison n'est inventée dans une lacune GPS.
 
 Chaque fiche de log possède sa fenêtre macOS et son état de lecture indépendants. Les données PX4 spécialisées sont accessibles via le mode avancé, désactivé par défaut.
 
