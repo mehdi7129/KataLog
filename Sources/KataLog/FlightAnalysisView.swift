@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 struct FlightAnalysisView: View {
     let log: FlightLog
     @ObservedObject var study: FlightStudyStore
+    var advancedMode = false
     @Environment(\.colorScheme) private var colorScheme
     @State private var recipe = "battery"
     @State private var instance = 0
@@ -58,6 +59,9 @@ struct FlightAnalysisView: View {
             load()
         }
         .onDisappear { study.cancel() }
+        .onChange(of: advancedMode) { _, enabled in
+            if !enabled && recipe == "custom" { recipe = "battery" }
+        }
         .onChange(of: study.selectedTime) { _, value in cursorInput = value.map { String(format: "%.3f", $0) } ?? "" }
         .accessibilityIdentifier("flight.analysis")
     }
@@ -118,7 +122,7 @@ struct FlightAnalysisView: View {
                 Text("Batterie").tag("battery")
                 Text("GNSS").tag("gnss")
                 Text("Estimateur EKF").tag("ekf")
-                Text("Champ du catalogue").tag("custom")
+                if advancedMode { Text("Champ du catalogue").tag("custom") }
             }.labelsHidden().frame(width: 210)
                 .disabled(study.isLoading)
                 .onChange(of: recipe) { _, _ in instance = instances.first ?? 0; load() }
@@ -253,9 +257,11 @@ struct FlightAnalysisView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(curve.label).font(.system(size: 14, weight: .semibold))
+                        Text(FlightStudyPresentation.displayLabel(curve)).font(.system(size: 14, weight: .semibold))
+                        if advancedMode {
                         Text("\(curve.source) · instance \(curve.instance ?? instance) · \(unit(curve.unit))")
                             .font(.system(size: 10, design: .monospaced)).foregroundStyle(style.secondary).textSelection(.enabled)
+                        } else { Text(unit(curve.unit)).font(.system(size: 11)).foregroundStyle(style.secondary) }
                     }
                     Spacer()
                     Text(curve.interpolation == "step" ? "États discrets" : "Mesures")
@@ -291,7 +297,7 @@ struct FlightAnalysisView: View {
                         }
                     }
                     .chartLegend(.hidden).frame(height: 190)
-                    .accessibilityLabel("\(curve.label), \(unit(curve.unit)), \(curve.points.count) échantillons affichés en segments distincts")
+                    .accessibilityLabel("\(FlightStudyPresentation.displayLabel(curve)), \(unit(curve.unit)), \(curve.points.count) échantillons affichés en segments distincts")
                     .accessibilityHint("Le tableau des échantillons et le curseur permettent aussi une consultation au clavier.")
                 }
                 HStack(alignment: .top) {
@@ -312,7 +318,7 @@ struct FlightAnalysisView: View {
                             .font(.system(size: 11)).foregroundStyle(style.secondary)
                     }
                 }
-                if let conversion = curve.sourceConversion {
+                if advancedMode, let conversion = curve.sourceConversion {
                     Text(conversion).font(.system(size: 10)).foregroundStyle(style.secondary).textSelection(.enabled)
                 }
             }
@@ -353,13 +359,13 @@ struct FlightAnalysisView: View {
 
     private func nearbyRecords(_ time: Double) -> some View {
         let messages = log.messages.filter { $0.timestampSeconds.isFinite && abs($0.timestampSeconds - time) <= 2 }
-        let events = (log.events ?? []).filter { $0.timeSeconds.map { $0.isFinite && abs($0 - time) <= 2 } ?? false }
-        let untimed = (log.events ?? []).filter { $0.timeSeconds == nil }.count
+        let events = advancedMode ? (log.events ?? []).filter { $0.timeSeconds.map { $0.isFinite && abs($0 - time) <= 2 } ?? false } : []
+        let untimed = advancedMode ? (log.events ?? []).filter { $0.timeSeconds == nil }.count : 0
         return VStack(alignment: .leading, spacing: 10) {
-            Text("\(messages.count) messages · \(events.count) événements · ±2 s")
+            Text(advancedMode ? "\(messages.count) messages · \(events.count) événements · ±2 s" : "\(messages.count) messages · ±2 s")
                 .font(.system(size: 11, weight: .medium))
             if messages.isEmpty && events.isEmpty {
-                Text("Aucun message ou événement horodaté dans cet intervalle.").font(.system(size: 11)).foregroundStyle(style.secondary)
+                Text(advancedMode ? "Aucun message ou événement horodaté dans cet intervalle." : "Aucun message dans cet intervalle.").font(.system(size: 11)).foregroundStyle(style.secondary)
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
@@ -407,7 +413,7 @@ struct FlightAnalysisView: View {
                             ForEach(curve.points) { point in
                                 Button { study.selectedTime = point.timeSeconds } label: {
                                     HStack {
-                                        Text(curve.label).frame(width: 210, alignment: .leading)
+                                        Text(FlightStudyPresentation.displayLabel(curve)).frame(width: 210, alignment: .leading)
                                         Text(FlightUIFormat.seconds(point.timeSeconds)).frame(width: 100)
                                         Text(FlightUIFormat.value(point.value)).frame(width: 115)
                                         Text(unit(curve.unit)).frame(width: 90)
@@ -415,7 +421,7 @@ struct FlightAnalysisView: View {
                                     }.font(.system(size: 11)).monospacedDigit().padding(.vertical, 8)
                                         .background(study.selectedTime == point.timeSeconds ? style.raised : .clear)
                                 }.buttonStyle(.plain)
-                                    .accessibilityLabel("\(curve.label), temps \(FlightUIFormat.seconds(point.timeSeconds)), valeur \(FlightUIFormat.value(point.value)) \(unit(curve.unit)), segment \(point.segment). Sélectionner cet instant.")
+                                    .accessibilityLabel("\(FlightStudyPresentation.displayLabel(curve)), temps \(FlightUIFormat.seconds(point.timeSeconds)), valeur \(FlightUIFormat.value(point.value)) \(unit(curve.unit)), segment \(point.segment). Sélectionner cet instant.")
                             }
                         }
                     }.textSelection(.enabled)
@@ -443,6 +449,7 @@ struct FlightAnalysisView: View {
             }
             recipe = savedRecipe; instance = request.instance
         } else {
+            guard advancedMode else { return }
             guard let field = extractableFields.first(where: { $0.topic == request.topic && $0.field == request.field && $0.instance == request.instance }) else {
                 restorationWarning = "Le champ mémorisé n’est plus extractible dans ce catalogue. La sélection par défaut est affichée."; return
             }
@@ -489,6 +496,22 @@ struct FlightAnalysisView: View {
 }
 
 enum FlightStudyPresentation {
+    static func displayLabel(_ series: TelemetrySeries) -> String {
+        let labels = ["battery_status.voltage_v": "Tension de la batterie",
+                      "battery_status.current_a": "Courant de la batterie",
+                      "battery_status.remaining": "Charge restante",
+                      "battery_status.discharged_mah": "Capacité consommée",
+                      "sensor_gps.fix_type": "Type de position GNSS",
+                      "sensor_gps.satellites_used": "Satellites utilisés",
+                      "sensor_gps.eph": "Incertitude horizontale",
+                      "sensor_gps.epv": "Incertitude verticale",
+                      "estimator_status.pos_test_ratio": "Ratio de test de position",
+                      "estimator_status.vel_test_ratio": "Ratio de test de vitesse",
+                      "estimator_status.hgt_test_ratio": "Ratio de test de hauteur",
+                      "estimator_status.mag_test_ratio": "Ratio de test magnétique"]
+        return labels["\(series.topic ?? "").\(series.field ?? "")"] ?? series.label
+    }
+
     static func eventTime(_ event: PX4Event) -> Double? {
         guard let time = event.timeSeconds, time.isFinite, time >= 0 else { return nil }
         return time

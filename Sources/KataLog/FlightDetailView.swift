@@ -72,7 +72,7 @@ struct FlightDetailView: View {
             }
             if tab == .curves {
                 if let log = session.log, !session.isLoading {
-                    FlightAnalysisView(log: log, study: study)
+                    FlightAnalysisView(log: log, study: study, advancedMode: views.state.advancedMode == true)
                 } else if let error = session.error {
                     ContentUnavailableView("Détail indisponible", systemImage: "exclamationmark.triangle", description: Text(error))
                 } else {
@@ -321,11 +321,12 @@ struct FlightDetailView: View {
                         detailLine("Mesures", "\(log.metrics.count)")
                         detailLine("Topics", "\(log.topicDetails?.count ?? log.topics.count)")
                         detailLine("Paramètres initiaux", log.parameters.map { "\($0.count)" } ?? "Détails non chargés")
-                        Button { tab = .coverage } label: {
+                        if views.state.advancedMode == true { Button { tab = .coverage } label: {
                             Label("Voir la couverture et les sources", systemImage: "arrow.right")
                                 .font(.system(size: 11, weight: .medium))
                         }
                         .buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true)).accessibilityIdentifier("flight.showCoverage")
+                        }
                     }
                 }
             }
@@ -390,8 +391,9 @@ struct FlightDetailView: View {
     private func messages(_ log: FlightLog) -> some View {
         let visible = filteredMessages(log)
         return VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 12) {
                 searchField("Rechercher dans ce log…", text: $messageSearch, identifier: "flight.messages.search")
+                HStack(spacing: 12) {
                 Picker("Niveau", selection: $messageLevel) {
                     ForEach(["Tous", "Alertes"] + Set(log.messages.map(\.level)).sorted { LogMessage.rank($0) > LogMessage.rank($1) }, id: \.self) { Text($0).tag($0) }
                 }
@@ -403,6 +405,7 @@ struct FlightDetailView: View {
                 .frame(width: 205).accessibilityIdentifier("flight.messages.family")
                 Button("Réinitialiser") { messageSearch = ""; messageLevel = "Tous"; messageFamily = nil }
                     .controlSize(.small).disabled(messageSearch.isEmpty && messageLevel == "Tous" && messageFamily == nil)
+                }
             }
             Text("\(visible.count) / \(log.messages.count) messages · temps relatif en secondes")
                 .font(.system(size: 11)).foregroundStyle(style.secondary)

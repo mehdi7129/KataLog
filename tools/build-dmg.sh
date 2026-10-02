@@ -3,9 +3,15 @@ set -euo pipefail
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$project_dir"
 tools_dir="${KATALOG_DMG_BUILD_DIR:-/private/tmp/katalog-dmg-tools}"
+require_supported_python() {
+    "$1" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else "DMG tooling requires Python 3.10 or later. Set KATALOG_DMG_PYTHON and use a new KATALOG_DMG_BUILD_DIR.")'
+}
 if [[ ! -x "$tools_dir/bin/python3" ]]; then
-    python3 -m venv "$tools_dir"
+    dmg_python="${KATALOG_DMG_PYTHON:-python3}"
+    require_supported_python "$dmg_python"
+    "$dmg_python" -m venv "$tools_dir"
 fi
+require_supported_python "$tools_dir/bin/python3"
 "$tools_dir/bin/python3" -m pip install --disable-pip-version-check --require-hashes -r requirements-dmg-build.txt
 app_path="${KATALOG_APP_PATH:-}"
 if [[ -z "$app_path" ]]; then

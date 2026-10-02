@@ -19,7 +19,7 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var currentHistoryCursor: String?
     @Published private(set) var groupPage: LibraryGroupPage?
     @Published private(set) var dronePage: LibraryDronePage?
-    @Published private(set) var mapPage: LibraryLogPage?
+    @Published private(set) var mapPage: LibraryMapPage?
     @Published private(set) var occurrencePage: LibraryMessagePage?
     @Published private(set) var isQuerying = false
     @Published private(set) var isCancellingQuery = false
@@ -75,6 +75,15 @@ final class LibraryStore: ObservableObject {
     private(set) var usesPagedNavigation = false
     var historySortOverride: String?
     private var indexPrepared = false
+    private lazy var navigationCache = LibraryNavigationCache(directory: storageDirectory)
+    private var activeQueryKey: Data?
+    private var displayedQueryKeys: [String: Data] = [:]
+    @Published private(set) var historyResultsCurrent = false
+    @Published private(set) var groupResultsCurrent = false
+    @Published private(set) var droneResultsCurrent = false
+    @Published private(set) var occurrenceResultsCurrent = false
+
+    func invalidateNavigationCache() { navigationCache.invalidate() }
 
     init(storageDirectory: URL? = nil, engine: URL? = nil, pagedNavigation: Bool = false) {
         usesPagedNavigation = pagedNavigation
@@ -127,6 +136,7 @@ final class LibraryStore: ObservableObject {
 
     func reload() {
         guard !isMaintainingLibrary, !isImporting else { return }
+        invalidateNavigationCache()
         if usesPagedNavigation { loadHistory(); return }
         let token = UUID(); loadToken = token
         let url = snapshotURL
@@ -196,7 +206,7 @@ final class LibraryStore: ObservableObject {
         }
         let database = databaseURL, output = snapshotURL, progressFile = progressURL
         let task = Task<FleetSnapshot, Error> { [self] in
-            defer { self.isImporting = false; self.progressTask?.cancel(); self.progressTask = nil; self.importTask = nil }
+            defer { self.invalidateNavigationCache(); self.isImporting = false; self.progressTask?.cancel(); self.progressTask = nil; self.importTask = nil }
             do {
                 let result: FleetSnapshot
                 if self.usesPagedNavigation {
@@ -507,109 +517,184 @@ final class LibraryStore: ObservableObject {
         return result
     }
 
-    /// Each response belongs to the captured annotations, scope and request
-    /// token. A superseded query can never replace newer visible results.
-    func loadHistory(cursor: String? = nil) {
-        guard !isImporting, !isMaintainingLibrary, !isCancellingQuery else { return }
-        queryTask?.cancel()
-        let token = UUID(); queryToken = token
-        guard let engine = engineURL else { return }
-        guard FileManager.default.fileExists(atPath: databaseURL.path) || (!isReadOnly && usesPagedNavigation) else { return }
-        var request = LibraryQueryRequest(scope: views.state.activeScope, annotations: annotations.state,
-                                          maskedMessageKeys: views.state.maskedMessageKeys)
-        request.cursor = cursor
-        request.sortOrder = historySortOverride ?? views.state.historySort ?? "recent"
+    /// Each cached response belongs to its full request and an unchanged local
+    /// database/WAL. Switching tabs restores results synchronously when possible.
+    private func applyNavigationPage(_ page: LibraryNavigationCache.Page, request: LibraryQueryRequest) {
+        let key = LibraryNavigationCache.key(request)
+        switch page {
+        case let .history(logs, groups):
+            historyPage = logs; groupPage = groups; currentHistoryCursor = request.cursor
+            occurrencePage = nil; occurrenceResultsCurrent = false
+            if usesPagedNavigation { snapshot = logs.snapshot }
+            historyResultsCurrent = true; groupResultsCurrent = true
+            displayedQueryKeys["logs"] = key
+            var groupRequest = request; groupRequest.kind = "groups"; groupRequest.cursor = nil
+            displayedQueryKeys["groups"] = LibraryNavigationCache.key(groupRequest)
+        case let .map(value): mapPage = value
+        case let .drones(value): dronePage = value; droneResultsCurrent = true
+        case let .groups(value): groupPage = value; groupResultsCurrent = true
+        case let .messages(value): occurrencePage = value; occurrenceResultsCurrent = true
+        }
+        displayedQueryKeys[request.kind] = key
+        queryError = nil; queryWasCancelled = false
+    }
+
+    private typealias NavigationResult = (page: LibraryNavigationCache.Page, stamp: LibraryNavigationCache.Stamp)
+
+    private func readNavigationPage(request: LibraryQueryRequest, usingCache: Bool,
+                                    operation: @escaping @MainActor () async throws -> NavigationResult) {
+        let key = LibraryNavigationCache.key(request)
+        if isQuerying, activeQueryKey == key { return }
+        if queryTask == nil, usingCache, let page = navigationCache.value(for: key, includeFleet: request.kind == "drones") {
+            applyNavigationPage(page, request: request)
+            return
+        }
+        let current = displayedQueryKeys[request.kind] == key
+        switch request.kind {
+        case "logs":
+            historyResultsCurrent = current
+            var groupRequest = request; groupRequest.kind = "groups"; groupRequest.cursor = nil
+            groupResultsCurrent = displayedQueryKeys["groups"] == LibraryNavigationCache.key(groupRequest)
+        case "groups": groupResultsCurrent = current
+        case "drones": droneResultsCurrent = current
+        case "messages": occurrenceResultsCurrent = current
+        case "map-overview": if !current { mapPage = nil }
+        default: break
+        }
+        let previous = queryTask
+        previous?.cancel()
+        let token = UUID(); queryToken = token; activeQueryKey = key
         isQuerying = true; queryWasCancelled = false; queryError = nil
-        let database = databaseURL, readOnly = isReadOnly
         queryTask = Task { [weak self] in
+            // A cached destination cannot release the activity lock while a
+            // superseded helper is still shutting down.
+            await previous?.value
+            guard let self, !Task.isCancelled, queryToken == token else { return }
+            defer {
+                if queryToken == token { isQuerying = false; queryTask = nil; activeQueryKey = nil }
+            }
             do {
-                if !readOnly && self?.indexPrepared == false {
-                    guard let self else { return }
-                    _ = try await self.performMaintenance(allowOwnedQuery: true) {
-                        try await AnalysisService.run(["ensure-index", "--database", database.path], engine: engine)
+                if !isReadOnly && !indexPrepared, let engine = engineURL {
+                    _ = try await performMaintenance(allowOwnedQuery: true) {
+                        try await AnalysisService.run(["ensure-index", "--database", databaseURL.path], engine: engine)
                     }
-                    self.indexPrepared = true
+                    indexPrepared = true
                 }
-                let page = try await LibraryQueryService.page(LibraryLogPage.self, request: request, database: database, engine: engine, readOnly: true)
-                var groupsRequest = request; groupsRequest.kind = "groups"; groupsRequest.cursor = nil
-                let groups = try await LibraryQueryService.page(LibraryGroupPage.self, request: groupsRequest, database: database, engine: engine, readOnly: true)
-                guard !Task.isCancelled, let self, queryToken == token else { return }
-                guard page.revision == groups.revision else { throw AnalysisError.engine("La bibliothèque a changé pendant la lecture. Rechargez la sélection.") }
-                clients.reload()
-                historyPage = page; currentHistoryCursor = request.cursor; groupPage = groups; occurrencePage = nil
-                if usesPagedNavigation { snapshot = page.snapshot }
-                isQuerying = false; queryTask = nil
+                try Task.checkCancellation()
+                if usingCache, let cached = navigationCache.value(for: key, includeFleet: request.kind == "drones") {
+                    applyNavigationPage(cached, request: request)
+                    return
+                }
+                let result = try await operation()
+                guard !Task.isCancelled, queryToken == token else { return }
+                navigationCache.insert(result.page, for: key, readStamp: result.stamp)
+                applyNavigationPage(result.page, request: request)
             } catch {
-                guard !Task.isCancelled, let self, queryToken == token else { return }
-                queryError = error.localizedDescription; isQuerying = false; queryTask = nil
+                guard !Task.isCancelled, queryToken == token else { return }
+                queryError = error.localizedDescription
             }
         }
     }
 
-    func loadOccurrences(groupID: String, cursor: String? = nil) {
-        guard !isImporting, !isMaintainingLibrary, !isCancellingQuery else { return }
-        queryTask?.cancel(); let token = UUID(); queryToken = token
-        guard let engine = engineURL else { return }
-        var request = LibraryQueryRequest(kind: "messages", scope: views.state.activeScope, annotations: annotations.state,
-                                          maskedMessageKeys: views.state.maskedMessageKeys)
-        request.groupID = groupID; request.cursor = cursor
-        request.sortOrder = views.state.historySort ?? "recent"
-        isQuerying = true; queryWasCancelled = false; queryError = nil
-        let database = databaseURL
-        queryTask = Task { [weak self] in
-            do {
-                let result = try await LibraryQueryService.page(LibraryMessagePage.self, request: request, database: database, engine: engine, readOnly: true)
-                guard !Task.isCancelled, let self, queryToken == token else { return }
-                occurrencePage = result; isQuerying = false; queryTask = nil
-            } catch {
-                guard !Task.isCancelled, let self, queryToken == token else { return }
-                queryError = error.localizedDescription; isQuerying = false; queryTask = nil
-            }
-        }
-    }
-
-    func loadAuxiliary(kind: String, cursor: String? = nil, search: String? = nil) {
-        guard !isImporting, !isMaintainingLibrary, !isCancellingQuery, ["drones", "map", "groups"].contains(kind) else { return }
-        queryTask?.cancel(); let token = UUID(); queryToken = token
-        guard let engine = engineURL, FileManager.default.fileExists(atPath: databaseURL.path) else { return }
+    private func navigationRequest(kind: String, cursor: String? = nil) -> LibraryQueryRequest {
         var request = LibraryQueryRequest(kind: kind, scope: views.state.activeScope, annotations: annotations.state,
                                           maskedMessageKeys: views.state.maskedMessageKeys)
-        request.cursor = cursor; request.registrySearch = search
-        if kind == "map" { request.proximity = mapProximity; request.sortOrder = "recent" }
-        request.sortOrder = kind == "map" ? "recent" : (views.state.historySort ?? "recent")
-        isQuerying = true; queryWasCancelled = false; queryError = nil
+        request.cursor = cursor
+        request.sortOrder = views.state.historySort ?? "recent"
+        return request
+    }
+
+    func loadHistory(cursor: String? = nil, usingCache: Bool = false) {
+        guard !isImporting, !isMaintainingLibrary, !isCancellingQuery, let engine = engineURL else { return }
+        guard FileManager.default.fileExists(atPath: databaseURL.path) || (!isReadOnly && usesPagedNavigation) else { return }
+        var request = navigationRequest(kind: "logs", cursor: cursor)
+        request.sortOrder = historySortOverride ?? views.state.historySort ?? "recent"
         let database = databaseURL
-        queryTask = Task { [weak self] in
-            do {
-                if kind == "drones" {
-                    let result = try await LibraryQueryService.page(LibraryDronePage.self, request: request, database: database, engine: engine, readOnly: true)
-                    guard !Task.isCancelled, let self, queryToken == token else { return }
-                    dronePage = result
-                } else if kind == "map" {
-                    let result: LibraryLogPage
-                    if request.proximity != nil, let self, !self.isReadOnly,
-                       self.activeDetailLoads == 0, !self.hasExternalActivity() {
-                        // Upgrade older libraries lazily: retain verified full GPS tracks after
-                        // the first geographic search, including after the source is unplugged.
-                        result = try await self.performMaintenance(allowOwnedQuery: true) {
-                            try await LibraryQueryService.page(LibraryLogPage.self, request: request,
-                                database: database, engine: engine, readOnly: false)
-                        }
-                    } else {
-                        result = try await LibraryQueryService.page(LibraryLogPage.self, request: request, database: database, engine: engine, readOnly: true)
+        readNavigationPage(request: request, usingCache: usingCache) { [self] in
+            let stamp = navigationCache.stamp()
+            let page = try await LibraryQueryService.page(LibraryLogPage.self, request: request, database: database, engine: engine, readOnly: true)
+            var groupsRequest = request; groupsRequest.kind = "groups"; groupsRequest.cursor = nil
+            let groups = try await LibraryQueryService.page(LibraryGroupPage.self, request: groupsRequest, database: database, engine: engine, readOnly: true)
+            guard page.revision == groups.revision else { throw AnalysisError.engine("La bibliothèque a changé pendant la lecture. Rechargez la sélection.") }
+            clients.reload()
+            return (.history(page, groups), stamp)
+        }
+    }
+
+    func loadOccurrences(groupID: String, cursor: String? = nil, usingCache: Bool = false) {
+        guard !isImporting, !isMaintainingLibrary, !isCancellingQuery, let engine = engineURL else { return }
+        var request = navigationRequest(kind: "messages", cursor: cursor)
+        request.groupID = groupID
+        let database = databaseURL
+        readNavigationPage(request: request, usingCache: usingCache) { [self] in
+            let stamp = navigationCache.stamp()
+            let result = try await LibraryQueryService.page(LibraryMessagePage.self, request: request, database: database, engine: engine, readOnly: true)
+            return (.messages(result), stamp)
+        }
+    }
+
+    func loadAuxiliary(kind: String, cursor: String? = nil, search: String? = nil, usingCache: Bool = false) {
+        guard !isImporting, !isMaintainingLibrary, !isCancellingQuery, ["drones", "map", "groups"].contains(kind),
+              let engine = engineURL, FileManager.default.fileExists(atPath: databaseURL.path) else { return }
+        var request = navigationRequest(kind: kind == "map" ? "map-overview" : kind, cursor: cursor)
+        request.registrySearch = search
+        if kind == "map" { request.proximity = mapProximity; request.sortOrder = "recent"; request.limit = 5000 }
+        let database = databaseURL
+        readNavigationPage(request: request, usingCache: usingCache) { [self] in
+            let stamp = navigationCache.stamp(includeFleet: kind == "drones")
+            if kind == "drones" {
+                let result = try await LibraryQueryService.page(LibraryDronePage.self, request: request, database: database, engine: engine, readOnly: true)
+                return (.drones(result), stamp)
+            } else if kind == "map" {
+                var current = request
+                var result: LibraryMapPage
+                var mapStamp = stamp
+                if request.proximity != nil, !isReadOnly, activeDetailLoads == 0, !hasExternalActivity() {
+                    result = try await performMaintenance(allowOwnedQuery: true) {
+                        try await LibraryQueryService.page(LibraryMapPage.self, request: current, database: database, engine: engine, readOnly: false)
                     }
-                    guard !Task.isCancelled, let self, queryToken == token else { return }
-                    mapPage = result
+                    mapStamp = navigationCache.stamp()
                 } else {
-                    let result = try await LibraryQueryService.page(LibraryGroupPage.self, request: request, database: database, engine: engine, readOnly: true)
-                    guard !Task.isCancelled, let self, queryToken == token else { return }
-                    groupPage = result
+                    result = try await LibraryQueryService.page(LibraryMapPage.self, request: current, database: database, engine: engine, readOnly: true)
                 }
-                guard let self, queryToken == token else { return }
-                isQuerying = false; queryTask = nil
+                // The optional preparation above may have retained exact GPS
+                // caches. Pagination itself remains a read-only operation.
+                var seen = Set<String>()
+                while let cursor = result.nextCursor {
+                    try Task.checkCancellation()
+                    guard seen.insert(cursor).inserted else { throw AnalysisError.engine("La pagination de la carte n’a pas progressé. Rechargez la sélection.") }
+                    current.cursor = cursor
+                    let next = try await LibraryQueryService.page(LibraryMapPage.self, request: current, database: database, engine: engine, readOnly: true)
+                    guard next.revision == result.revision, next.scopeHash == result.scopeHash else {
+                        throw AnalysisError.engine("La bibliothèque a changé pendant la lecture de la carte. Rechargez la sélection.")
+                    }
+                    result.markers += next.markers; result.nextCursor = next.nextCursor
+                }
+                return (.map(result), mapStamp)
+            } else {
+                let result = try await LibraryQueryService.page(LibraryGroupPage.self, request: request, database: database, engine: engine, readOnly: true)
+                return (.groups(result), stamp)
+            }
+        }
+    }
+
+    func openMapFlight(logID: String) {
+        guard !isLoadingFlight, !isMaintainingLibrary, let engine = engineURL else { return }
+        var request = navigationRequest(kind: "logs")
+        request.scope.logIDs = [logID]; request.limit = 1
+        let database = databaseURL, token = UUID(); flightToken = token
+        isLoadingFlight = true; flightError = nil
+        flightTask = Task { [weak self] in
+            do {
+                let result = try await LibraryQueryService.page(LibraryLogPage.self, request: request, database: database, engine: engine, readOnly: true)
+                guard !Task.isCancelled, let self, flightToken == token else { return }
+                guard let log = result.snapshot.logs.first else { throw AnalysisError.engine("Ce log ne fait plus partie de la sélection.") }
+                isLoadingFlight = false; flightTask = nil
+                openFlightWindow(log)
             } catch {
-                guard !Task.isCancelled, let self, queryToken == token else { return }
-                queryError = error.localizedDescription; isQuerying = false; queryTask = nil
+                guard !Task.isCancelled, let self, flightToken == token else { return }
+                flightError = error.localizedDescription; errorMessage = error.localizedDescription
+                isLoadingFlight = false; flightTask = nil
             }
         }
     }
@@ -623,7 +708,7 @@ final class LibraryStore: ObservableObject {
         }
         try willMaintainLibrary()
         isMaintainingLibrary = true
-        defer { isMaintainingLibrary = false }
+        defer { isMaintainingLibrary = false; invalidateNavigationCache() }
         return try await operation()
     }
 
@@ -668,7 +753,6 @@ final class LibraryStore: ObservableObject {
 
     func loadMap(proximity: GeographicProximity? = nil) {
         guard !isImporting, !isMaintainingLibrary, !isCancellingQuery else { return }
-        mapPage = nil
         mapProximity = proximity
         loadAuxiliary(kind: "map")
     }
@@ -700,6 +784,8 @@ final class LibraryStore: ObservableObject {
             }
             // Clearing indices must never revive a legacy JSON snapshot.
             try Self.removeConfigurationFiles(in: storageDirectory, names: ["library.json", "progress.json"])
+            displayedQueryKeys.removeAll()
+            historyResultsCurrent = false; groupResultsCurrent = false; droneResultsCurrent = false; occurrenceResultsCurrent = false
             snapshot = .empty; historyPage = nil; groupPage = nil; dronePage = nil; mapPage = nil
             occurrencePage = nil; catalogue = nil; progress = nil; mapProximity = nil
             currentHistoryCursor = nil; lastReportExport = nil; indexPrepared = false
