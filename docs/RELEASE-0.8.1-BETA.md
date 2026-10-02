@@ -1,7 +1,7 @@
 # KataLog Preview 0.8.1 — beta 1
 
 Candidate **`v0.8.1-beta.1`**, version du bundle **0.8.1**, build **19**.
-État au 3 octobre 2026 : **tests et recette native réalisés ; package final en
+État au 3 octobre 2026 : **tests et recette native réalisés ; package final
 qualifié localement, publication en attente**. Les neuf contrôles de distribution finale ont réussi avec
 notarisation requise. App, helper et DMG sont signés, notarisés et leurs tickets
 attachés. La copie depuis le DMG, l’éjection et le lancement de cette copie ont
