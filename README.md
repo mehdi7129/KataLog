@@ -1,60 +1,40 @@
 # KataLog — bibliothèque locale de logs PX4
 
-**0.8.0 (build 18)** · macOS · SwiftUI · Apple Silicon · GPL-3.0-only
+**0.8.1 (build 20) — stable en préparation** · macOS · SwiftUI · Apple Silicon · GPL-3.0-only
 
 KataLog rassemble l’historique de votre flotte : logs PX4, alertes filtrables,
 trajectoires Apple Maps, courbes et rapports. Interface **bento monochrome**,
 thèmes **clair / sombre / système**, données conservées sur votre Mac.
 
-### Ce qui change en 0.8.0
+### Ce qui change en 0.8.1
 
-- **Clients locaux** nommés librement : votre organisation ou les clients dont vous
-  suivez les drones. Attribution à l’import ou à la collecte, réattribution en lot,
-  statistiques et rapports limités au client choisi.
-- **Bento simplifié** : boutons sans cadre permanent, survol et focus visibles,
-  thème clair/sombre en un clic, activité récente défilante et cartes alignées.
-- **Carte par proximité** : ville, adresse ou coordonnées, avec rayon. La recherche
-  porte sur les trajectoires complètes disponibles avant la limite d’affichage.
-- **Une fenêtre macOS par log**, déplaçable et redimensionnable, avec commandes
-  natives. Les outils PX4 spécialisés sont regroupés dans le mode avancé facultatif.
-- **Collecte sans inscription manuelle** : les drones éligibles connectés à la GCS
-  sont acceptés lors de la collecte. Chaque travail conserve son client destinataire.
-- **Nettoyage explicite** : retrait groupé des sources, bibliothèque vidable et
-  réinitialisation globale avec confirmation, en conservant tous les fichiers `.ulg`.
-- Diagnostic GCS guidé : récupération des journaux avant activation de leur
-  inclusion privée dans un export.
+- **Carte complète** : tous les logs géolocalisés du périmètre sont représentés,
+  avec regroupement des repères proches et trajectoire détaillée à l’ouverture
+  d’un log. Le cadrage et le mode satellite sont conservés entre les onglets.
+- **Navigation plus rapide** : les résultats encore valides sont réutilisés ;
+  une actualisation conserve le contenu du périmètre déjà affiché.
+- **Actions plus lisibles** : filtres compacts, accès direct au log depuis une
+  alerte et explication des actions indisponibles. Les outils techniques restent
+  accessibles en mode avancé.
+- **Collecte et analyse en parallèle** : un fichier vérifié peut être analysé
+  pendant le transfert du suivant, avec une file d’attente bornée. Le gain mesuré
+  vient d’un banc simulé.
 
-[Release 0.8.0](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.0) ·
-[Notes et qualification](docs/RELEASE-0.8.0.md) ·
+[Notes et qualification 0.8.1](docs/RELEASE-0.8.1.md) ·
+[Release stable actuelle 0.8.0](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.0) ·
 [Installation et mises à jour](docs/UPDATING.md)
 
-Le package stable et la CI sont qualifiés. La recette et
-le suivi de la CI finale sont consignés dans les
-[notes 0.8.0](docs/RELEASE-0.8.0.md). La
-[validation de la Preview](docs/VALIDATION-CLIENTS-BENTO.md) conserve ses résultats
-séparément. La Preview utilise une bibliothèque indépendante.
+La version stable 0.8.1 est préparée depuis la Preview approuvée
+**`v0.8.1-beta.1`**. Sa qualification et sa publication sont suivies dans les
+[notes 0.8.1](docs/RELEASE-0.8.1.md). La
+[recette de la Preview](docs/RELEASE-0.8.1-BETA.md), l’[audit UX](docs/UX-AUDIT-0.8.1.md)
+et les [mesures de performance](docs/PERFORMANCE-MAP-NAVIGATION.md) conservent
+leurs preuves et leurs limites. La Preview utilise une bibliothèque indépendante
+et se met à jour manuellement.
 
-### Prérelease 0.8.1 en préparation
-
-La candidate **`v0.8.1-beta.1`**, distribuée sous le nom **KataLog Preview**
-(version 0.8.1, build 19), améliore la couverture de la carte, la navigation et
-la lisibilité des actions. Sa qualification finale est en cours ; **0.8.0 reste
-la release stable** et son flux de mise à jour n’est pas modifié.
-
-- Tous les logs géolocalisés de la sélection sont représentés, avec regroupement
-  des repères proches et trajectoires détaillées à l’ouverture d’un log.
-- Les retours entre onglets réutilisent les résultats encore valides ; le cadrage
-  de la carte est conservé pendant la navigation.
-- Les réglages et filtres sont allégés ; les identifiants et outils techniques
-  restent disponibles en mode avancé. Les actions indisponibles expliquent pourquoi.
-- La collecte peut analyser un fichier pendant le transfert du suivant, avec
-  concurrence et file d’attente bornées. Le gain mesuré vient d’un banc simulé.
-
-La Preview conserve ses données dans une bibliothèque dédiée et se met à jour
-manuellement. Elle ne remplace pas KataLog stable et ne reprend pas automatiquement
-sa bibliothèque. Voir la [recette de prérelease](docs/RELEASE-0.8.1-BETA.md),
-l’[audit UX](docs/UX-AUDIT-0.8.1.md) et les
-[mesures de performance](docs/PERFORMANCE-MAP-NAVIGATION.md).
+Les clients locaux, les fenêtres macOS par log et la recherche par proximité
+introduits en 0.8.0 restent disponibles ; leur historique figure dans le
+[changelog](CHANGELOG.md).
 
 Les mises à jour signées depuis l’app sont disponibles depuis 0.7.0 via
 **Réglages → Rechercher une mise à jour**. Vous choisissez quand installer et
@@ -93,9 +73,8 @@ La collecte utilise une file SQLite durable et importe exactement les fichiers
 reçus, sans créer automatiquement une seconde archive. Les drones ajoutés lors de la collecte
 restent dans le registre, même sans log ni numéro de stock. La comparaison des paramètres conserve
 les valeurs et types ; elle n’attribue pas une cause de panne.
-Le parseur courant est **1.4.0**, avec projection SQLite **8** dans les sources
-de la candidate 0.8.1 (**7** dans la stable 0.8.0). Les anciennes
-analyses sont conservées et leur recalcul est explicite.
+Le parseur courant est **1.4.0**, avec projection SQLite **8** en 0.8.1
+(**7** en 0.8.0). Les anciennes analyses sont conservées et leur recalcul est explicite.
 
 ### Diagnostic local
 
@@ -111,7 +90,7 @@ options privées distinctes. Cette fonctionnalité est disponible à partir de l
 
 ### Installer une release
 
-Le package **0.8.0** est un **DMG** avec **KataLog.app** et un lien
+Le package stable est un **DMG** avec **KataLog.app** et un lien
 **Applications** : ouvrir le DMG, glisser KataLog dans Applications, éjecter,
 puis lancer l’app. Le moteur ARM64 est embarqué ; aucun App Store, Terminal,
 Homebrew ni Python séparé n’est requis pour utiliser l’app.
@@ -119,7 +98,7 @@ Homebrew ni Python séparé n’est requis pour utiliser l’app.
 **Compatibilité : Mac Apple Silicon, macOS 15 minimum, recette locale sur macOS 27.**
 Les minima des composants natifs sont contrôlés au packaging. L’exécution sur
 macOS 15 demande une recette sur cette version ; le test macOS 27 ne la remplace pas.
-La [recette 0.8.0](docs/RELEASE-0.8.0.md) distingue les résultats obtenus,
+La [recette 0.8.1](docs/RELEASE-0.8.1.md) distingue les résultats obtenus,
 le périmètre de chaque vérification et les limites de qualification.
 
 Les archives sont proposées sur la
@@ -182,11 +161,11 @@ restent dans une archive distincte et ne sont pas distribuées ici.
    porte sur tout le périmètre client, avant la pagination des résultats.
 2. La recherche utilise les trajectoires complètes disponibles ; celles d’une
    ancienne bibliothèque sont mises en cache à partir des sources accessibles.
-   Les logs qui n’ont pas pu être vérifiés sont annoncés. Sur la branche de
-   développement, la carte représente **tous les logs géolocalisés** du périmètre
+   Les logs qui n’ont pas pu être vérifiés sont annoncés. En 0.8.1, la carte
+   représente **tous les logs géolocalisés** du périmètre
    par des marqueurs regroupés. Cliquer sur un groupe zoome ; ouvrir un log
    affiche sa trajectoire détaillée. Les coupures GPS ne sont jamais reliées.
-   La release 0.8.0 reste limitée aux 80 logs les plus récents.
+   En 0.8.0, seuls les 80 logs les plus récents étaient affichés.
 3. Ouvrir un log depuis la carte ou l’historique. Sa fenêtre macOS peut être
    déplacée, agrandie et fermée indépendamment ; rouvrir le même log ramène sa
    fenêtre au premier plan. Elle charge ses détails à la demande : carte jusqu’à **4 096 points**, chronologie des alertes, tous les
@@ -254,7 +233,7 @@ La barre **Progression globale** suit le lot courant : octets, fichiers vérifi�
 attentes et erreurs. Jusqu’à **2 drones distincts** transfèrent leurs logs en
 parallèle, avec **1 fichier à la fois par UUID**. Les fichiers déjà vérifiés sont
 reconnus lors de l’inventaire et exclus des nouveaux téléchargements.
-Sur la branche de développement, l’analyse utilise un worker séparé ; un transfert
+En 0.8.1, l’analyse utilise un worker séparé ; un transfert
 vérifié libère son slot réseau immédiatement. Au plus quatre fichiers sont en
 transfert ou en attente d’analyse. Les résultats et limites mesurés figurent dans
 [la validation des performances](docs/PERFORMANCE-MAP-NAVIGATION.md).
@@ -334,9 +313,11 @@ reconnu comme le même drone physique.
 
 ## Validation
 
-La qualification du package 0.8.0 est suivie dans la
-[recette de release](docs/RELEASE-0.8.0.md). La
-[validation de la Preview](docs/VALIDATION-CLIENTS-BENTO.md) et la
+La qualification du package 0.8.1 est suivie dans la
+[recette de release](docs/RELEASE-0.8.1.md). La
+[recette de la beta 1](docs/RELEASE-0.8.1-BETA.md), la
+[recette 0.8.0](docs/RELEASE-0.8.0.md), la
+[validation de la Preview 0.8.0](docs/VALIDATION-CLIENTS-BENTO.md) et la
 [recette 0.7.0](docs/RELEASE-0.7.0.md) conservent leurs résultats distincts. La
 [recette 0.6.0](docs/RELEASE-0.6.0.md) et le
 [suivi d’implémentation](docs/IMPLEMENTATION-0.6.0.md) conservent les étapes
@@ -385,7 +366,7 @@ Le dépôt public contient les sources et des fixtures synthétiques. Les logs, 
 coordonnées, bibliothèques, réglages locaux et preuves opérationnelles n'en font
 pas partie. Les anciens commits et assets restent dans une archive privée distincte ; voir [la préparation publique](docs/PUBLICATION.md).
 
-La distribution autonome **0.8.0** utilise un **DMG signé et notarisé**, à ouvrir
+La distribution stable utilise un **DMG signé et notarisé**, à ouvrir
 pour glisser **KataLog dans Applications**, sans App Store ni installation séparée
 de Python. La qualification figure dans la recette de release.
 Le moteur de la base 0.5.1 reste externe ; son ancien ZIP est conservé séparément en privé.
