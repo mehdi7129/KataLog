@@ -25,7 +25,8 @@ thèmes **clair / sombre / système**, données conservées sur votre Mac.
 [Installation et mises à jour](docs/UPDATING.md)
 
 La version stable 0.8.1 reprend la Preview approuvée
-**`v0.8.1-beta.1`**. Sa qualification et sa publication sont suivies dans les
+**`v0.8.1-beta.1`**. Elle est publiée, avec DMG et flux de mise à jour signés.
+Sa qualification et ses contrôles de publication sont détaillés dans les
 [notes 0.8.1](docs/RELEASE-0.8.1.md). La
 [recette de la Preview](docs/RELEASE-0.8.1-BETA.md), l’[audit UX](docs/UX-AUDIT-0.8.1.md)
 et les [mesures de performance](docs/PERFORMANCE-MAP-NAVIGATION.md) conservent

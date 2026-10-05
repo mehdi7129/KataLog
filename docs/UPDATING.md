@@ -20,8 +20,7 @@ review indépendante.
 ## Passage à 0.8.1
 
 La version **0.8.1 (build 20)** est distribuée par DMG et par le flux stable
-signé. Les utilisateurs de 0.7.0 et 0.8.0 peuvent l’installer depuis l’app
-après publication de ce flux. Le
+signé. Les utilisateurs de 0.7.0 et 0.8.0 peuvent l’installer depuis l’app. Le
 [suivi de qualification](RELEASE-0.8.1.md) distingue les résultats de la Preview
 approuvée des contrôles du package stable.
 

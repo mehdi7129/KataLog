@@ -1,7 +1,7 @@
 # KataLog 0.8.1 — recette de release
 
-Version **0.8.1**, build **20**, préparée le 5 octobre 2026.
-État : **package et CI qualifiés ; publication en préparation**.
+Version **0.8.1**, build **20**, publiée le 5 octobre 2026.
+État : **release stable publiée ; téléchargements et flux signé vérifiés**.
 La version est préparée depuis la Preview approuvée
 `v0.8.1-beta.1`, commit `61bea6e3ab649ae217d5c64afbbadb1431a2f439`.
 
@@ -34,7 +34,7 @@ canoniques et crée une sauvegarde de migration. Les anciennes analyses restent
 disponibles et leur recalcul reste explicite. Aucun nouveau téléchargement GCS
 n’est nécessaire pour cette migration.
 
-Après publication du flux signé, les versions stables à partir de 0.7.0 pourront
+Le flux signé est publié ; les versions stables à partir de 0.7.0 peuvent
 installer 0.8.1 depuis **Réglages → Rechercher une mise à jour**. L’installation
 manuelle par DMG reste possible pour toutes les versions. Voir
 [les instructions de mise à jour](UPDATING.md).
@@ -66,9 +66,9 @@ sur le build 19. Ils ne constituent pas une qualification du build stable 20.
 | Distribution finale | Neuf contrôles réussis sur la copie installée depuis le DMG, après éjection |
 | Présentation du DMG | Fenêtre contrôlée dans Finder, conforme ; éjection effectuée |
 | Confidentialité des sources et des archives | Aucun finding non classé ; ZIP et DMG finaux identiques, payloads embarqués inspectés |
-| Tag `v0.8.1`, archive source et SHA-256 | À générer après gel des sources |
-| Release publique et téléchargements anonymes | À effectuer |
-| Flux stable signé, archive et signatures Sparkle publiques | À publier et vérifier après les assets |
+| Tag `v0.8.1`, archive source et SHA-256 | Tag sur `a88c3bc` ; 250 fichiers sources identiques au commit ; empreintes publiées |
+| Release publique et téléchargements anonymes | Latest stable 0.8.1 ; quatre fichiers téléchargés sans authentification, empreintes locales et GitHub concordantes |
+| Flux stable signé, archive et signatures Sparkle publiques | Publié après les assets ; HTTPS anonyme, version 0.8.1 build 20, octets et signatures du flux et du ZIP vérifiés |
 
 Les captures, bibliothèques et rapports détaillés de recette restent hors du dépôt.
 La distribution ne contient ni bibliothèque de démonstration ni données utilisateur.
@@ -93,3 +93,22 @@ jobs CI ont réussi. Le code applicatif, les tests, les dépendances et les sour
 du moteur sont identiques à la Preview approuvée `61bea6e` ; le build stable
 passe à 20 et active le canal de mise à jour stable. Les mises à jour de
 documentation suivent ces validations sans modifier les entrées du package.
+
+## Publication
+
+La [release stable 0.8.1](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.1)
+est publiée après fusion de la PR #4. Le tag cible `a88c3bc` et la documentation
+de qualification complète est actualisée ensuite sur `main`.
+
+Le DMG téléchargé avec quarantaine est accepté par Gatekeeper comme distribution
+Developer ID notarisée ; son ticket Apple est validé. Le flux stable public
+correspond exactement aux octets signés préparés. Son URL de ZIP et sa taille
+concordent avec l’archive téléchargée ; les deux signatures Sparkle sont valides.
+Le banc SDK reste une recette synthétique : il ne représente pas une installation
+Sparkle réelle de KataLog 0.8.0 vers 0.8.1 dans une autre session macOS.
+
+| Archive | SHA-256 |
+| --- | --- |
+| `KataLog-0.8.1-macOS-arm64.dmg` | `14193fc3d0c3de17ffc6e44e71eb4752c0bc7cc4ee97b07d487744b3b2fbd1fb` |
+| `KataLog-0.8.1-macOS-arm64.zip` | `f05da2b6e7daccaf43054adeb19d6149595e56b268c4027304532f65bb072289` |
+| `KataLog-0.8.1-source.zip` | `eeefd55cf2ef80b34138be876dd2a0a4e4575c2fad08fab35e5331eb8f0dd4a2` |
