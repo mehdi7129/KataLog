@@ -1,8 +1,7 @@
 # Clients et interface Bento
 
-Cette évolution fait partie de **0.8.0 (build 18)**. La Preview et le package
-stable disposent de validations distinctes, détaillées dans la
-[recette de release](RELEASE-0.8.0.md).
+Contrat introduit en **0.8.0** et conservé en **0.8.1 (build 20)**. Voir la
+[release actuelle](RELEASE-0.8.1.md) et la [recette initiale](RELEASE-0.8.0.md).
 
 ## Contrat produit
 

@@ -160,7 +160,7 @@ version, le SHA-256, les octets et `uploaded: false`, sans chemin de clé privé
 La signature EdDSA du feed ne remplace pas Developer ID ni la notarisation.
 Le DMG et le ZIP doivent provenir du **même bundle final signé et notarisé**.
 Le pipeline public reste soumis aux contrôles de
-[publication](PUBLICATION.md) et de [distribution](DISTRIBUTION-VALIDATION.md).
+[publication](PUBLICATION.md) et de [distribution](RELEASING.md#recette-finale).
 
 KataLog est sous **GPL-3.0-only**. Chaque release binaire doit proposer son
 code source correspondant, identifié par le tag exact, avec l’archive de

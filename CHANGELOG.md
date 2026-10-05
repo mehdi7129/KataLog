@@ -1,5 +1,10 @@
 # Changelog
 
+Version stable actuelle : [0.8.1](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.1),
+build **20**. [Télécharger le DMG](https://github.com/mehdi7129/KataLog/releases/download/v0.8.1/KataLog-0.8.1-macOS-arm64.dmg)
+ou suivre les [instructions de mise à jour](docs/UPDATING.md).
+Les sections antérieures conservent l’état de leur version au moment de sa livraison.
+
 ## 0.8.1 — 2026-10-05
 
 - Carte couvrant tous les logs géolocalisés du périmètre, avec regroupement des
@@ -13,8 +18,11 @@
 - Projection SQLite 8, avec conservation des résumés et sauvegarde de migration.
 
 Version **0.8.1**, build **20**, issue de la Preview approuvée
-`v0.8.1-beta.1`. Les résultats de qualification et de publication du package
-stable figurent dans [RELEASE-0.8.1.md](docs/RELEASE-0.8.1.md).
+`v0.8.1-beta.1`, publiée le **5 octobre 2026** sous le tag **`v0.8.1`**
+(`a88c3bc`). DMG signé et notarisé, ZIP de mise à jour, archive des sources
+correspondantes et SHA-256 sont publiés ; le flux stable signé propose ce build.
+Les résultats de qualification et de publication du package stable figurent
+dans [RELEASE-0.8.1.md](docs/RELEASE-0.8.1.md).
 
 ## 0.8.0 — 2026-10-01
 
@@ -74,7 +82,10 @@ La validation finale, les mesures et les gates externes sont suivis dans
 [IMPLEMENTATION-0.6.0.md](docs/IMPLEMENTATION-0.6.0.md). Aucune release publique
 ni modification de l’app installée ne découle de ce lot.
 
-## À venir — préparation publique
+## Préparation du dépôt public — historique
+
+Ce travail accompagne la préparation de 0.6.0. Le dépôt est désormais public ;
+le statut courant est décrit dans [PUBLICATION.md](docs/PUBLICATION.md).
 
 - Fixtures et exemples anonymisés ; GCS configurée par l'utilisateur.
 - Documentation opérationnelle et anciennes maquettes privées retirées du contenu publiable.
@@ -161,7 +172,7 @@ locales des versions 0.3 à 0.5 et le nouveau rapport interactif 0.5.1.
   local refuse de remplacer une app encore ouverte.
 - Mise à jour manuelle en remplaçant le bundle de l’app ; la bibliothèque,
   les annotations, les réglages et les logs locaux sont conservés.
-  Voir [les instructions de mise à jour](README.md#mettre-à-jour-une-app-déjà-installée).
+  Voir [les instructions de mise à jour](docs/UPDATING.md).
 
 ### Limites connues
 

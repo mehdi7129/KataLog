@@ -7,7 +7,8 @@ simulateur sont synthétiques. Les captures réseau, UUID réels, chemins de log
 et preuves opérationnelles sont conservés hors du dépôt.
 
 KataLog demande uniquement l'inventaire et le téléchargement des logs des drones
-inscrits dans la flotte, individuellement ou par l’action **Tout collecter**. L'app ne pilote pas les drones et ne
+éligibles connectés à la GCS. **Tout collecter** inscrit automatiquement les
+appareils inconnus ; aucun ajout manuel préalable n’est requis. L'app ne pilote pas les drones et ne
 modifie ni firmware, paramètres ni fichiers distants.
 
 ## Comportement de l'app
@@ -20,7 +21,10 @@ modifie ni firmware, paramètres ni fichiers distants.
 - Avec **Tout collecter**, registre et réglages sont sauvegardés avant l’inventaire.
   Un échec annule le départ et restaure le registre précédent ; aucun transfert ne démarre.
 - Appareil explicitement armé exclu ; champ absent = état inconnu.
-- Deux UUID en parallèle, un fichier à la fois par UUID.
+- Deux transferts réseau en parallèle sur des UUID distincts, un fichier à la fois par UUID.
+- Depuis 0.8.1, un worker séparé analyse les fichiers vérifiés pendant les transferts
+  suivants. Au plus quatre fichiers sont en transfert ou en analyse/en attente
+  d’analyse. Une erreur d’analyse conserve la copie vérifiée.
 - Pause après les fichiers actifs ; arrêt immédiat sur le Mac et reprise manuelle.
 - Trois tentatives pour erreurs transitoires, délais de 5 puis 15 secondes,
   prolongés si une session distante reste en attente de fin.

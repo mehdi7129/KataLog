@@ -1,3 +1,7 @@
+> **Document historique.** Les résultats et statuts ci-dessous décrivent leur
+> version à la date de la recette. Pour la version actuelle :
+> [KataLog 0.8.1](RELEASE-0.8.1.md) et [guide utilisateur](README.md).
+
 # KataLog 0.7.0 — recette de release
 
 Version **0.7.0**, build **17**. Qualifications locale et CI terminées le 1er octobre 2026.

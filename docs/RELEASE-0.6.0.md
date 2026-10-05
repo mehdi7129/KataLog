@@ -1,3 +1,7 @@
+> **Document historique.** Les résultats et statuts ci-dessous décrivent leur
+> version à la date de la recette. Pour la version actuelle :
+> [KataLog 0.8.1](RELEASE-0.8.1.md) et [guide utilisateur](README.md).
+
 # KataLog 0.6.0 — recette de livraison
 
 Version **0.6.0 (14)**, 30 septembre 2026. Livraison hors App Store pour Mac Apple

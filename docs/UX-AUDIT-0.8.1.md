@@ -1,3 +1,9 @@
+> **Document historique — audit de la Preview 0.8.1 du 3 octobre 2026.**
+> Les mentions de publication en attente et les réserves décrivent les étapes
+> de cette revue. La [Preview beta 1](RELEASE-0.8.1-BETA.md) a été publiée le
+> 3 octobre ; la [stable 0.8.1 (build 20)](RELEASE-0.8.1.md) le 5 octobre.
+> Les observations et preuves d’interface ci-dessous sont conservées avec leur portée.
+
 # Audit UX — candidate 0.8.1
 
 Revue du 3 octobre 2026. **Recette native, tests et qualification locale du

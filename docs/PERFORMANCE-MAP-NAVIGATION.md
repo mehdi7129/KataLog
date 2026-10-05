@@ -1,3 +1,9 @@
+> **Mesures historiques — développement de 0.8.1, le 3 octobre 2026.**
+> La mention « non publiés » ci-dessous décrit l’état avant publication.
+> Ces changements ont été livrés dans la Preview du 3 octobre, puis dans la
+> [stable 0.8.1 (build 20), publiée le 5 octobre](RELEASE-0.8.1.md).
+> Les mesures et leurs limites restent celles des exécutions décrites.
+
 # Carte, navigation et collecte — validation de développement
 
 État : changements postérieurs à 0.8.0, non publiés. Mesures locales du 3 octobre 2026.

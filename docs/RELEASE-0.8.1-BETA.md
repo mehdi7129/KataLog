@@ -1,3 +1,10 @@
+> **Document historique — préparation de la Preview 0.8.1 beta 1 (build 19).**
+> Cette [prérelease a été publiée le 3 octobre 2026](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.1-beta.1).
+> Les mentions « publication en attente », les contrôles restants et la référence
+> stable 0.8.0 ci-dessous décrivent l’état de préparation à cette date.
+> La version stable courante est [0.8.1 (build 20), publiée le 5 octobre](RELEASE-0.8.1.md).
+> Les résultats de recette d’origine sont conservés.
+
 # KataLog Preview 0.8.1 — beta 1
 
 Candidate **`v0.8.1-beta.1`**, version du bundle **0.8.1**, build **19**.

@@ -24,4 +24,4 @@ Un remplacement de contrôleur demandera une association datée au drone physiqu
 
 Les annotations sont conservées dans `annotations.json`, hors du dépôt. Les
 exemples et fixtures publics emploient exclusivement des identités synthétiques.
-Voir le [contrat d'import](IMPORT-CONTRACT.md) et le [plan 0.6.0](PLAN-0.6.0.md).
+Voir le [contrat d'import](IMPORT-CONTRACT.md) et le [roadmap actuelle](ROADMAP.md).

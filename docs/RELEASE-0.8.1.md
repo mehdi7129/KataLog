@@ -35,7 +35,7 @@ disponibles et leur recalcul reste explicite. Aucun nouveau téléchargement GCS
 n’est nécessaire pour cette migration.
 
 Le flux signé est publié ; les versions stables à partir de 0.7.0 peuvent
-installer 0.8.1 depuis **Réglages → Rechercher une mise à jour**. L’installation
+installer 0.8.1 depuis **Réglages → Mises à jour → Rechercher une mise à jour**. L’installation
 manuelle par DMG reste possible pour toutes les versions. Voir
 [les instructions de mise à jour](UPDATING.md).
 

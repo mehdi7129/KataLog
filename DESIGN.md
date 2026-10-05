@@ -1,234 +1,204 @@
-# KataLog — direction UI
+# KataLog — direction UI 0.8.1
 
-App macOS locale pour une flotte PX4. Direction validée : bento noir et blanc,
-surfaces gris neutre, accents discrets réservés aux états et aux graphiques.
+Contrat de l’interface **0.8.1 (build 20)**, publiée le 5 octobre 2026.
+App macOS locale pour une flotte PX4 : Bento monochrome, surfaces gris neutre,
+accents discrets réservés aux états et aux graphiques. La qualification de cette
+version est suivie dans la [recette de release](docs/RELEASE-0.8.1.md).
 
-## Référence visuelle et évolution clients
+## Espace de travail
 
-La composition de la version 0.5.2 reste la référence demandée : sidebar compacte,
-barre supérieure discrète, bande de compteurs commune et bento asymétrique.
-Les parcours 0.6 s’intègrent à cette composition et partagent exactement sa palette.
-La Vue d’ensemble est l’écran d’accueil. Historique conserve sa navigation paginée ;
-les indicateurs et le radar couvrent toujours toute la sélection.
+Sidebar compacte, barre supérieure discrète, bande de compteurs commune et Bento
+asymétrique. La Vue d’ensemble est l’écran d’accueil. La bibliothèque regroupe
+Vue d’ensemble, Historique, Alertes, Carte et Drones ; les outils regroupent
+Collecte GCS, Stockage, Rapports et Réglages. L’accès aux sources locales et l’état
+lecture seule restent visibles dans la sidebar.
+
+Le sélecteur de clients définit le périmètre : tous les clients, un client nommé
+ou les logs sans client. L’import et la collecte précisent leur destinataire ;
+un changement de sélection ne réattribue pas un log existant. Les filtres de
+dates, drones, messages et qualité de lecture restent accessibles dans le header.
+Les filtres persistants, vues enregistrées et masquages réversibles sont livrés.
+Le [contrat clients](docs/CLIENTS-BENTO.md) précise les attributions, les rapports
+et les opérations globales de stockage.
 
 Le bouton soleil/lune bascule directement entre clair et sombre. Le choix
-Système est dans les réglages. Une préférence absente ouvre le thème sombre ; les choix
-explicites existants sont conservés et enregistrés dans la bibliothèque.
-Les actions n'ont ni cadre ni fond permanent ; survol et focus les soulignent.
-Les filtres restent accessibles dans le header. Le sélecteur de clients remplace
-les vues enregistrées dans la barre supérieure. Le [contrat clients](docs/CLIENTS-BENTO.md)
-définit les périmètres, les destinations d'import et les réinitialisations.
+Système est dans les réglages. Une préférence absente ouvre le thème sombre ;
+les choix explicites sont conservés dans la bibliothèque.
 
-Recette avant release : inspecter chaque écran en clair et sombre, les fenêtres
-900×620 et la Vue d’ensemble à 1440×980 ; vérifier les données globales, l’ouverture
-des groupes, la persistance du thème et les actions au clavier. La recette visuelle
-de la Preview fait partie des portes de sortie de 0.6.0.
+Les actions utilisent un style discret sans cadre ni fond permanent. Le survol,
+l’appui et le focus clavier rendent leur état visible. Les actions indisponibles
+donnent une explication dans leur contexte. L’actualisation dépend de l’écran :
+elle actualise l’aperçu dans Rapports et n’apparaît pas dans Réglages.
 
-## Parcours
+Un retour sur un onglet restaure ses résultats encore valides. Une actualisation
+du même périmètre garde son contenu visible ; un changement de périmètre annonce
+la nouvelle lecture. Le cache de navigation est invalidé par les mutations et
+les modifications externes de la bibliothèque.
 
-Vue d'ensemble → groupe d'alertes → inspecteur des preuves. Drones et historique
-donnent accès aux fiches de logs ; Carte situe les enregistrements disposant de GPS.
-Collecte GCS alimente la même bibliothèque locale. Les nombres proviennent des
-fichiers importés : les corpus de recette ne préremplissent pas l'app et ne qualifient pas une flotte de 500 drones.
+## Vue d’ensemble et alertes
 
-## Composition de la vue d'ensemble
+Les quatre indicateurs présentent **Drones scannés**, **Logs enregistrés**,
+**Temps de vol cumulé** et **Avec alerte** sur toute la sélection, indépendamment
+de la page d’historique. Le temps de vol tient sur une ligne en minutes, puis son
+intitulé ; méthode et couverture restent dans l’aide. Une durée absente affiche
+« Indisponible ». La durée enregistrée inclut le sol et reste distincte du temps
+de vol. Les copies de même contenu ne multiplient pas les compteurs.
 
-- Sidebar compacte : marque monochrome, Vue d'ensemble, Carte, Drones, Alertes,
-  Rapports et Collecte GCS ; état de la bibliothèque locale en bas.
-- Barre supérieure discrète : source, thème clair/sombre, filtre drone lorsque
-  pertinent et action d'import.
-- Titre « Vue d'ensemble » et période disponible dans les enregistrements.
-- Bande de couverture : drones identifiés, nombre de logs, durée enregistrée et
-  logs avec alertes. La durée enregistrée n'est pas assimilée au temps de vol.
-- Bento asymétrique : panneau « À examiner » alimenté par les groupes d'alertes,
-  radar à droite avec légende chiffrée.
-- Cartes « Alertes repérées » et « Activité récente » alignées en hauteur,
-  avec défilement interne et accès « Tout voir ». Ouvrir une fiche et
-  révéler le fichier dans le Finder sont deux actions distinctes.
+Le Bento associe le panneau « À examiner », le profil des alertes et l’activité
+récente. Les cartes Alertes et Activité gardent des hauteurs alignées, un
+défilement interne et l’accès « Tout voir ». L’activité récente indique sa portée
+sur les logs datés de la page courante. Ouvrir une fiche et révéler sa source
+dans le Finder sont deux actions distinctes.
 
-## Radar
+Le radar compte les logs concernés par famille, une fois par log même si un
+message se répète. Ses axes peuvent se recouper. Jusqu’à huit axes sont
+personnalisables ; le choix automatique prend les huit premières familles par
+ordre alphabétique. La liste complète des familles reste disponible, triée par
+nombre de logs concernés. Sous trois axes, des barres remplacent le radar ;
+l’absence d’alerte donne un état vide explicite. Un domaine non analysé ne reçoit
+pas de score de santé inventé.
 
-Les axes correspondent aux familles d'alertes présentes dans les logs du périmètre
-drone sélectionné. Unité : nombre de logs concernés ; maximum : nombre de logs
-valides de ce périmètre. Une famille compte une fois par log, même si le message
-se répète. Les axes peuvent se recouper. Sous trois familles, des barres remplacent
-le radar ; l'absence d'alerte produit un état vide explicite. Aucun zéro de santé
-n'est inventé pour un domaine non analysé. Le radar indique les signaux repérés,
-pas un score de santé.
-
-## Alertes
-
-Table + inspecteur latéral. Recherche dans titre/famille/message brut, sévérité
-et famille ; réinitialisation. Sélection toujours parmi les résultats filtrés.
-États vides explicites. Gravité issue du log ou qualification proposée, jamais
-confondue avec une panne confirmée. Le détail comprend source, messages et contexte.
-Ne pas exposer des contrôles qui prétendent appliquer des filtres non implémentés.
+La vue Alertes associe liste et inspecteur des preuves. Recherche, famille,
+niveau et réinitialisation portent sur les messages du périmètre. L’inspecteur
+conserve le texte source, l’explication, les vérifications possibles et leurs
+limites. La classification manuelle est distincte et réversible. La gravité
+observée n’est pas présentée comme une panne matérielle confirmée.
 
 ## Carte
 
-Apple Maps s'ouvre depuis la sidebar. Recherche de logs et filtre drone limitent le
-périmètre ; les **80 logs géolocalisés les plus récents** de ce périmètre sont
-dessinés, avec **256 points maximum par log**. Cette limite est affichée et la liste
-permet toujours d'ouvrir les autres fiches. Plan/satellite, zoom, compas, échelle et
-recentrage restent des contrôles MapKit natifs.
+La vue générale représente **tous les logs géolocalisés du périmètre** par des
+marqueurs compacts issus d’échantillons enregistrés. Les repères proches sont
+regroupés par MapKit ; leur sélection permet d’accéder aux logs concernés. Les
+pages de chargement sont bornées à 5 000 marqueurs et 4 Mio, puis réunies pour
+l’affichage. La trajectoire détaillée se charge à l’ouverture d’un log.
+
+Client, dates, drones et filtres de messages s’appliquent avant comptage et
+pagination. Le cadrage et le mode plan/satellite sont conservés entre les
+onglets. Zoom, compas, échelle et recentrage utilisent les contrôles MapKit.
 
 Une recherche distincte accepte ville, adresse ou coordonnées et un rayon.
-Elle vérifie la trajectoire complète avant la limite d'affichage : une portion
-traversant la zone suffit. Les trajectoires complètes indisponibles sont annoncées.
+Elle vérifie les trajectoires complètes : une portion valide traversant la zone
+suffit. Le marqueur est l’échantillon enregistré le plus proche du lieu ; il
+peut être hors du rayon lorsqu’un segment traverse la zone entre deux points.
+Les trajectoires non vérifiables sont annoncées. Aucune liaison n’est créée à
+travers une lacune GPS.
 
-Les trajectoires sont séparées aux lacunes et aux échantillons GPS invalides.
-Les segments d'un point ont un repère isolé ; aucune liaison n'est inventée.
-Les marqueurs d'alertes utilisent les positions réelles présentes dans les
-résumés à partir du parseur **1.1.1**. L'état sans trajectoire affichable explique
-la couverture disponible. Les anciennes analyses proposent **Actualiser les
-analyses**, qui relit les copies locales sans téléchargement GCS.
+Les coordonnées viennent des ULog ; aucune localisation du Mac n’est demandée.
+Les tuiles et la recherche de noms de lieux Apple dépendent du réseau. Les logs
+sans position restent accessibles dans l’historique.
 
-Les coordonnées viennent des ULog. L'app ne demande pas la localisation du Mac ;
-les tuiles Apple nécessitent un accès réseau. La recette de tuiles indisponibles
-hors connexion reste à faire.
+## Fiche de log et accès avancé
 
-## Fiche de log
+Chaque fiche possède une fenêtre macOS indépendante, déplaçable et redimensionnable,
+avec son propre état de lecture. Rouvrir le même log remet sa fenêtre au premier
+plan. Les détails se chargent à la demande ; chargement, erreurs, nouvel essai et
+provenance sont explicites. Une analyse déjà conservée reste consultable si
+l’original manque, avec indication de sa version et de ses limites.
 
-Une fenêtre macOS indépendante, déplaçable et redimensionnable, charge les détails
-à la demande depuis le cache SQLite
-`flight_details`. Un état de chargement, une erreur avec nouvel essai et la source
-restent visibles. Les détails déjà calculés sont consultables si l'original manque.
-Rouvrir le même log remet sa fenêtre au premier plan. Les événements PX4 et les
-données techniques sont accessibles en mode avancé, désactivé par défaut.
+Les onglets usuels sont **Synthèse**, **Messages** et **Courbes**. La carte du log
+est bornée à **4 096 points** ; lacunes et échantillons invalides séparent les
+segments. Un message positionnable utilise un échantillon réel à deux secondes
+au plus, dans un segment valide. Les courbes Batterie, GNSS et EKF sont extraites
+à la demande depuis une source vérifiée ; unités, données manquantes et limites
+d’échantillonnage sont annoncées.
 
-- **Vue du log** : carte bornée à 4 096 points et chronologie des alertes. Le clic
-  sur un message positionnable place le curseur sur un échantillon réel à deux
-  secondes au plus, dans le même segment ; aucune interpolation dans une lacune.
-- **Messages** : textes source, recherche, niveau et famille, avec état vide.
-- **Mesures** : valeurs, unités et méthodes disponibles. Pas de graphique annoncé
-  sans série temporelle extraite.
-- **Paramètres** : inventaire initial filtrable et changements horodatés séparés.
-- **Topics** : instances, nombre d'échantillons et champs. Une unité absente reste
-  inconnue ; elle n'est pas déduite du nom du champ.
-- **Couverture** : limites, erreurs, provenance et SHA256 ; accès Finder séparé.
+**Réglages → Accès avancé**, désactivé par défaut, donne accès aux événements PX4
+et aux données techniques. Dans la fiche, le menu **Plus** regroupe Événements,
+Mesures, Paramètres, Topics, Couverture et Révisions. Le choix d’un champ libre
+de télémétrie appartient également à ce mode. Le décodage des événements exige
+le dictionnaire exact du log ; sans correspondance, les enregistrements bruts et
+l’absence de traduction restent visibles.
 
-L'export distingue **Rapport HTML · messages et mesures** et **Données de la fiche
-(JSON)**. Ce JSON contient les données de la fiche, dont GPS borné, paramètres et
-topics ; il ne prétend pas contenir toutes les séries brutes de l'ULog. Les filtres
-persistants, le décodage des événements binaires et les graphiques de télémétrie
-restent au plan de développement.
+Les paramètres initiaux et leurs changements horodatés restent distincts. Les
+topics annoncent instances, nombre d’échantillons et champs ; les unités absentes
+restent inconnues. Les révisions permettent de consulter les analyses conservées.
+Le JSON d’une fiche contient ses détails disponibles et leur couverture ; il ne
+constitue pas une copie complète des séries brutes de l’ULog.
 
-## Style
+## Collecte GCS
 
-Typographie système sobre, titres 28–32 px, texte UI 13–14 px, labels 11–12 px.
-Chiffres normaux sans zéros initiaux. Cartes rayon 16–18, bordures 1 px peu contrastées.
-Surfaces sombres #0B0B0B/#111111/#191919 ; surfaces claires #F7F7F5/#EEEEEC/#FFFFFF.
-Texte sombre #F3F3F1, clair #171717 ; secondaire #A4A4A4/#666666.
-Vert limité au radar/état local, ambre avertissements, rouge failsafe.
-Actions principales blanc sur noir ou noir sur blanc. Pas de décoration colorée.
+La collecte conserve la composition Bento : réseau et options en haut, flotte,
+inventaire et file de transfert. **Tout collecter** et **Arrêter** restent visibles.
+Les nouveaux appareils éligibles connectés sont inscrits à la flotte ; les
+appareils explicitement armés sont exclus. La sélection manuelle de logs reste
+accessible par drone. Chaque travail conserve son client destinataire.
 
-## Périmètre
+La progression distingue drone → GCS, GCS → Mac, vérification et analyse. Deux
+transferts réseau sont autorisés sur des drones distincts, avec un seul transfert
+FTP par UUID. Une file séparée analyse les fichiers vérifiés avec un worker ; au
+plus quatre fichiers sont simultanément en transfert, en analyse ou en attente
+d’analyse. La fin du transfert ne signifie pas encore que l’analyse est terminée.
 
-App native fonctionnelle et maquettes visuelles. L’import de dossier et la collecte
-GCS alimentent la bibliothèque avec des fichiers réels. La collecte suit la
-composition validée : réseau et options en haut, flotte,
-inventaire et file de transfert ; palette monochrome et accents d’état discrets.
-Les maquettes basées sur des logs privés sont conservées localement, hors du
-futur dépôt public. Tout nouvel aperçu public doit provenir de fixtures synthétiques.
+**Mettre en pause** laisse finir les transferts actifs et les analyses de fichiers
+déjà vérifiés. **Reprendre** réactive les transferts en attente. **Arrêter** annule
+les opérations locales en conservant les fichiers vérifiés ; une copie déjà
+demandée peut encore finir sur la GCS. **Relancer** remet en file les travaux
+arrêtés, interrompus ou en échec. Les erreurs et inventaires manquants restent
+visibles ; un lot incomplet ne prend pas l’apparence d’un succès complet.
 
-## Collecte GCS — depuis la version 0.3.0 (build 3)
+Le dossier choisi affiche son chemin et son éventuelle indisponibilité. Les
+copies avec manifeste et SHA256 valides sont reconnues après redémarrage. Une
+erreur d’analyse conserve la copie vérifiée. Le [contrat de collecte](docs/GCS-COLLECTION.md)
+précise les réessais, l’arrêt local et les copies supplémentaires du navigateur GCS.
 
-L’évolution conserve cette composition bento et les deux thèmes. Les actions
-principales **Tout collecter** et **Arrêter** restent visibles en haut de l’écran.
-**Tout collecter** concerne les drones actuellement connectés à la GCS ; les
-nouveaux appareils sont inscrits automatiquement. Les appareils explicitement armés
-sont exclus. La sélection manuelle
-de logs reste accessible par drone.
+## Style et accessibilité
 
-Une carte **Progression globale** présente le lot courant : pourcentage, volume,
-fichiers vérifiés, attentes et échecs, avec l’indication **2 drones maximum en
-transfert**. La file conserve une ligne par fichier, un transfert actif par UUID
-et les états de nouvel essai, arrêt et interruption. Un transfert achevé reste
-en vérification/analyse jusqu’à la validation effective du fichier.
+Typographie système sobre : titres 28–32 pt, textes UI 13–14 pt, labels 11–12 pt.
+Les compteurs n’ajoutent pas de zéros initiaux ; les numéros de stock conservent
+la saisie de l’utilisateur. Les tokens partagés fixent rayon des cartes à 18 pt,
+rayon des boutons à 12 pt, padding des cartes à 24 pt, espacement à 18 pt et
+sidebar à 230 pt.
 
-- **Mettre en pause** laisse finir les fichiers actifs ; **Reprendre** réactive la file.
-- **Arrêter** interrompt immédiatement les opérations locales et conserve les
-  fichiers vérifiés. Le texte associé précise que la GCS peut finir un transfert
-  déjà lancé ; aucune confirmation d’arrêt distant n’est inventée.
-- **Relancer** remet en file les fichiers arrêtés, interrompus ou en échec.
-  Les erreurs transitoires disposent de trois tentatives automatiques au total,
-  après 5 puis 15 secondes et l’éventuelle attente d’une session distante.
-- Les logs dont le manifeste et le SHA256 sont valides apparaissent déjà présents,
-  même après changement d’adresse GCS ou restauration d’une ancienne file.
-  Lorsqu’aucun fichier n’est à télécharger, la carte affiche **À jour** et le
-  nombre de logs déjà vérifiés, sans progression vide `0 / 0`.
-- Les erreurs permanentes et les inventaires manquants restent visibles ; un lot
-  terminé avec des échecs ne prend pas l’apparence d’un succès complet.
+| Palette | Sombre | Claire |
+| --- | --- | --- |
+| Fond / sidebar / carte | `#0B0B0B` / `#111111` / `#191919` | `#F7F7F5` / `#EEEEEC` / `#FFFFFF` |
+| Texte principal | `#F3F3F1` | `#1B1B1B` |
+| Texte secondaire | `#A4A4A0` | `#71716D` |
 
-Le délai client de 300 à 3 600 secondes indique une temporisation avant nouvelle
-tentative, pas une preuve d’arrêt du transfert distant. Une fin de session reçue libère cette
-attente. La validation 0.3 comprend 46 tests Python et 28 tests Swift. La recette
-réelle du 29 septembre, entre 18 h 15 et 18 h 20 CEST, confirme dans l’app Release
-installée la collecte de flotte, l’arrêt de deux actifs et d’un fichier en attente,
-la reprise de deux UUID en parallèle et quatre fichiers reconnus après redémarrage
-sans nouveau téléchargement. Les réessais après erreur réseau restent testés en
-simulation ; aucune capacité de collecte de 500 drones n’est annoncée comme validée.
+Vert discret pour profil/états, ambre pour avertissements, rouge pour états
+critiques et actions destructives. Les icônes partagent un dessin et une taille
+cohérents. Survol, focus, libellés accessibles et aides complètent la couleur.
+Les dialogues conservent annulation et retour d’erreur ; les actions globales de
+réinitialisation précisent leur portée sur tous les clients et demandent confirmation.
 
-La version 0.4 conserve cette interface et corrige la reprise après changement
-d'adresse, l'analyse des copies déjà présentes et la publication ULog/manifeste
-interrompue. La bibliothèque relit aussi les imports validés dans SQLite après
-annulation. Voir [l'audit et les suites prévues](docs/AUDIT-2026-09-29.md).
+## Rapports HTML et impression
 
-## Ajouts 0.5
+Le rapport reprend le monochrome, les accents sobres, les surfaces Bento et les
+thèmes clair/sombre. Les tableaux disposent de leur propre défilement horizontal
+dans une fenêtre étroite. Le document annonce son périmètre, sa date de capture,
+sa révision et ses exclusions. Ses indicateurs distinguent durée enregistrée et
+temps de vol cumulé, avec la couverture du temps de vol. Le rapport complet couvre
+tous les logs du client sélectionné ; « Tous les clients » couvre la bibliothèque
+entière.
 
-L’icône du bundle reprend `square.stack.3d.up.fill`, noir sur tuile claire ;
-`tools/render-app-icon.swift` produit les tailles natives et le fichier ICNS.
+Les filtres du rapport (drone, famille, niveau, texte et période) se combinent.
+**Réinitialiser** retrouve tout le contenu exporté. Le radar représente trois à
+huit familles ; des barres montrent les autres cas, dans un ordre alphabétique
+stable. Cliquer un axe, sa légende ou une barre filtre la famille. Chaque log
+compte une fois par famille ; ces valeurs ne s’additionnent pas en un nombre
+d’incidents. Les interactions sont également accessibles au clavier.
 
-Les actions d’identification sont proches du drone : registre GCS, fiche et liste
-flotte. Le numéro est édité dans une sheet courte avec identité source, annulation,
-enregistrement et retrait. Les erreurs d’enregistrement restent visibles.
+La chronologie regroupe par jour, mois ou année ; une colonne filtre la période.
+Les dates inconnues restent séparées et aucun fuseau n’est inventé pour les dates
+issues des chemins. Les groupes donnent accès aux explications et aux logs.
+Le mode de partage retire les informations privées selon les exclusions annoncées.
 
-Dans l’inspecteur de message, l’explication est concise, avec vérifications et
-limites en disclosure, provenance et liens de référence. La classification manuelle
-est distincte et réversible. Les familles ajoutées apparaissent dans les filtres
-et statistiques ; le radar garde un ordre stable et offre toutes les valeurs.
+**Imprimer / PDF** conserve le périmètre filtré et les graphiques, déplie les
+détails visibles et retire les contrôles. L’impression utilise le thème clair ;
+les états de lecture sont restaurés ensuite. Le HTML fonctionne hors ligne sans
+CDN ni police distante ; les liens documentaires ne sollicitent le réseau que
+sur action du lecteur. Pour un rapport volumineux, une synthèse accompagnée des
+données et d’un manifeste remplace le document massif sans tronquer les données.
 
-Le dossier de collecte affiche son chemin, sa persistance et son indisponibilité
-éventuelle. L’information sur les copies déclenchées par le navigateur GCS est
-placée près de la destination, où elle permet une décision utile.
+## Vérification et références
 
+Avant release, inspecter chaque écran en clair et sombre, les fenêtres 900×620
+et la Vue d’ensemble à 1440×980 : compteurs, filtres, groupes, persistance du thème,
+retour sur la carte, états vides et actions au clavier. Les aperçus publics
+utilisent exclusivement des données synthétiques ; captures opérationnelles et
+bibliothèques privées restent hors du dépôt.
 
-## Rapport HTML — version 0.5.1
-
-Le document exporté reprend le monochrome et les accents sobres de l’app :
-navigation par sections, titre éditorial, quatre indicateurs, deux graphiques,
-groupes de messages puis historique et traçabilité. Les surfaces bento et les
-thèmes clair/sombre restent lisibles dans une fenêtre étroite ; les tableaux
-disposent de leur propre défilement horizontal lorsque nécessaire.
-
-La synthèse annonce le périmètre réellement affiché. Les filtres drone, famille,
-niveau, recherche et période se combinent ; **Réinitialiser** retrouve tout le
-contenu exporté. Les états sans résultat donnent une explication, pas un score de
-santé nul. Une identité conserve son UUID même si plusieurs drones ont le même numéro.
-
-Le profil des alertes utilise un radar de **3 à 8 familles**. Pour une, deux ou
-plus de huit familles, des barres montrent toutes les valeurs, dans un ordre
-alphabétique stable. Un point du radar, sa légende ou une barre active le filtre
-famille. L’unité reste le nombre de logs concernés, une fois par famille et par
-log ; les domaines peuvent se recouper. Les interactions sont aussi accessibles
-au clavier.
-
-La chronologie compare tous les fichiers aux logs avec alertes. Elle agrège par
-jour, mois ou année pour conserver une lecture simple. Une colonne filtre la
-période correspondante ; le bandeau rappelle cette sélection. Les dates inconnues
-restent visibles séparément. Aucun fuseau horaire n’est attribué aux dates de chemin.
-
-Les groupes de messages se déplient sur les explications, les limites et les
-sources. Les liens ouvrent directement le log concerné dans l’historique. Chaque
-log conserve son nom source, son numéro manuel, ses métadonnées, mesures, couverture
-et messages bruts. **Déplier les logs visibles** facilite la lecture détaillée.
-
-**Imprimer / PDF** conserve les filtres actifs, leur rappel et les graphiques,
-déplie les détails visibles et retire les contrôles interactifs. L’impression
-revient au thème clair ; à sa fermeture, les états dépliés/repliés de l’écran sont
-restaurés. Pour imprimer toute la bibliothèque exportée, réinitialiser les filtres.
-
-Le fichier fonctionne hors ligne : aucun CDN, police distante ou connexion GCS
-n’est requis. Sans JavaScript, le contenu source reste consultable et les contrôles
-indisponibles sont masqués. Les liens PX4 ne sollicitent le réseau que si le lecteur
-les ouvre. La recette du rapport est suivie dans [UI-VALIDATION.md](docs/UI-VALIDATION.md).
+Les preuves datées sont conservées dans l’[audit UX de la Preview 0.8.1](docs/UX-AUDIT-0.8.1.md),
+les [mesures carte/navigation/collecte](docs/PERFORMANCE-MAP-NAVIGATION.md) et les
+[recettes historiques de l’interface](docs/UI-VALIDATION.md). Les comportements
+de stockage et de lecture sont définis dans le [contrat courant](docs/IMPORT-CONTRACT.md).

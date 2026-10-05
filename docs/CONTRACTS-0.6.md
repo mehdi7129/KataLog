@@ -1,3 +1,9 @@
+> **Document historique — contrats issus du lot 0.6.**
+> Les versions et statuts ci-dessous décrivent les étapes documentées de ce lot.
+> Le [contrat courant d’import et de lecture](IMPORT-CONTRACT.md), le
+> [contrat clients](CLIENTS-BENTO.md) et la [release 0.8.1](RELEASE-0.8.1.md)
+> précisent les comportements et formats actuels.
+
 # Contrats KataLog 0.6
 
 Statut : implémentation et qualification en cours. Ces contrats sont indépendants de la version 0.5.2 installée.

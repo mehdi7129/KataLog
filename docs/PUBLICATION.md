@@ -1,6 +1,37 @@
-# Préparer KataLog pour une publication publique
+# Publication publique et confidentialité
 
 ## État
+
+Le dépôt est **public**. La version stable actuelle est **0.8.1 (build 20)**,
+publiée le **5 octobre 2026**. Voir la [release et sa qualification](RELEASE-0.8.1.md)
+et le [guide utilisateur](README.md).
+
+Les contrôles de confidentialité couvrent le contenu publié et son historique,
+pas seulement les fichiers de la branche principale. Les rapports détaillés,
+marqueurs privés et preuves opérationnelles restent hors du dépôt.
+
+### Revue du 5 octobre 2026
+
+La revue de maintenance documentaire couvre les refs Git annoncées, y compris
+celles des pull requests, les commits, blobs, auteurs, messages et tags ; les
+descriptions et échanges GitHub ; toutes les releases et leurs assets ; les
+runs Actions, annotations, journaux disponibles et inventaires d’artifacts.
+Les archives sources ont été comparées fichier par fichier à leurs tags.
+Les distributions ont été rapprochées des empreintes de qualification, avec
+rehachage des copies disponibles et réutilisation des preuves exactes pour
+les anciens packages. Les contrôles combinent marqueurs privés, scanner de
+secrets et classification des résultats.
+
+Aucun secret réel ni donnée privée non classée n’a été confirmé dans ce périmètre.
+Issues, Discussions, wiki, Pages et Projects du dépôt sont désactivés à cette
+date. Les espaces de compte externes au dépôt, notamment les ProjectsV2 à
+visibilité indépendante, ne sont pas qualifiés par cette revue.
+
+La documentation courante distingue maintenant la version publiée des anciens
+plans et recettes. Cette mise à jour documentaire ne remplace aucun installateur,
+tag, archive source ni signature de mise à jour.
+
+### Historique de l’isolation et des premières revues
 
 L'ancien historique, ses tags et sa release sont isolés dans une archive GitHub
 **privée distincte**. Ce dépôt repart de sources nettoyées avec un historique
@@ -28,12 +59,12 @@ classés en privé ; les derniers assets et le commit de release sont revérifi�
 Les ProjectsV2 ont une visibilité indépendante ; leur contenu n’est pas qualifié
 par cet audit avec les permissions API disponibles.
 
-## Périmètre de la release 0.8.0
+## Périmètre de la distribution actuelle
 
-Les contrôles de la release **0.8.0** sont consignés dans
-[RELEASE-0.8.0.md](RELEASE-0.8.0.md). Ils portent sur le code qualifié, le commit
-final et ses archives ; les contrôles 0.7.0 ci-dessus restent historiques.
-Les quatre assets publics et le flux stable 0.8.0 ont été téléchargés sans
+Les contrôles de la release **0.8.1** sont consignés dans
+[RELEASE-0.8.1.md](RELEASE-0.8.1.md). Ils portent sur le code qualifié, le commit
+final et ses archives ; les [contrôles 0.8.0](RELEASE-0.8.0.md) restent historiques.
+Les quatre assets publics et le flux stable 0.8.1 ont été téléchargés sans
 authentification et vérifiés après publication. Les notes, le tag et les
 métadonnées de release ont également été contrôlés.
 
@@ -50,7 +81,9 @@ ne sont pas ajoutées aux archives publiques.
 - Fixtures entièrement synthétiques, avec identifiants et scénarios fictifs.
 - Icônes abstraites et futurs aperçus issus uniquement de données synthétiques.
 - Clé **publique** de vérification des mises à jour, versions et appcast public.
-- Archives de distribution reconstruites, auditées, signées et notarisées.
+
+Les archives de distribution reconstruites, auditées, signées et notarisées sont
+publiées comme **assets de release**, sans ajouter les builds au suivi Git.
 
 ## Ce qui reste local ou privé
 
@@ -100,7 +133,7 @@ tags, anciennes releases et références cachées. Un force push seul peut laiss
 des commits accessibles par SHA ou par d'autres références.
 [GitHub décrit les limites du nettoyage d'historique](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository).
 
-Avant publication :
+Lors de la création d’une nouvelle base publique, la procédure appliquée est :
 
 1. Vérifier la sauvegarde privée de l'historique et des assets originaux.
 2. Exporter seulement la liste de fichiers approuvés, sans `.git` ni données locales.
@@ -114,11 +147,11 @@ Avant publication :
 La visibilité rend disponibles davantage de surfaces que le dernier arbre de
 fichiers ; voir [GitHub — visibilité](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/setting-repository-visibility).
 
-## Installation utilisateur cible
+## Installation utilisateur
 
-La distribution autonome 0.8.0 se fait **hors App Store** : télécharger le DMG, l'ouvrir,
+La distribution autonome 0.8.1 se fait **hors App Store** : télécharger le DMG, l'ouvrir,
 glisser KataLog dans Applications, éjecter puis lancer. Le moteur est embarqué.
 Un appcast public signé permet les updates Sparkle sans compte GitHub utilisateur
 à partir de la release 0.7.0. Les versions 0.6.x nécessitent une première installation
 par DMG ; leur flux était désactivé.
-Voir la [recette 0.8.0](RELEASE-0.8.0.md) et la [procédure de release](RELEASING.md).
+Voir la [recette 0.8.1](RELEASE-0.8.1.md) et la [procédure de release](RELEASING.md).

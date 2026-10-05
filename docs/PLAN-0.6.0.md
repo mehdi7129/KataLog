@@ -1,3 +1,7 @@
+> **Document historique.** Les résultats et statuts ci-dessous décrivent leur
+> version à la date de la recette. Pour la version actuelle :
+> [KataLog 0.8.1](RELEASE-0.8.1.md) et [guide utilisateur](README.md).
+
 > **Recette de livraison 0.6.0 :** voir [RELEASE-0.6.0.md](RELEASE-0.6.0.md).
 > Ce document conserve le plan et les étapes de validation historiques ; les mentions
 > « aucune release » ci-dessous décrivent leur état au moment du contrôle.

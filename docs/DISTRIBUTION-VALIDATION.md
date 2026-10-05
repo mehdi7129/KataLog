@@ -1,3 +1,8 @@
+> **Document historique — recette 0.5.2 (7) du 29 septembre 2026.**
+> Les mentions de dépôt privé et de Sparkle planifié décrivent cette recette.
+> La procédure courante figure dans [RELEASING.md](RELEASING.md) ; la dernière
+> qualification stable est celle de [0.8.1 (build 20)](RELEASE-0.8.1.md).
+
 # Recette de distribution 0.5.2 (7)
 
 Recette locale du 29 septembre 2026, **Mac Apple Silicon sous macOS 27.0**.

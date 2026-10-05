@@ -1,3 +1,7 @@
+> **Document historique.** Les résultats et statuts ci-dessous décrivent leur
+> version à la date de la recette. Pour la version actuelle :
+> [KataLog 0.8.1](RELEASE-0.8.1.md) et [guide utilisateur](README.md).
+
 # Validation de la Preview clients et Bento
 
 État : recette de la Preview locale terminée, interface approuvée. Recette effectuée

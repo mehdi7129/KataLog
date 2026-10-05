@@ -1,3 +1,8 @@
+> **Mesure historique — benchmark du 29 septembre 2026.**
+> Les chiffres ci-dessous restent attachés à ce corpus et à cette exécution.
+> Les mesures ultérieures sont dans [PERFORMANCE-MAP-NAVIGATION.md](PERFORMANCE-MAP-NAVIGATION.md) ;
+> la qualification courante est suivie dans la [release 0.8.1](RELEASE-0.8.1.md).
+
 # Benchmark synthétique : 500 identités de drones
 
 Exécuté le 29 septembre 2026 sur le Mac de développement (Apple M2 Pro, 16 Go), avec Python 3.13 et le moteur pyulog local.

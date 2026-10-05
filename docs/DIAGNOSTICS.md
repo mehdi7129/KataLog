@@ -1,8 +1,9 @@
-# Diagnostic complet — branche de développement
+# Diagnostic local — KataLog 0.8.1
 
 ## Utilisation
 
-1. Ouvrir **Réglages → Diagnostic local → Prévisualiser le diagnostic complet**.
+1. Ouvrir **Réglages → Aide et diagnostic → Préparer un diagnostic…**.
+   Le mode avancé donne aussi accès au panneau **Diagnostic local**.
 2. Vérifier les compteurs, les événements récents et la liste des pièces du ZIP.
 3. Si utile, cliquer **Récupérer les logs GCS**. L’adresse vient de Collecte GCS.
    Une GCS hors ligne ou un firmware sans cet endpoint n’empêche pas le diagnostic local.
@@ -91,7 +92,7 @@ réels variés. Un drone allumé et désarmé ne crée pas nécessairement un no
 ULog ; télécharger plusieurs fois le même fichier vérifie surtout le cache.
 Les tests simulés ne remplacent pas cette recette matérielle.
 
-## Validation de cette PR — 30 septembre 2026
+## Validation historique — 30 septembre 2026
 
 - 301 tests Swift : zéro échec, zéro test ignoré, sur macOS 27.
 - 17 tests ciblés de bibliothèque, maintenance et rapports repassés après la
@@ -105,6 +106,6 @@ Les tests simulés ne remplacent pas cette recette matérielle.
 - Contrôle de publication : 220 fichiers, zéro signalement. Gitleaks : aucune
   fuite détectée. Les archives réelles et preuves restent hors du dépôt.
 
-La collecte avec deux drones, les coupures physiques et l’exécution sur un autre
-Mac restent des essais terrain. Cette PR ne constitue pas une release ni une
-validation de vol. L’app installée n’est pas remplacée par ces tests.
+Ces résultats décrivent la recette du 30 septembre, pas la qualification complète
+de la version actuelle. Voir la [release 0.8.1](RELEASE-0.8.1.md) pour les tests
+du package publié. Les essais simulés ne constituent pas une validation de vol.
