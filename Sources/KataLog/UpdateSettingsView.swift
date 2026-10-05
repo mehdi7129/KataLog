@@ -10,6 +10,18 @@ struct UpdateSettingsView: View {
     private var ink: Color { palette.primary }
     private var subtle: Color { palette.secondary }
     private var checking: Bool { store.state == .checking }
+    private var isPreview: Bool { AppPreviewConfiguration().reviewBuild }
+    private var updateMessage: String {
+        guard store.state == .disabled, isPreview else { return store.message }
+        return "Cette Preview se met à jour manuellement. Installez le prochain DMG Preview à la place de KataLog Preview. Sa bibliothèque dédiée est conservée."
+    }
+    private var checkExplanation: String {
+        if readOnly { return "Fermez l’autre instance avant de rechercher une mise à jour." }
+        if checking { return "La recherche d’une nouvelle version est en cours." }
+        if store.workBlocked || !store.installationAllowed() { return "Terminez les imports, collectes ou exports en cours avant de rechercher une mise à jour." }
+        if !store.driverCanCheck { return "Le service de mise à jour n’est pas encore prêt." }
+        return "Vérifie le flux signé. Vous choisissez ensuite si vous souhaitez installer la nouvelle version."
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -25,7 +37,7 @@ struct UpdateSettingsView: View {
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 6) {
                         Text(store.title).font(.system(size: 13, weight: .semibold))
-                        Text(store.message).font(.system(size: 12)).foregroundStyle(subtle)
+                        Text(updateMessage).font(.system(size: 12)).foregroundStyle(subtle)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 8)
@@ -48,23 +60,27 @@ struct UpdateSettingsView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                if readOnly {
+                if readOnly && store.canConfigureAutomaticChecks {
                     Label("Bibliothèque en lecture seule. Fermez l’autre instance avant d’installer une mise à jour.", systemImage: "lock")
                         .font(.system(size: 12)).foregroundStyle(subtle)
                 }
-                HStack {
-                    Text("Installation sur votre Mac").font(.system(size: 11)).foregroundStyle(subtle)
-                    Spacer()
-                    Button("Rechercher une mise à jour") { store.checkForUpdates() }
-                        .buttonStyle(WorkspaceActionButtonStyle(palette: palette))
-                        .disabled(readOnly || !store.canCheck || checking)
-                        .accessibilityIdentifier("updates.check")
-                        .accessibilityHint("Vérifie le flux signé et demande votre choix avant installation.")
-                        .help(readOnly ? "L’installation attend la fermeture de l’autre instance." : "Les opérations en cours doivent être terminées.")
+                if store.canConfigureAutomaticChecks {
+                    HStack {
+                        Text("Installation sur votre Mac").font(.system(size: 11)).foregroundStyle(subtle)
+                        Spacer()
+                        Button("Rechercher une mise à jour") { store.checkForUpdates() }
+                            .buttonStyle(WorkspaceActionButtonStyle(palette: palette))
+                            .disabled(readOnly || !store.canCheck || checking)
+                            .accessibilityIdentifier("updates.check")
+                            .accessibilityHint(checkExplanation)
+                            .help(checkExplanation)
+                    }
                 }
             }
-            Label("Les imports, collectes et exports se terminent avant le redémarrage.", systemImage: "clock")
-                .font(.system(size: 11)).foregroundStyle(subtle)
+            if store.canConfigureAutomaticChecks {
+                Label("Les imports, collectes et exports se terminent avant le redémarrage.", systemImage: "clock")
+                    .font(.system(size: 11)).foregroundStyle(subtle)
+            }
         }
         .foregroundStyle(ink).padding(24).frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.card, in: RoundedRectangle(cornerRadius: 18))

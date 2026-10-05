@@ -24,8 +24,16 @@ struct GCSCollectionView: View {
         store.files.filter { fileSearch.isEmpty || $0.path.localizedCaseInsensitiveContains(fileSearch) }
     }
     private var allNewFilesSelected: Bool {
-        let newIDs = Set(store.files.filter { !$0.isDownloaded }.map(\.id))
-        return !newIDs.isEmpty && store.selectedFileIDs == newIDs
+        !visibleNewFileIDs.isEmpty && visibleNewFileIDs.isSubset(of: store.selectedFileIDs)
+    }
+    private var visibleNewFileIDs: Set<String> { Set(visibleFiles.filter { !$0.isDownloaded }.map(\.id)) }
+    private var hiddenSelectedCount: Int { store.selectedFileIDs.subtracting(Set(visibleFiles.map(\.id))).count }
+    private var libraryCountLabel: String {
+        if library.isImporting { return "Analyse des logs…" }
+        if library.historyResultsCurrent, let total = library.historyPage?.totals.logs {
+            return "\(total) log\(total == 1 ? "" : "s") dans la sélection de la bibliothèque"
+        }
+        return library.isQuerying || library.isLoading ? "Lecture de la bibliothèque…" : "Consultez les analyses dans Historique."
     }
     private var canReadSelectedDrone: Bool {
         guard let drone = selectedDrone else { return false }
@@ -536,14 +544,22 @@ struct GCSCollectionView: View {
                            detail: store.isBusy ? "L’inventaire peut prendre quelques instants." : "Actualisez l’inventaire pour rechercher les fichiers ULog.")
             } else {
                 HStack(spacing: 14) {
-                    Button(allNewFilesSelected ? "Tout désélectionner" : "Sélectionner les nouveaux") { store.selectAllFiles() }
+                    Button(allNewFilesSelected ? "Désélectionner les affichés" : "Sélectionner les nouveaux affichés") {
+                        store.selectAllFiles(visibleIDs: Set(visibleFiles.map(\.id)))
+                    }
                         .font(.system(size: 11, weight: .medium)).buttonStyle(.plain)
-                        .disabled(!canReadSelectedDrone).accessibilityIdentifier("gcs.selectAllFiles")
+                        .disabled(!canReadSelectedDrone || visibleNewFileIDs.isEmpty).accessibilityIdentifier("gcs.selectAllFiles")
+                        .help("La sélection ne change que pour les fichiers visibles. Les fichiers déjà collectés sont exclus.")
                     Spacer()
-                    Text("\(store.selectedFileIDs.count) sélectionné\(store.selectedFileIDs.count == 1 ? "" : "s") · \(store.files.count) logs")
+                    Text("\(store.selectedFileIDs.count) sélectionné\(store.selectedFileIDs.count == 1 ? "" : "s") · \(visibleFiles.count) / \(store.files.count) logs affichés")
                         .font(.system(size: 11)).foregroundStyle(palette.secondary)
                 }
                 .padding(.horizontal, 20).padding(.vertical, 12)
+                if hiddenSelectedCount > 0 {
+                    Text("\(hiddenSelectedCount) fichier\(hiddenSelectedCount == 1 ? " sélectionné reste inclus" : "s sélectionnés restent inclus") hors recherche.")
+                        .font(.system(size: 11)).foregroundStyle(palette.secondary)
+                        .padding(.horizontal, 20).padding(.bottom, 12)
+                }
                 LazyVStack(spacing: 0) {
                     ForEach(visibleFiles) { file in
                         rule
@@ -636,7 +652,7 @@ struct GCSCollectionView: View {
             }
             HStack(spacing: 7) {
                 if library.isImporting { ProgressView().controlSize(.small) }
-                Text(library.isImporting ? "Analyse des logs…" : "\(library.snapshot.logs.count) logs dans la bibliothèque")
+                Text(libraryCountLabel).fixedSize(horizontal: false, vertical: true)
             }
             .font(.system(size: 10)).foregroundStyle(palette.secondary)
         }

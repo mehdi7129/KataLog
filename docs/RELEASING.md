@@ -1,8 +1,9 @@
 # Distribution macOS hors App Store
 
-La version **0.8.0 (build 18)** est qualifiée pour la distribution stable.
-Elle conserve l’installation autonome par DMG et le flux Sparkle stable signé
-introduit en 0.7.0. Voir [la recette 0.8.0](RELEASE-0.8.0.md). Toute publication
+La version **0.8.1 (build 20)** reprend la Preview approuvée `v0.8.1-beta.1`
+pour la distribution stable. Elle conserve l’installation autonome
+par DMG et le flux Sparkle stable signé introduit en 0.7.0. Voir
+[la recette 0.8.1](RELEASE-0.8.1.md). Toute publication
 exige la validation de l’historique, des métadonnées GitHub et des assets.
 
 ## Parcours utilisateur
@@ -16,7 +17,8 @@ sur toutes les versions de macOS.
 ## Préparer et tester
 
 1. Fixer version et build dans `tools/build-app.sh`, `tools/package-smoke.sh` et
-   `project.yml`, puis `xcodegen generate`. Le build stable 18 succède au build 17.
+   `project.yml`, puis `xcodegen generate`. Le build stable 20 succède au build
+   stable 18 ; le build 19 identifie la Preview 0.8.1 beta 1.
    Conserver l’identité stable de l’app ; la Preview utilise son identité séparée.
 2. Exécuter les suites Swift, Python et Node du README. `KATALOG_PRIVATE_FIXTURES`
    désigne uniquement le corpus local ; les ULog et résultats privés restent hors Git.
@@ -101,6 +103,10 @@ KATALOG_NOTARY_PROFILE=MON_PROFIL \
   bash tools/build-dmg.sh
 ```
 
+`KATALOG_DMG_PYTHON=python3.13` permet aussi de choisir l’interpréteur lors de la
+création d’un nouveau venv. Le script vérifie Python 3.10 minimum, y compris
+pour un venv existant, avant de lancer l’installation des dépendances.
+
 Le script installe uniquement ses outils de build dans un venv temporaire, avec
 requirements et hashes épinglés. Il génère la fenêtre monochrome et le lien
 Applications, vérifie l’image ainsi que la copie du bundle sur le volume monté,
@@ -149,8 +155,8 @@ Construire avec `KATALOG_UPDATE_CHANNEL=stable`, l’URL HTTPS publique et la cl
 publique vérifiée sous `updates/stable/public-key.txt`. Garder la clé privée dans
 le Trousseau, compte `katalog-sparkle-stable`. Notariser et agrafer le bundle,
 puis recréer le ZIP final avant toute signature Sparkle ou calcul de checksum.
-Préparer le flux avec `tools/update-feed.py prepare` et `--previous-build 17`
-pour cette release 0.8.0 (build 18). Revérifier le build public précédent au
+Préparer le flux avec `tools/update-feed.py prepare` et `--previous-build 18`
+pour cette release 0.8.1 (build 20). Revérifier le build public précédent au
 moment de publier : il ne doit pas avoir changé entre préparation et publication.
 Publier d’abord le ZIP et le DMG vérifiés, puis le flux signé sous
 `updates/stable/appcast.xml`. Vérifier les octets et signatures en accès anonyme.

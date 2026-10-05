@@ -3,12 +3,19 @@ import KataLogCore
 
 struct ScopeEditor06: View {
     @ObservedObject var library: LibraryStore
+    @ObservedObject private var views: LibraryViewStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var scheme
     @State private var scope = SelectionScope()
     @State private var search = ""
     @State private var error: String?
     @State private var registryCursors: [String?] = [nil]
+    @State private var knownDroneNames: [String: String] = [:]
+    private var advancedMode: Bool { views.state.advancedMode == true }
+    init(library: LibraryStore) {
+        self.library = library
+        views = library.views
+    }
     private var palette: Palette { Palette(dark: scheme == .dark) }
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -17,15 +24,35 @@ struct ScopeEditor06: View {
                 VStack(alignment: .leading, spacing: 20) {
                     BentoPanel(palette: palette) {
                     VStack(alignment: .leading, spacing: 14) {
-                        Text("Drones · \(scope.droneKeys.count) identités sélectionnées").font(.system(size: 14, weight: .semibold))
+                        Text(scope.droneKeys.isEmpty ? "Drones · Tous" : "Drones · \(scope.droneKeys.count) sélectionnés").font(.system(size: 14, weight: .semibold))
                         VStack(alignment: .leading, spacing: 12) {
-                            HStack { TextField("Numéro, nom ou identité", text: $search).onSubmit { findDrones() }; Button("Rechercher") { findDrones() }.disabled(library.isQuerying) }
-                            ForEach(library.dronePage?.drones ?? []) { drone in
-                                Toggle(isOn: selection(drone.id, values: $scope.droneKeys)) { VStack(alignment: .leading) { Text(drone.displayName); Text(drone.id).font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary) } }
-                            }
+                            HStack { TextField(advancedMode ? "Numéro, nom ou identité" : "Rechercher un drone", text: $search).onSubmit { findDrones() }; Button("Rechercher") { findDrones() }.disabled(library.isQuerying) }
+                            ScrollView {
+                                LazyVStack(alignment: .leading, spacing: 10) {
+                                    ForEach(library.dronePage?.drones ?? []) { drone in
+                                        Toggle(isOn: selection(drone.id, values: $scope.droneKeys)) {
+                                            VStack(alignment: .leading, spacing: 3) {
+                                                Text(drone.displayName)
+                                                if advancedMode { Text(drone.id).font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary) }
+                                            }
+                                        }
+                                    }
+                                }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 2)
+                            }.frame(height: min(200, CGFloat(library.dronePage?.drones.count ?? 0) * (advancedMode ? 44 : 30)))
+                            if registryCursors.count > 1 || library.dronePage?.nextCursor != nil {
                             HStack { Button("Précédent") { guard registryCursors.count > 1 else { return }; registryCursors.removeLast(); library.loadAuxiliary(kind: "drones", cursor: registryCursors.last ?? nil, search: search) }.disabled(registryCursors.count <= 1 || library.isQuerying); Spacer(); Text("Page \(registryCursors.count)").font(.caption); Button("Suivant") { guard let cursor = library.dronePage?.nextCursor else { return }; registryCursors.append(cursor); library.loadAuxiliary(kind: "drones", cursor: cursor, search: search) }.disabled(library.dronePage?.nextCursor == nil || library.isQuerying) }
-                            Text("Aucune sélection = tous les contrôleurs. Les choix des autres pages sont conservés.").font(.caption).foregroundStyle(.secondary)
-                            ForEach(scope.droneKeys.filter { key in !(library.dronePage?.drones ?? []).contains { $0.id == key } }, id: \.self) { key in HStack { Text(key).font(.system(.caption, design: .monospaced)); Spacer(); Button("Retirer") { scope.droneKeys.removeAll { $0 == key } } } }
+                            }
+                            Text("Sans sélection, tous les drones sont inclus.").font(.caption).foregroundStyle(.secondary)
+                            ForEach(scope.droneKeys.filter { key in !(library.dronePage?.drones ?? []).contains { $0.id == key } }, id: \.self) { key in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(nameForSelectedDrone(key)).font(.caption)
+                                        if advancedMode { Text(key).font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary) }
+                                    }
+                                    Spacer()
+                                    Button("Retirer") { scope.droneKeys.removeAll { $0 == key } }
+                                }
+                            }
                         }
                     }
                     }
@@ -35,7 +62,8 @@ struct ScopeEditor06: View {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack { TextField("Début · AAAA-MM-JJ", text: optional($scope.dateFrom)); Text("→"); TextField("Fin · AAAA-MM-JJ", text: optional($scope.dateTo)) }
                             Toggle("Inclure les dates inconnues", isOn: $scope.includeUnknownDates)
-                            Text("Jours enregistrés dans la source. Aucun fuseau horaire n’est inventé pour les dates issues des dossiers.").font(.caption).foregroundStyle(.secondary)
+                            Text("Dates présentes dans les logs.").font(.caption).foregroundStyle(.secondary)
+                                .help("Jours enregistrés dans la source. Aucun fuseau horaire n’est inventé pour les dates issues des dossiers.")
                         }
                     }
                     }
@@ -53,7 +81,7 @@ struct ScopeEditor06: View {
                             else if library.catalogue?.families.isEmpty == true { Text("Aucune famille de messages enregistrée. Les filtres déjà choisis restent conservés.").font(.caption).foregroundStyle(.secondary) }
                             Toggle("Alertes uniquement", isOn: $scope.alertOnly)
                             Toggle("Inclure les messages masqués", isOn: $scope.includeMasked)
-                            Text("Une recherche de messages exige une occurrence correspondante. Un état failsafe sans texte reste une mesure distincte.").font(.caption).foregroundStyle(.secondary)
+                            if advancedMode { Text("Une recherche de messages exige une occurrence correspondante. Un état failsafe sans texte reste une mesure distincte.").font(.caption).foregroundStyle(.secondary) }
                             if !scope.families.isEmpty { Text("Familles : " + scope.families.joined(separator: ", ")).font(.caption) }
                             if !scope.levels.isEmpty { Text("Niveaux : " + scope.levels.joined(separator: ", ")).font(.caption) }
                         }
@@ -63,7 +91,7 @@ struct ScopeEditor06: View {
                     VStack(alignment: .leading, spacing: 14) {
                         Text("Enregistrements").font(.system(size: 14, weight: .semibold))
                         VStack(alignment: .leading, spacing: 12) {
-                            TextField("Fichier, SHA, drone ou chemin", text: $scope.logSearch)
+                            TextField(advancedMode ? "Fichier, SHA, drone ou chemin" : "Rechercher un fichier ou un drone", text: $scope.logSearch)
                             HStack { Toggle("Lecture complète", isOn: selection("ok", values: $scope.statuses)); Toggle("Lecture partielle", isOn: selection("partial", values: $scope.statuses)); Toggle("Erreur de lecture", isOn: selection("error", values: $scope.statuses)) }
                             Text("Aucun statut sélectionné = tous. Les erreurs de lecture restent consultables.").font(.caption).foregroundStyle(.secondary)
                         }
@@ -76,8 +104,22 @@ struct ScopeEditor06: View {
             HStack { Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction); Spacer(); Button("Appliquer la sélection") { apply() }.buttonStyle(WorkspaceActionButtonStyle(palette: palette, prominent: true)).keyboardShortcut(.defaultAction).disabled(library.isMaintainingLibrary || library.isImporting || library.isQuerying) }
         }.padding(24).frame(width: 720, height: 620).foregroundStyle(palette.primary).background(palette.background)
         .buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true)).tint(palette.primary)
-        .onAppear { scope = library.views.state.activeScope; findDrones() }
+        .onAppear { scope = views.state.activeScope; rememberDroneNames(); findDrones() }
+        .onReceive(library.$dronePage) { page in
+            for drone in page?.drones ?? [] { knownDroneNames[drone.id] = drone.displayName }
+        }
         .task { await library.loadCatalogue() }
+    }
+    private func rememberDroneNames() {
+        for log in library.snapshot.logs { knownDroneNames[log.annotationKey] = log.displayName }
+        for drone in library.dronePage?.drones ?? [] { knownDroneNames[drone.id] = drone.displayName }
+    }
+    private func nameForSelectedDrone(_ key: String) -> String {
+        if let name = knownDroneNames[key] { return name }
+        if let number = library.annotations.state.stockNumbers[key] { return "Drone " + number }
+        // An older selection can refer to a drone outside the currently loaded page.
+        // Keep it removable even when its name has not been loaded in this session.
+        return "Drone · …" + String(key.suffix(6))
     }
     private func selection(_ value: String, values: Binding<[String]>) -> Binding<Bool> { Binding(get: { values.wrappedValue.contains(value) }, set: { selected in var set = Set(values.wrappedValue); if selected { set.insert(value) } else { set.remove(value) }; values.wrappedValue = set.sorted() }) }
     private func optional(_ value: Binding<String?>) -> Binding<String> { Binding(get: { value.wrappedValue ?? "" }, set: { value.wrappedValue = $0.isEmpty ? nil : $0 }) }

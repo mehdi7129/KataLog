@@ -19,7 +19,7 @@ final class WorkspacePreviewTests: XCTestCase {
             .deletingLastPathComponent().appendingPathComponent("Sources/KataLog/Resources")
     }
 
-    private func fixture(count: Int = 120, blockQueries: Bool = false) async throws -> Fixture {
+    private func fixture(count: Int = 120, blockQueries: Bool = false, flightSeconds: Double? = nil, withMapPoints: Bool = false) async throws -> Fixture {
         let environment = ProcessInfo.processInfo.environment
         guard let python = environment["KATALOG_TEST_PYTHON"] ?? environment["KATALOG_PYTHON"],
               FileManager.default.isExecutableFile(atPath: python) else {
@@ -42,6 +42,10 @@ final class WorkspacePreviewTests: XCTestCase {
             identity=hashlib.sha256(('fixture-'+str(i)).encode()).hexdigest()
             log=analyzer.base_log(source,folder,identity,source.stat().st_size)
             log.update(droneID='demo-controller-'+str(i%4),droneName='DEMO-'+str(i%4),date='2026-01-%02dT12:00:00Z'%(i%28+1),dateSource='fixture',durationSeconds=120,status='error' if i==3 else 'partial' if i==4 else 'ok',failsafeObserved=i==2,metadata={'parserVersion':analyzer.PARSER_VERSION})
+            if sys.argv[4]:
+                log.update(flightSeconds=float(sys.argv[4])/int(sys.argv[3]),status='ok',durationSeconds=float(sys.argv[4])/int(sys.argv[3])+15)
+            if sys.argv[5]=='yes':
+                log['track']={'source':'synthetic','originalPointCount':1,'rejectedPointCount':0,'points':[{'timeSeconds':0,'latitude':51.2+(i%4)*0.1,'longitude':-1.0+(i%3)*0.1,'altitudeMeters':10,'segment':0}]}
             family=families[i%len(families)]
             log['messages']=[{'id':identity+'-message','timestampSeconds':5,'level':'WARNING','family':family,'title':'Exemple '+family,'text':'[fixture] '+family+' warning · message synthétique','groupKey':family+'|WARNING','isAlert':True},{'id':identity+'-info','timestampSeconds':10,'level':'INFO','family':'Autres','title':'Résumé prêt','text':'[fixture] Résumé prêt','groupKey':'Autres|INFO','isAlert':False}]
             if i==0:
@@ -50,7 +54,7 @@ final class WorkspacePreviewTests: XCTestCase {
         db.commit();db.close()
         """.write(to: script, atomically: true, encoding: .utf8)
         let process = Process(); process.executableURL = URL(fileURLWithPath: python)
-        process.arguments = ["-B", script.path, root.path, resources.path, String(count)]
+        process.arguments = ["-B", script.path, root.path, resources.path, String(count), flightSeconds.map { String($0) } ?? "", withMapPoints ? "yes" : "no"]
         process.environment = EngineRuntimeResolver.sanitizedEnvironment(environment)
         process.standardInput = FileHandle.nullDevice; process.standardOutput = FileHandle.nullDevice
         let errorFile = root.appendingPathComponent("fixture-error.txt")
@@ -226,6 +230,24 @@ final class WorkspacePreviewTests: XCTestCase {
                 name: "query-help-\(scheme)", width: 610, height: 240, scheme: scheme)
             XCTAssertLessThanOrEqual(fitting.width, 610.5)
             XCTAssertLessThanOrEqual(fitting.height, 240.5)
+        }
+    }
+
+    func testLargeFlightTotalAndCompleteMapFitBothThemes() async throws {
+        let f = try await fixture(count: 180, flightSeconds: 1512.9 * 60, withMapPoints: true)
+        XCTAssertEqual(try XCTUnwrap(f.library.historyPage?.totals.measuredFlightSeconds), 1512.9 * 60, accuracy: 0.01)
+        for scheme in [ColorScheme.dark, .light] {
+            for width in [900.0, 1440.0] {
+                let size = try await renderWorkspace(f, page: .overview, name: "flight-total-\(scheme)-\(Int(width))", width: width, height: 900, scheme: scheme)
+                XCTAssertLessThanOrEqual(size.width, width + 0.5)
+            }
+        }
+        f.library.loadAuxiliary(kind: "map"); try await settle(f.library)
+        XCTAssertEqual(f.library.mapPage?.markers.count, 180)
+        for scheme in [ColorScheme.dark, .light] {
+            let size = try await renderWorkspace(f, page: .map, name: "complete-map-\(scheme)", width: 1440, height: 980, scheme: scheme)
+            XCTAssertLessThanOrEqual(size.width, 1440.5)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: f.noNetworkMarker.path))
         }
     }
 

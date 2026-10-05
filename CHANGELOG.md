@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.1 — 2026-10-05
+
+- Carte couvrant tous les logs géolocalisés du périmètre, avec regroupement des
+  repères proches et trajectoire détaillée à l’ouverture du log.
+- Cadrage et mode satellite conservés entre les onglets ; réutilisation des
+  résultats valides pour accélérer la navigation.
+- Filtres compacts, actions indisponibles expliquées et ouverture directe d’un
+  log depuis une alerte ; outils techniques accessibles en mode avancé.
+- Analyse d’un fichier possible pendant le transfert du suivant, avec
+  concurrence et file d’attente bornées ; mesure de performance sur banc simulé.
+- Projection SQLite 8, avec conservation des résumés et sauvegarde de migration.
+
+Version **0.8.1**, build **20**, issue de la Preview approuvée
+`v0.8.1-beta.1`. La qualification et la publication du package stable restent
+suivies dans [RELEASE-0.8.1.md](docs/RELEASE-0.8.1.md).
+
 ## 0.8.0 — 2026-10-01
 
 - Clients locaux personnalisables ; attribution des nouveaux logs à l’import et

@@ -17,13 +17,29 @@ release une première fois par DMG : leurs builds n’activent pas le flux publi
 Ensuite les mises à jour se font depuis l’app. KataLog Preview reste une app de
 review indépendante.
 
-## Passage à 0.8.0
+## Passage à 0.8.1
 
-La version **0.8.0 (build 18)** est publiée et disponible depuis le flux stable signé.
-Les utilisateurs de 0.7.0
-peuvent rechercher les versions publiées depuis l’app ; les autres utilisent
-le DMG. Le [suivi de qualification](RELEASE-0.8.0.md) précise les tests locaux,
-la CI et les contrôles du package final.
+La version **0.8.1 (build 20)** est distribuée par DMG et par le flux stable
+signé. Les utilisateurs de 0.7.0 et 0.8.0 peuvent l’installer depuis l’app
+après publication de ce flux. Le
+[suivi de qualification](RELEASE-0.8.1.md) distingue les résultats de la Preview
+approuvée des contrôles du package stable.
+
+La bibliothèque stable, les identités, les clients, les réglages et les dossiers
+choisis sont conservés. La projection SQLite passe de 7 à 8, avec conservation
+des résumés canoniques et sauvegarde de migration. Les anciennes analyses restent
+consultables ; une réanalyse reste explicite et aucun nouveau téléchargement GCS
+n’est requis. La bibliothèque de KataLog Preview reste indépendante et n’est pas
+transférée automatiquement à KataLog stable.
+
+La carte peut désormais représenter tous les logs géolocalisés du périmètre,
+y compris ceux qui dépassaient l’ancienne limite d’affichage de 80 logs.
+
+## Passage depuis une version antérieure à 0.8.0
+
+Les changements introduits en 0.8.0 sont également inclus lors d’une mise à jour
+directe vers 0.8.1. La [recette 0.8.0](RELEASE-0.8.0.md) conserve les résultats
+de cette release.
 
 La mise à jour conserve la bibliothèque stable, les identifications et les dossiers
 choisis. Les logs existants apparaissent dans **Sans client** : ils ne sont pas
@@ -104,7 +120,7 @@ de staging doit être créé et vérifié séparément avant activation.
 Configurer un build de staging :
 
 ```bash
-KATALOG_VERSION=0.8.0 KATALOG_BUILD_NUMBER=18 \
+KATALOG_VERSION=0.8.1 KATALOG_BUILD_NUMBER=20 \
 KATALOG_UPDATE_CHANNEL=staging \
 KATALOG_UPDATE_FEED_URL=https://updates.example.org/staging/appcast.xml \
 KATALOG_UPDATE_PUBLIC_KEY='<cle-publique-base64>' \
@@ -118,11 +134,11 @@ Pour relire un brouillon, une archive ZIP existante suffit :
 
 ```bash
 python3 tools/update-feed.py prepare \
-  --archive dist/KataLog-0.8.0-macOS-arm64.zip \
-  --archive-url https://updates.example.org/KataLog-0.8.0-macOS-arm64.zip \
+  --archive dist/KataLog-0.8.1-macOS-arm64.zip \
+  --archive-url https://updates.example.org/KataLog-0.8.1-macOS-arm64.zip \
   --output /private/tmp/katalog-update-draft \
   --release-notes /private/tmp/katalog-release-notes.txt \
-  --channel staging --previous-build 17 --draft
+  --channel staging --previous-build 18 --draft
 ```
 
 Le brouillon est nommé `appcast.draft.xml` et reste non signé. Pour préparer un

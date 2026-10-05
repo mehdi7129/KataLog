@@ -120,6 +120,36 @@ public struct LibraryLogPage: Codable, Sendable, LibraryPageContract {
     public var proximityUnavailableLogs: Int? = nil
 }
 
+/// One recorded GPS sample per log. Full trajectories are loaded only in the
+/// selected flight's inspector, independently of the overview's pagination.
+public struct LibraryMapMarker: Codable, Identifiable, Equatable, Sendable {
+    public var id: String
+    public var droneName: String
+    public var date: String
+    public var fileName: String
+    public var durationSeconds: Double
+    public var clientName: String?
+    public var latitude: Double
+    public var longitude: Double
+    public init(id: String, droneName: String, date: String, fileName: String, durationSeconds: Double,
+                clientName: String? = nil, latitude: Double, longitude: Double) {
+        self.id = id; self.droneName = droneName; self.date = date; self.fileName = fileName
+        self.durationSeconds = durationSeconds; self.clientName = clientName
+        self.latitude = latitude; self.longitude = longitude
+    }
+}
+
+public struct LibraryMapPage: Codable, Sendable, LibraryPageContract {
+    public var queryVersion: Int
+    public var revision: Int
+    public var scopeHash: String
+    public var markers: [LibraryMapMarker]
+    public var totalLogs: Int
+    public var locatedLogs: Int
+    public var nextCursor: String?
+    public var proximityUnavailableLogs: Int? = nil
+}
+
 public struct LibraryGroup: Codable, Identifiable, Sendable {
     public var id: String
     public var title: String

@@ -17,6 +17,18 @@ struct DiagnosticView: View {
     @State private var showingTimeline = false
     @State private var confirmingJournalClear = false
     private var palette: Palette { Palette(dark: scheme == .dark) }
+    private var journalClearExplanation: String {
+        if readOnly { return "Le journal ne peut pas être effacé dans cette instance en lecture seule." }
+        if externalBusy { return "Terminez l’opération en cours dans KataLog avant d’effacer le journal." }
+        if store.isLoading || store.isFetchingGCS || store.isExporting { return "Attendez la fin du diagnostic en cours avant d’effacer le journal." }
+        return "Efface uniquement le journal technique de KataLog, après confirmation."
+    }
+    private var exportExplanation: String {
+        if store.isLoading { return "Attendez la fin de la lecture du journal local." }
+        if store.isFetchingGCS { return "Terminez ou annulez la récupération GCS avant d’exporter." }
+        if !store.canExport { return "Le contenu du diagnostic doit être disponible avant l’export." }
+        return "Enregistre le diagnostic vérifié dans un ZIP sur votre Mac. Aucun envoi automatique."
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -111,7 +123,7 @@ struct DiagnosticView: View {
                     store.fetchGCS(host: host)
                 }.disabled(host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isExporting)
                     .accessibilityIdentifier("diagnostic.fetch-gcs")
-                    .help("Demande les journaux du serveur GCS sans lancer de collecte sur les drones.")
+                    .help(store.isExporting ? "Attendez la fin de l’export avant de récupérer les journaux GCS." : host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Renseignez l’adresse de votre serveur dans Collecte GCS." : "Demande les journaux du serveur GCS sans lancer de collecte sur les drones.")
             }
             if host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text("Renseignez l’adresse dans Collecte GCS.").font(.system(size: 11)).foregroundStyle(palette.secondary)
@@ -131,7 +143,7 @@ struct DiagnosticView: View {
                 .toggleStyle(.switch).controlSize(.small).tint(palette.mint)
                 .font(.system(size: 12)).disabled(store.serviceFiles.isEmpty || store.isExporting)
                 .accessibilityIdentifier("diagnostic.private-gcs")
-                .help(store.serviceFiles.isEmpty ? "Récupérez les journaux GCS ci-dessus pour activer cette option." : "Ajoute les journaux bruts au diagnostic que vous allez exporter.")
+                .help(store.isExporting ? "Le contenu est figé pendant l’export." : store.serviceFiles.isEmpty ? "Récupérez les journaux GCS ci-dessus pour activer cette option." : "Ajoute les journaux bruts au diagnostic que vous allez exporter.")
             Text(store.serviceFiles.isEmpty
                  ? "Récupérez d’abord les journaux ci-dessus. Cette option sera disponible dès qu’un journal aura été reçu."
                  : store.includePrivateGCS
@@ -190,6 +202,8 @@ struct DiagnosticView: View {
                 Button("Effacer…") { confirmingJournalClear = true }
                     .disabled(readOnly || externalBusy || store.isLoading || store.isFetchingGCS || store.isExporting)
                     .accessibilityIdentifier("diagnostic.clear-journal")
+                    .help(journalClearExplanation)
+                    .accessibilityHint(journalClearExplanation)
             }
             DisclosureGroup(isExpanded: $showingTimeline) {
                 VStack(alignment: .leading, spacing: 12) {
@@ -260,6 +274,8 @@ struct DiagnosticView: View {
                 Button("Exporter le ZIP…", systemImage: "square.and.arrow.up") { exportZIP() }
                     .buttonStyle(WorkspaceActionButtonStyle(palette: palette, prominent: true))
                     .disabled(!store.canExport).accessibilityIdentifier("diagnostic.export")
+                    .help(exportExplanation)
+                    .accessibilityHint(exportExplanation)
             }
         }.padding(.horizontal, 24).padding(.vertical, 18).background(palette.card)
             .overlay(alignment: .top) { Rectangle().fill(palette.border).frame(height: 1) }

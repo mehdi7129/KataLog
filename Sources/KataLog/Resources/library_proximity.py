@@ -140,17 +140,24 @@ def complete_track(db, identity, read_only=False):
     return None, False
 
 
-def prepare_scope(db, scope, proximity, read_only=False):
+def prepare_scope(db, scope, proximity, read_only=False, overview=False):
     import library_repository as repository
     statement, params, _ = repository.selection_statement(scope)
     identities = [row[0] for row in db.execute(statement + 'SELECT id FROM selected', params)]
     db.execute('DROP TABLE IF EXISTS temp.kl_proximity_matches')
-    db.execute('CREATE TEMP TABLE kl_proximity_matches(id TEXT PRIMARY KEY)')
+    db.execute('CREATE TEMP TABLE kl_proximity_matches(id TEXT PRIMARY KEY,latitude REAL,longitude REAL)')
     unavailable = 0
     for identity in identities:
         track, available = complete_track(db, identity, read_only)
         if not available:
             unavailable += 1
         elif intersects(track, proximity):
-            db.execute('INSERT INTO kl_proximity_matches VALUES(?)', (identity,))
+            point = None
+            if overview:
+                from library_map_overview import valid_point
+                center = vector(proximity['latitude'], proximity['longitude'])
+                point = min((point for point in track.get('points', []) if valid_point(point)),
+                            key=lambda point: angle(center, vector(point['latitude'], point['longitude'])), default=None)
+            db.execute('INSERT INTO kl_proximity_matches VALUES(?,?,?)',
+                       (identity, point['latitude'] if point else None, point['longitude'] if point else None))
     return dict(scope, _proximityFiltered=True), unavailable
