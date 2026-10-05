@@ -1,7 +1,7 @@
 # Distribution macOS hors App Store
 
-La version **0.8.1 (build 20)** est en préparation pour la distribution stable,
-depuis la Preview approuvée `v0.8.1-beta.1`. Elle conserve l’installation autonome
+La version **0.8.1 (build 20)** reprend la Preview approuvée `v0.8.1-beta.1`
+pour la distribution stable. Elle conserve l’installation autonome
 par DMG et le flux Sparkle stable signé introduit en 0.7.0. Voir
 [la recette 0.8.1](RELEASE-0.8.1.md). Toute publication
 exige la validation de l’historique, des métadonnées GitHub et des assets.

@@ -1,9 +1,9 @@
 # KataLog 0.8.1 — recette de release
 
 Version **0.8.1**, build **20**, préparée le 5 octobre 2026.
-État : **promotion stable en préparation** depuis la Preview approuvée
+État : **package et CI qualifiés ; publication en préparation**.
+La version est préparée depuis la Preview approuvée
 `v0.8.1-beta.1`, commit `61bea6e3ab649ae217d5c64afbbadb1431a2f439`.
-La qualification du nouveau package stable et sa publication restent à compléter.
 
 ## Nouveautés
 
@@ -55,19 +55,26 @@ sur le build 19. Ils ne constituent pas une qualification du build stable 20.
 
 | Contrôle | État |
 | --- | --- |
-| Sources finales, version 0.8.1 et build 20 | Entrées de build mises à jour ; compilation stable signée en cours |
-| Tests et CI des sources finales | À consigner |
+| Sources finales, version 0.8.1 et build 20 | Package stable construit et métadonnées vérifiées |
+| Suite Swift locale | 348 tests réussis, aucun échec ni test ignoré |
+| Suite Python locale | 379 tests réussis ; un test de corpus privé externe non exécuté |
+| Interactions JavaScript des rapports | 18 tests réussis |
+| CI sur `3f24eb1` | [Exécution 37300429488](https://github.com/mehdi7129/KataLog/actions/runs/37300429488) réussie : tests macOS 15 et 26, packages ARM64 macOS 15 et 27 |
 | Banc SDK Sparkle, installation et relancement | Réussi avec app jetable et flux HTTP local ; six fichiers synthétiques conservés |
-| Identité stable, bibliothèque stable et configuration Sparkle | À vérifier dans le bundle final |
-| Signature Developer ID, notarisation et tickets app, helper et DMG | À effectuer sur les nouveaux artefacts |
-| Distribution finale et installation après éjection du DMG | À effectuer |
-| Confidentialité des sources et des archives | À vérifier |
+| Identité et configuration Sparkle | Identité stable, build 20, canal stable et clé publique attendue vérifiés dans le bundle final |
+| Signature Developer ID, notarisation et tickets | App et DMG acceptés par Gatekeeper comme distributions Developer ID notarisées ; tickets app, helper et DMG validés |
+| Distribution finale | Neuf contrôles réussis sur la copie installée depuis le DMG, après éjection |
+| Présentation du DMG | Fenêtre contrôlée dans Finder, conforme ; éjection effectuée |
+| Confidentialité des sources et des archives | Aucun finding non classé ; ZIP et DMG finaux identiques, payloads embarqués inspectés |
 | Tag `v0.8.1`, archive source et SHA-256 | À générer après gel des sources |
 | Release publique et téléchargements anonymes | À effectuer |
 | Flux stable signé, archive et signatures Sparkle publiques | À publier et vérifier après les assets |
 
 Les captures, bibliothèques et rapports détaillés de recette restent hors du dépôt.
 La distribution ne contient ni bibliothèque de démonstration ni données utilisateur.
+Le package stable n’a pas fait l’objet d’un nouveau lancement graphique lors de
+cette recette. Les tests natifs ont été exécutés ; la recette graphique de la
+Preview approuvée reste la preuve disponible pour les parcours d’interface.
 
 ## Limites
 
@@ -78,3 +85,11 @@ La distribution ne contient ni bibliothèque de démonstration ni données utili
 - Le fond Apple Maps et la recherche d’adresses dépendent du réseau. Les lacunes
   GPS ne sont pas reliées et les trajectoires non vérifiables restent signalées.
 - La recette locale sur macOS 27 ne remplace pas une recette physique sur macOS 15.
+
+## Traçabilité
+
+Le package est construit depuis les entrées du commit `3f24eb1`, dont les quatre
+jobs CI ont réussi. Le code applicatif, les tests, les dépendances et les sources
+du moteur sont identiques à la Preview approuvée `61bea6e` ; le build stable
+passe à 20 et active le canal de mise à jour stable. Les mises à jour de
+documentation suivent ces validations sans modifier les entrées du package.

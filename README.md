@@ -1,6 +1,6 @@
 # KataLog — bibliothèque locale de logs PX4
 
-**0.8.1 (build 20) — stable en préparation** · macOS · SwiftUI · Apple Silicon · GPL-3.0-only
+**0.8.1 (build 20)** · macOS · SwiftUI · Apple Silicon · GPL-3.0-only
 
 KataLog rassemble l’historique de votre flotte : logs PX4, alertes filtrables,
 trajectoires Apple Maps, courbes et rapports. Interface **bento monochrome**,
@@ -21,10 +21,10 @@ thèmes **clair / sombre / système**, données conservées sur votre Mac.
   vient d’un banc simulé.
 
 [Notes et qualification 0.8.1](docs/RELEASE-0.8.1.md) ·
-[Release stable actuelle 0.8.0](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.0) ·
+[Release stable 0.8.1](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.1) ·
 [Installation et mises à jour](docs/UPDATING.md)
 
-La version stable 0.8.1 est préparée depuis la Preview approuvée
+La version stable 0.8.1 reprend la Preview approuvée
 **`v0.8.1-beta.1`**. Sa qualification et sa publication sont suivies dans les
 [notes 0.8.1](docs/RELEASE-0.8.1.md). La
 [recette de la Preview](docs/RELEASE-0.8.1-BETA.md), l’[audit UX](docs/UX-AUDIT-0.8.1.md)
