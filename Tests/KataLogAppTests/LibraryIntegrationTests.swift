@@ -33,6 +33,56 @@ final class LibraryIntegrationTests: XCTestCase {
         XCTAssertFalse(library.isMaintainingLibrary)
         XCTAssertFalse(library.isReadOnly)
     }
+    func testRestoreReloadsClientsAfterMaintenanceInBothNavigationModes() async throws {
+        for pagedNavigation in [false, true] {
+            let root = try directory(), engine = root.appendingPathComponent("restore-clients-fixture.py")
+            try Data().write(to: root.appendingPathComponent("library.sqlite"))
+            try """
+            import sys,json
+            from pathlib import Path
+            root=Path(__file__).parent
+            command=sys.argv[1]
+            snapshot={'schemaVersion':1,'generatedAt':'restore-fixture','sourceFolders':[],
+                      'importStats':{'discovered':0,'imported':0,'unchanged':0,'duplicates':0,'failed':0},'logs':[]}
+            if command=='restore':
+                (root/'restored').touch()
+                result={'restored':True}
+            elif command=='clients':
+                name='Restored client' if (root/'restored').exists() else 'Previous client'
+                result={'clients':[{'id':name,'name':name}]}
+            elif command=='snapshot':
+                result=snapshot
+            elif command=='ensure-index':
+                result={}
+            elif command=='query':
+                request=json.loads(Path(sys.argv[sys.argv.index('--request')+1]).read_text())
+                result={'queryVersion':1,'revision':1,'scopeHash':'synthetic','total':0}
+                if request['kind']=='logs':
+                    result.update(snapshot=snapshot,totals={'logs':0,'validLogs':0,'messages':0,'alertLogs':0,
+                        'failsafeLogs':0,'recordedSeconds':0,'droneCount':0,'familyLogCounts':{},'groupCount':0})
+                elif request['kind']=='groups': result['groups']=[]
+                else: raise AssertionError(request['kind'])
+            else: raise AssertionError(command)
+            Path(sys.argv[sys.argv.index('--output')+1]).write_text(json.dumps(result))
+            """.write(to: engine, atomically: true, encoding: .utf8)
+            let library = LibraryStore(storageDirectory: root, engine: engine, pagedNavigation: pagedNavigation)
+            defer { library.prepareForTermination() }
+            library.clients.reload()
+            let initialDeadline = Date().addingTimeInterval(5)
+            while (library.isLoading || library.isQuerying || library.clients.isLoading), Date() < initialDeadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            XCTAssertEqual(library.clients.profiles.map(\.name), ["Previous client"])
+            _ = try await library.restore(from: root.appendingPathComponent("fixture.zip"))
+            let restoredDeadline = Date().addingTimeInterval(5)
+            while (library.isLoading || library.isQuerying || library.clients.isLoading), Date() < restoredDeadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            XCTAssertFalse(library.isLoading || library.isQuerying || library.clients.isLoading)
+            XCTAssertEqual(library.clients.profiles.map(\.name), ["Restored client"])
+            XCTAssertNil(library.clients.errorMessage)
+        }
+    }
     func testTerminationCancelsReaderAndPreventsLateSnapshotReplacement() async throws {
         let root = try directory(), engine = root.appendingPathComponent("slow-reader.py")
         try """

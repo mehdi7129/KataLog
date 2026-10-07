@@ -311,6 +311,7 @@ final class LibraryStore: ObservableObject {
         diagnosticStore.prepareForTermination()
         if !diagnosticStopRecorded { diagnostics.record(.appStopped); diagnostics.flush(); diagnosticStopRecorded = true }
         cancelImport(); exportTask?.cancel(); queryTask?.cancel(); flightTask?.cancel(); reloadTask?.cancel()
+        clients.cancelRead()
         progressTask?.cancel(); queryToken = UUID(); flightToken = UUID(); loadToken = UUID()
         isQuerying = false; isCancellingQuery = false; isLoading = false; isLoadingFlight = false
     }
@@ -543,6 +544,11 @@ final class LibraryStore: ObservableObject {
 
     private func readNavigationPage(request: LibraryQueryRequest, usingCache: Bool,
                                     operation: @escaping @MainActor () async throws -> NavigationResult) {
+        // Clients remain usable even when a heavier navigation query fails.
+        // Warm navigation retries failed reads without restarting successful ones.
+        if FileManager.default.fileExists(atPath: databaseURL.path) {
+            clients.reloadIfNeeded(refresh: !usingCache && request.kind == "logs")
+        }
         let key = LibraryNavigationCache.key(request)
         if isQuerying, activeQueryKey == key { return }
         if queryTask == nil, usingCache, let page = navigationCache.value(for: key, includeFleet: request.kind == "drones") {
@@ -579,6 +585,7 @@ final class LibraryStore: ObservableObject {
                         try await AnalysisService.run(["ensure-index", "--database", databaseURL.path], engine: engine)
                     }
                     indexPrepared = true
+                    clients.reloadIfNeeded(refresh: true)
                 }
                 try Task.checkCancellation()
                 if usingCache, let cached = navigationCache.value(for: key, includeFleet: request.kind == "drones") {
@@ -616,7 +623,6 @@ final class LibraryStore: ObservableObject {
             var groupsRequest = request; groupsRequest.kind = "groups"; groupsRequest.cursor = nil
             let groups = try await LibraryQueryService.page(LibraryGroupPage.self, request: groupsRequest, database: database, engine: engine, readOnly: true)
             guard page.revision == groups.revision else { throw AnalysisError.engine("La bibliothèque a changé pendant la lecture. Rechargez la sélection.") }
-            clients.reload()
             return (.history(page, groups), stamp)
         }
     }
@@ -709,6 +715,8 @@ final class LibraryStore: ObservableObject {
         try willMaintainLibrary()
         isMaintainingLibrary = true
         defer { isMaintainingLibrary = false; invalidateNavigationCache() }
+        await clients.cancelReadAndWait()
+        try Task.checkCancellation()
         return try await operation()
     }
 
@@ -731,7 +739,7 @@ final class LibraryStore: ObservableObject {
             try willRestoreLibrary()
             do {
                 let result = try await LibraryStorageService.restore(archive: archive, library: storageDirectory, engine: engine)
-                annotations.reload(); views.reload(); clients.reload()
+                annotations.reload(); views.reload()
                 indexPrepared = false
                 closeFlight()
                 do { try didRestoreLibrary() }
@@ -742,7 +750,8 @@ final class LibraryStore: ObservableObject {
                 throw error
             }
         }
-        reload(); statusMessage = "Bibliothèque restaurée. L’ancien état est conservé dans le dossier de récupération. Les collectes actives sont interrompues."
+        clients.reload(); reload()
+        statusMessage = "Bibliothèque restaurée. L’ancien état est conservé dans le dossier de récupération. Les collectes actives sont interrompues."
         if let postRestoreIssue { errorMessage = "La bibliothèque a été restaurée, mais la collecte ne peut pas être rouverte : \(postRestoreIssue). Elle reste bloquée ; relancez l’app ou restaurez sa configuration." }
         return result
     }

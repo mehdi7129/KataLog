@@ -5,6 +5,18 @@ build **20**. [Télécharger le DMG](https://github.com/mehdi7129/KataLog/releas
 ou suivre les [instructions de mise à jour](docs/UPDATING.md).
 Les sections antérieures conservent l’état de leur version au moment de sa livraison.
 
+## 0.8.2 — correctif en préparation
+
+- Pagination de l’historique : la liste des sources et les statistiques d’import
+  sont comptées dans la limite de réponse avant de remplir la page de logs.
+  Les bibliothèques comportant de nombreux dossiers restent consultables sans
+  augmenter la limite de 4 Mio ni retirer des données.
+- Chargement des clients indépendant de l’historique : une erreur de lecture des
+  logs ne masque plus leur liste. Une lecture clients échouée conserve le dernier
+  résultat valide et propose un nouvel essai explicite.
+- Les lectures clients sont arrêtées avant une modification ou une restauration
+  de bibliothèque, puis rechargées après restauration et préparation de l’index.
+
 ## 0.8.1 — 2026-10-05
 
 - Carte couvrant tous les logs géolocalisés du périmètre, avec regroupement des
