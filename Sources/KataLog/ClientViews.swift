@@ -22,12 +22,28 @@ struct ClientScopeControl: View {
             Divider()
             ForEach(clients.profiles) { profile in scopeChoice(profile.name, id: profile.id) }
             scopeChoice("Sans client", id: "")
+            if clients.isLoading {
+                Divider()
+                Text("Chargement des clients…")
+            } else if let error = clients.errorMessage {
+                Divider()
+                Text("Lecture des clients indisponible")
+                Button("Réessayer de charger les clients", systemImage: "arrow.clockwise") { clients.reload() }
+                    .help(error)
+            }
             Divider()
             Button("Créer ou gérer les clients…", systemImage: "person.2.badge.gearshape") { managing = true }
                 .disabled(library.isReadOnly)
         } label: {
-            Label(clients.scopeLabel(for: views.state.activeScope.clientID), systemImage: "person.2")
-                .lineLimit(1).truncationMode(.tail).frame(maxWidth: 240, alignment: .leading)
+            HStack(spacing: 6) {
+                Label(clients.scopeLabel(for: views.state.activeScope.clientID), systemImage: "person.2")
+                    .lineLimit(1).truncationMode(.tail)
+                if clients.isLoading { ProgressView().controlSize(.mini).accessibilityLabel("Chargement des clients") }
+                else if let error = clients.errorMessage {
+                    Image(systemName: "exclamationmark.triangle").help(error)
+                        .accessibilityLabel("Lecture des clients indisponible")
+                }
+            }.frame(maxWidth: 240, alignment: .leading)
         }
         .menuStyle(.borderlessButton)
         .frame(maxWidth: 280, alignment: .leading).fixedSize(horizontal: true, vertical: true)
@@ -57,30 +73,51 @@ struct ClientDestinationPicker: View {
     var replacesExistingAssignment = false
 
     var body: some View {
-        HStack(spacing: 12) {
-            Text(title).foregroundStyle(.secondary)
-            Spacer(minLength: 0)
-            Menu {
-                Button { selection = "" } label: {
-                    if selection.isEmpty { Label("Sans client", systemImage: "checkmark") }
-                    else { Text("Sans client") }
-                }
-                ForEach(clients.profiles) { client in
-                    Button { selection = client.id } label: {
-                        if selection == client.id { Label(client.name, systemImage: "checkmark") }
-                        else { Text(client.name) }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Text(title).foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Menu {
+                    Button { selection = "" } label: {
+                        if selection.isEmpty { Label("Sans client", systemImage: "checkmark") }
+                        else { Text("Sans client") }
                     }
-                }
-            } label: {
-                Text(clients.scopeLabel(for: selection)).lineLimit(1).truncationMode(.tail)
-                    .frame(maxWidth: 140, alignment: .trailing)
-            }.menuStyle(.borderlessButton)
-                .frame(maxWidth: 160, alignment: .trailing).fixedSize(horizontal: true, vertical: true)
-                .accessibilityLabel(title)
-                .accessibilityValue(clients.scopeLabel(for: selection))
+                    ForEach(clients.profiles) { client in
+                        Button { selection = client.id } label: {
+                            if selection == client.id { Label(client.name, systemImage: "checkmark") }
+                            else { Text(client.name) }
+                        }
+                    }
+                } label: {
+                    Text(clients.scopeLabel(for: selection)).lineLimit(1).truncationMode(.tail)
+                        .frame(maxWidth: 140, alignment: .trailing)
+                }.menuStyle(.borderlessButton)
+                    .frame(maxWidth: 160, alignment: .trailing).fixedSize(horizontal: true, vertical: true)
+                    .accessibilityLabel(title)
+                    .accessibilityValue(clients.scopeLabel(for: selection))
+            }
+            .accessibilityIdentifier("clients.destination")
+            .help(replacesExistingAssignment ? "L’attribution des logs sélectionnés sera remplacée par ce client." : "Les nouveaux logs sont attribués à ce client. Les fichiers déjà connus conservent leur attribution.")
+            ClientReadStatus(clients: clients)
         }
-        .accessibilityIdentifier("clients.destination")
-        .help(replacesExistingAssignment ? "L’attribution des logs sélectionnés sera remplacée par ce client." : "Les nouveaux logs sont attribués à ce client. Les fichiers déjà connus conservent leur attribution.")
+        .onAppear { clients.reloadIfNeeded() }
+    }
+}
+
+private struct ClientReadStatus: View {
+    @ObservedObject var clients: ClientStore
+
+    var body: some View {
+        if clients.isLoading {
+            ProgressView("Chargement des clients…").controlSize(.small)
+        } else if let error = clients.errorMessage {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Lecture des clients indisponible : \(error)", systemImage: "exclamationmark.triangle")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Button("Réessayer", systemImage: "arrow.clockwise") { clients.reload() }
+                    .disabled(clients.isWorking)
+            }
+        }
     }
 }
 
@@ -112,7 +149,7 @@ struct ClientManagementView: View {
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    if clients.profiles.isEmpty {
+                    if clients.hasLoaded, clients.profiles.isEmpty, !clients.isLoading, clients.errorMessage == nil {
                         Text("Aucun client créé. Vos logs restent disponibles dans « Sans client ».")
                             .foregroundStyle(palette.secondary).padding(.vertical, 30)
                     }
@@ -127,6 +164,7 @@ struct ClientManagementView: View {
                     }
                 }
             }
+            ClientReadStatus(clients: clients)
             if let error { Text(error).foregroundStyle(palette.red).fixedSize(horizontal: false, vertical: true) }
             if clients.isWorking { ProgressView("Mise à jour des clients…").controlSize(.small) }
             HStack {
@@ -140,6 +178,7 @@ struct ClientManagementView: View {
         .background(palette.background).foregroundStyle(palette.primary)
         .buttonStyle(WorkspaceActionButtonStyle(palette: palette))
         .interactiveDismissDisabled(clients.isWorking)
+        .onAppear { clients.reloadIfNeeded() }
         .confirmationDialog("Supprimer ce client ?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
             Button("Supprimer le client", role: .destructive) { remove() }
             Button("Annuler", role: .cancel) { removing = nil }

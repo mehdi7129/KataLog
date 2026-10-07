@@ -1068,11 +1068,14 @@ def query(db, request, read_only=False):
                             raise ValueError('Les messages de ce log dépassent le budget de page ; ouvrez les occurrences paginées ou un export détaillé.')
                         value['messages'].append(record)
                 return value
-            values = bounded_rows(rows, map_log, result)
             from library_sources import active_folders
             folders = active_folders(db)
+            # Source paths and import metadata have variable size. Include the
+            # complete envelope before selecting how many logs fit this page.
             result["snapshot"] = {"schemaVersion": 1, "generatedAt": now(), "sourceFolders": folders,
-                                  "importStats": latest_import_stats(db), "logs": values}
+                                  "importStats": latest_import_stats(db), "logs": []}
+            values = bounded_rows(rows, map_log, result)
+            result["snapshot"]["logs"] = values
             total = totals["logs"]
         elif kind == "groups":
             sql = statement + """SELECT group_id AS id,MIN(title) AS title,MIN(family) AS family,MIN(level) AS level,
