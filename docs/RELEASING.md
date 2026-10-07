@@ -1,9 +1,9 @@
 # Distribution macOS hors App Store
 
-La version **0.8.1 (build 20)** reprend la Preview approuvée `v0.8.1-beta.1`
-pour la distribution stable. Elle conserve l’installation autonome
-par DMG et le flux Sparkle stable signé introduit en 0.7.0. Voir
-[la recette 0.8.1](RELEASE-0.8.1.md). Toute publication
+La version **0.8.2 (build 21)** prépare un correctif de lecture de l’historique
+et des clients. Elle conserve l’installation autonome par DMG et le flux
+Sparkle stable signé introduit en 0.7.0. Voir
+[la recette 0.8.2](RELEASE-0.8.2.md). Toute publication
 exige la validation de l’historique, des métadonnées GitHub et des assets.
 
 ## Parcours utilisateur
@@ -17,8 +17,8 @@ sur toutes les versions de macOS.
 ## Préparer et tester
 
 1. Fixer version et build dans `tools/build-app.sh`, `tools/package-smoke.sh` et
-   `project.yml`, puis `xcodegen generate`. Le build stable 20 succède au build
-   stable 18 ; le build 19 identifie la Preview 0.8.1 beta 1.
+   `project.yml`, puis `xcodegen generate`. Le build 21 succède au build
+   stable 20 de 0.8.1.
    Conserver l’identité stable de l’app ; la Preview utilise son identité séparée.
 2. Exécuter les suites Swift, Python et Node du README. `KATALOG_PRIVATE_FIXTURES`
    désigne uniquement le corpus local ; les ULog et résultats privés restent hors Git.
@@ -155,8 +155,8 @@ Construire avec `KATALOG_UPDATE_CHANNEL=stable`, l’URL HTTPS publique et la cl
 publique vérifiée sous `updates/stable/public-key.txt`. Garder la clé privée dans
 le Trousseau, compte `katalog-sparkle-stable`. Notariser et agrafer le bundle,
 puis recréer le ZIP final avant toute signature Sparkle ou calcul de checksum.
-Préparer le flux avec `tools/update-feed.py prepare` et `--previous-build 18`
-pour cette release 0.8.1 (build 20). Revérifier le build public précédent au
+Préparer le flux avec `tools/update-feed.py prepare` et `--previous-build 20`
+pour cette release 0.8.2 (build 21). Revérifier le build public précédent au
 moment de publier : il ne doit pas avoir changé entre préparation et publication.
 Publier d’abord le ZIP et le DMG vérifiés, puis le flux signé sous
 `updates/stable/appcast.xml`. Vérifier les octets et signatures en accès anonyme.

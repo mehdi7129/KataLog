@@ -17,6 +17,11 @@ Les sections antérieures conservent l’état de leur version au moment de sa l
 - Les lectures clients sont arrêtées avant une modification ou une restauration
   de bibliothèque, puis rechargées après restauration et préparation de l’index.
 
+Version **0.8.2**, build **21**. La correction conserve les analyses, les clients
+et leurs attributions ; aucun réimport ni changement de projection SQLite n’est
+requis depuis 0.8.1. Les résultats de tests et les contrôles de publication restants
+sont suivis dans [RELEASE-0.8.2.md](docs/RELEASE-0.8.2.md).
+
 ## 0.8.1 — 2026-10-05
 
 - Carte couvrant tous les logs géolocalisés du périmètre, avec regroupement des

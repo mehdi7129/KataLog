@@ -70,6 +70,21 @@ Pour collecter directement sur une GCS, ouvrir **Collecte GCS**, renseigner son
 adresse, se connecter et choisir **Tout collecter**. Le client destinataire et
 le dossier de copie sont explicites. Voir le [guide de collecte](docs/README.md#collecter-depuis-une-gcs).
 
+## Correctif 0.8.2 en préparation
+
+- Historique consultable dans les bibliothèques comportant de nombreux dossiers :
+  les informations sur les sources sont comptées avant de remplir chaque page.
+- Liste des clients chargée indépendamment de l’historique, conservée si une
+  lecture échoue, avec une action pour réessayer.
+- Lectures clients arrêtées avant une maintenance ou une restauration, puis
+  rechargées lorsque la bibliothèque est disponible.
+
+Le correctif **0.8.2 (build 21)** conserve les analyses et les attributions clients,
+sans réimport ni nouvelle migration depuis 0.8.1. Les tests locaux, la CI et la
+recette de l’app installée sont consignés dans les
+[notes de qualification](docs/RELEASE-0.8.2.md). Le DMG et le flux de mise à jour
+publics restent à qualifier avant publication.
+
 ## Nouveautés de 0.8.1
 
 - Carte couvrant tous les logs géolocalisés, au-delà de l’ancienne limite de 80.

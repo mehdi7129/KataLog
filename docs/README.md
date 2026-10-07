@@ -2,6 +2,8 @@
 
 La version stable actuelle est **0.8.1 (build 20)**, publiée le **5 octobre 2026**.
 Pour installer l’app, commencer par le [README du projet](../README.md#installation).
+Le correctif **0.8.2 (build 21)** est en préparation :
+[résultats et qualification restante](RELEASE-0.8.2.md).
 
 ## Trouver le bon document
 
@@ -35,7 +37,7 @@ Pour installer l’app, commencer par le [README du projet](../README.md#install
    le bilan avant de retirer la carte SD. Un doublon conserve son client initial.
 4. Dans **Historique**, filtrer les logs du client choisi : drones, période,
    recherche, familles et niveaux. Les agrégats portent sur tout ce périmètre,
-   indépendamment des pages de 200 entrées. L’attribution à un client peut être
+   indépendamment des pages de 200 entrées au maximum. L’attribution à un client peut être
    modifiée en lot. Dans **Alertes**, personnaliser familles et masquages réversibles.
 5. Ouvrir un log dans sa fenêtre macOS pour consulter sa synthèse, ses messages,
    sa carte et ses courbes. Jusqu’à quatre courbes partagent un budget total de
@@ -55,8 +57,13 @@ La collecte utilise une file SQLite durable et importe exactement les fichiers
 reçus, sans créer automatiquement une seconde archive. Les drones ajoutés lors de la collecte
 restent dans le registre, même sans log ni numéro de stock. La comparaison des paramètres conserve
 les valeurs et types ; elle n’attribue pas une cause de panne.
-Le parseur courant est **1.4.0**, avec projection SQLite **8** en 0.8.1
+Le parseur courant est **1.4.0**, avec projection SQLite **8** depuis 0.8.1
 (**7** en 0.8.0). Les anciennes analyses sont conservées et leur recalcul est explicite.
+
+Le correctif 0.8.2 adapte le nombre de logs d’une page au budget de réponse,
+y compris les informations sur les dossiers sources. Les totaux restent ceux
+du périmètre complet. La liste des clients se charge indépendamment des logs :
+une erreur de lecture ne supprime aucun client et propose un nouvel essai.
 
 ### Diagnostic local
 

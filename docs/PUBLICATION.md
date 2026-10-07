@@ -6,6 +6,10 @@ Le dépôt est **public**. La version stable actuelle est **0.8.1 (build 20)**,
 publiée le **5 octobre 2026**. Voir la [release et sa qualification](RELEASE-0.8.1.md)
 et le [guide utilisateur](README.md).
 
+Le correctif **0.8.2 (build 21)** est en préparation. Ses résultats déjà obtenus
+et les contrôles restant à effectuer sur le DMG, les archives publiques et le flux
+signé sont suivis séparément dans [RELEASE-0.8.2.md](RELEASE-0.8.2.md).
+
 Les contrôles de confidentialité couvrent le contenu publié et son historique,
 pas seulement les fichiers de la branche principale. Les rapports détaillés,
 marqueurs privés et preuves opérationnelles restent hors du dépôt.

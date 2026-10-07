@@ -1,8 +1,17 @@
 # KataLog — roadmap
 
-État au **5 octobre 2026**. Référence livrée : **0.8.1 (build 20)**,
+État au **7 octobre 2026**. Référence livrée : **0.8.1 (build 20)**,
 [release stable publique](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.1).
 Les pistes ci-dessous ne constituent ni un calendrier ni une promesse de version.
+
+## Correctif 0.8.2 en préparation
+
+Le build **21** corrige le budget des pages d’historique et rend la lecture des
+clients indépendante, avec conservation du dernier résultat valide et nouvel
+essai explicite. Il attend l’arrêt des lectures avant une maintenance de la
+bibliothèque. Il conserve le parseur 1.4.0 et la projection SQLite 8.
+La [recette 0.8.2](RELEASE-0.8.2.md) distingue les tests et le parcours natif déjà
+validés des contrôles de publication encore à effectuer.
 
 ## Disponible en 0.8.1
 
