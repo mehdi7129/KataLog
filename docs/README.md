@@ -1,9 +1,7 @@
 # Documentation de KataLog
 
-La version stable actuelle est **0.8.1 (build 20)**, publiée le **5 octobre 2026**.
+La version stable actuelle est **0.8.2 (build 21)**, publiée le **7 octobre 2026**.
 Pour installer l’app, commencer par le [README du projet](../README.md#installation).
-Le correctif **0.8.2 (build 21)** est en préparation :
-[résultats et qualification restante](RELEASE-0.8.2.md).
 
 ## Trouver le bon document
 
@@ -11,7 +9,7 @@ Le correctif **0.8.2 (build 21)** est en préparation :
 | --- | --- |
 | Importer, explorer, exporter ou collecter des logs | [Guide utilisateur](#guide-utilisateur) |
 | Installer une mise à jour et comprendre les migrations | [Mises à jour](UPDATING.md) |
-| Comprendre la version stable et ses contrôles | [Release 0.8.1](RELEASE-0.8.1.md), [changelog](../CHANGELOG.md) |
+| Comprendre la version stable et ses contrôles | [Release 0.8.2](RELEASE-0.8.2.md), [changelog](../CHANGELOG.md) |
 | Classer les logs par client et gérer le nettoyage | [Clients et interface](CLIENTS-BENTO.md) |
 | Identifier les drones | [Numérotation et identité](STOCK-IDENTITY.md) |
 | Comprendre la collecte et ses limites | [Collecte GCS](GCS-COLLECTION.md) |
@@ -107,7 +105,7 @@ options privées distinctes. Cette fonctionnalité est disponible à partir de l
    porte sur tout le périmètre client, avant la pagination des résultats.
 2. La recherche utilise les trajectoires complètes disponibles ; celles d’une
    ancienne bibliothèque sont mises en cache à partir des sources accessibles.
-   Les logs qui n’ont pas pu être vérifiés sont annoncés. En 0.8.1, la carte
+   Les logs qui n’ont pas pu être vérifiés sont annoncés. Depuis 0.8.1, la carte
    représente **tous les logs géolocalisés** du périmètre
    par des marqueurs regroupés. Cliquer sur un groupe zoome ; ouvrir un log
    affiche sa trajectoire détaillée. Les coupures GPS ne sont jamais reliées.
@@ -182,7 +180,7 @@ La barre **Progression globale** suit le lot courant : octets, fichiers vérifi�
 attentes et erreurs. Jusqu’à **2 drones distincts** transfèrent leurs logs en
 parallèle, avec **1 fichier à la fois par UUID**. Les fichiers déjà vérifiés sont
 reconnus lors de l’inventaire et exclus des nouveaux téléchargements.
-En 0.8.1, l’analyse utilise un worker séparé ; un transfert
+Depuis 0.8.1, l’analyse utilise un worker séparé ; un transfert
 vérifié libère son slot réseau immédiatement. Au plus quatre fichiers sont en
 transfert, en analyse ou en attente d’analyse. Les résultats et limites mesurés figurent dans
 [la validation des performances](PERFORMANCE-MAP-NAVIGATION.md).
@@ -253,10 +251,11 @@ Références du moteur : [pyulog](https://github.com/PX4/pyulog),
 
 Ces documents conservent la version et le contexte de leur rédaction. Leurs
 états « à faire », « privé » ou « feed désactivé » décrivent cette étape et ne
-remplacent pas l’état actuel de la [release 0.8.1](RELEASE-0.8.1.md).
+remplacent pas l’état actuel de la [release 0.8.2](RELEASE-0.8.2.md).
 
 | Étape | Documents |
 | --- | --- |
+| 0.8.1 | [Release](RELEASE-0.8.1.md), [mesures carte/navigation](PERFORMANCE-MAP-NAVIGATION.md) |
 | Preview 0.8.1 | [Recette beta 1](RELEASE-0.8.1-BETA.md), [audit UX](UX-AUDIT-0.8.1.md) |
 | 0.8.0 | [Release](RELEASE-0.8.0.md), [validation de la Preview clients](VALIDATION-CLIENTS-BENTO.md) |
 | 0.7.0 | [Release](RELEASE-0.7.0.md) |

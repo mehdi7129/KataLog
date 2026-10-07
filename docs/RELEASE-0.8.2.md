@@ -1,9 +1,7 @@
 # KataLog 0.8.2 — recette de release
 
-Version **0.8.2**, build **21**. État au **7 octobre 2026** :
-**app corrigée, testée, signée et notarisée ; publication en préparation**.
-La version stable publique reste 0.8.1 tant que les archives et le flux 0.8.2
-n’ont pas été publiés et vérifiés.
+Version **0.8.2**, build **21**, publiée le **7 octobre 2026**.
+État : **release stable publiée ; téléchargements et flux signé vérifiés**.
 
 ## Corrections
 
@@ -34,6 +32,11 @@ bibliothèque de **KataLog Preview** reste indépendante. Pour les migrations
 depuis des versions antérieures et les modalités de mise à jour, voir
 [UPDATING.md](UPDATING.md).
 
+Le DMG signé et notarisé est disponible dans la
+[release 0.8.2](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.2).
+Les versions stables à partir de 0.7.0 peuvent installer la mise à jour depuis
+**Réglages → Mises à jour → Rechercher une mise à jour**.
+
 ## Qualification obtenue
 
 | Contrôle | Résultat |
@@ -54,16 +57,18 @@ Les scénarios de non-régression utilisent des données synthétiques. Les copi
 de bibliothèques, captures, résultats et rapports détaillés de recette restent
 hors du dépôt et des archives publiques.
 
-## Contrôles avant publication
+## Qualification de la publication
 
 | Contrôle | État |
 | --- | --- |
 | DMG final signé et notarisé | Developer ID, notarisation Apple acceptée, ticket et Gatekeeper vérifiés |
 | Copie depuis le DMG et contrôle après éjection | Copie, éjection puis lancement natif réussis sur macOS 27 ; client et bibliothèque accessibles, données inchangées |
-| Confidentialité des sources, PR et CI | Contrôles du correctif, de la documentation, de la PR et du run CI réussis ; archive source finale à rapprocher du tag |
-| Tag `v0.8.2`, archive des sources correspondantes et SHA-256 | À préparer depuis le commit final |
-| Publication et téléchargements anonymes | À effectuer après validation des archives |
-| Flux stable signé, version 0.8.2 build 21 | À publier après les assets, puis vérifier signatures, URL, taille et octets publics |
+| Confidentialité des sources, PR et CI | Aucun nouveau signalement non classé ; archive source de 254 fichiers identique au tag |
+| Concordance des distributions | 194 entrées identiques entre le ZIP, le DMG et l’app installée |
+| Tag `v0.8.2`, archive des sources correspondantes et SHA-256 | Tag annoté sur `1c15e0c`, sources correspondantes et empreintes publiées |
+| Publication et téléchargements anonymes | Quatre assets téléchargés sans authentification ; SHA-256 locaux, téléchargés et déclarés par GitHub concordants |
+| DMG public téléchargé avec quarantaine | Gatekeeper et ticket Apple validés |
+| Flux stable signé, version 0.8.2 build 21 | Publié après les assets, octets HTTPS publics identiques ; signatures du flux et du ZIP vérifiées ; archive de 20 690 181 octets |
 
 ## Limites
 
@@ -81,5 +86,17 @@ hors du dépôt et des archives publiques.
 
 Le correctif applicatif, ses tests et les versions du package sont dans le commit
 `b433d2a`, contrôlé par la CI ci-dessus. Les mises à jour de documentation suivent
-la qualification sans modifier le code applicatif. La publication doit relier
-le tag final, les sources correspondantes, le bundle qualifié et ses empreintes.
+la qualification sans modifier le code applicatif. La PR #5 est fusionnée sous
+`a7e6f9f` ; le tag annoté `v0.8.2` cible `1c15e0c`, après les compléments
+documentaires. Le flux stable est publié ensuite dans `6f9d0a9`.
+
+Les archives et signatures publiées restent immuables. Cette mise à jour du
+compte rendu ne modifie pas les sources du tag ni les installateurs qualifiés.
+
+## Empreintes des archives publiques
+
+| Archive | SHA-256 |
+| --- | --- |
+| `KataLog-0.8.2-macOS-arm64.dmg` | `80b30ecd83c1f3a0906c166fd3bd2633bd5167dd6db6771da091d428259fd2ba` |
+| `KataLog-0.8.2-macOS-arm64.zip` | `44743a17ef493598a90447281f116c31b6721da638ce8e1834843df9c7f4b4e7` |
+| `KataLog-0.8.2-source.zip` | `971183660a7d2651cb2f4236e6b684324c6e589b7360af12ba9909ba7b35d569` |

@@ -1,7 +1,7 @@
 > **Document historique — recette 0.5.2 (7) du 29 septembre 2026.**
 > Les mentions de dépôt privé et de Sparkle planifié décrivent cette recette.
 > La procédure courante figure dans [RELEASING.md](RELEASING.md) ; la dernière
-> qualification stable est celle de [0.8.1 (build 20)](RELEASE-0.8.1.md).
+> qualification stable est celle de [0.8.2 (build 21)](RELEASE-0.8.2.md).
 
 # Recette de distribution 0.5.2 (7)
 

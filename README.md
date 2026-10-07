@@ -1,14 +1,14 @@
 # KataLog — bibliothèque locale de logs PX4
 
-**0.8.1 (build 20)** · macOS 15+ · Apple Silicon · GPL-3.0-only
+**0.8.2 (build 21)** · macOS 15+ · Apple Silicon · GPL-3.0-only
 
 KataLog rassemble les logs ULog de votre flotte sur votre Mac : historique,
 alertes filtrables, trajectoires Apple Maps, courbes et rapports partageables.
 L’app native SwiftUI propose des thèmes clair, sombre et système.
 
-**[Télécharger KataLog 0.8.1 pour Mac Apple Silicon](https://github.com/mehdi7129/KataLog/releases/download/v0.8.1/KataLog-0.8.1-macOS-arm64.dmg)**
+**[Télécharger KataLog 0.8.2 pour Mac Apple Silicon](https://github.com/mehdi7129/KataLog/releases/download/v0.8.2/KataLog-0.8.2-macOS-arm64.dmg)**
 
-[Release et fichiers](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.1) ·
+[Release et fichiers](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.2) ·
 [Guide utilisateur](docs/README.md) · [Changelog](CHANGELOG.md) ·
 [Contribuer](CONTRIBUTING.md)
 
@@ -25,7 +25,7 @@ existante retrouve ses données.
 
 **Compatibilité : Mac Apple Silicon, macOS 15 minimum.** La recette locale a été
 exécutée sur macOS 27 ; ses résultats et les limites de qualification figurent
-dans les [notes de release](docs/RELEASE-0.8.1.md). Le package Intel n’est pas fourni.
+dans les [notes de release](docs/RELEASE-0.8.2.md). Le package Intel n’est pas fourni.
 
 ## Mises à jour
 
@@ -70,7 +70,7 @@ Pour collecter directement sur une GCS, ouvrir **Collecte GCS**, renseigner son
 adresse, se connecter et choisir **Tout collecter**. Le client destinataire et
 le dossier de copie sont explicites. Voir le [guide de collecte](docs/README.md#collecter-depuis-une-gcs).
 
-## Correctif 0.8.2 en préparation
+## Nouveautés de 0.8.2
 
 - Historique consultable dans les bibliothèques comportant de nombreux dossiers :
   les informations sur les sources sont comptées avant de remplir chaque page.
@@ -82,8 +82,9 @@ le dossier de copie sont explicites. Voir le [guide de collecte](docs/README.md#
 Le correctif **0.8.2 (build 21)** conserve les analyses et les attributions clients,
 sans réimport ni nouvelle migration depuis 0.8.1. Les tests locaux, la CI et la
 recette de l’app installée sont consignés dans les
-[notes de qualification](docs/RELEASE-0.8.2.md). Le DMG et le flux de mise à jour
-publics restent à qualifier avant publication.
+[notes de qualification](docs/RELEASE-0.8.2.md). La stable est publiée depuis le
+**7 octobre 2026** ; le DMG et le flux de mise à jour signés ont été vérifiés
+après publication.
 
 ## Nouveautés de 0.8.1
 
@@ -92,9 +93,10 @@ publics restent à qualifier avant publication.
 - Filtres compacts, accès au log depuis une alerte et actions indisponibles expliquées.
 - Analyse d’un fichier pendant le transfert du suivant, avec file d’attente bornée.
 
-La stable **0.8.1 (build 20)** est publiée depuis le **5 octobre 2026**. Le gain
-de collecte est mesuré sur un banc simulé. Les [mesures](docs/PERFORMANCE-MAP-NAVIGATION.md)
-et la [qualification du package](docs/RELEASE-0.8.1.md) précisent la portée des résultats.
+Ces améliorations introduites en **0.8.1** restent incluses dans la version
+actuelle. Le gain de collecte est mesuré sur un banc simulé. Les
+[mesures](docs/PERFORMANCE-MAP-NAVIGATION.md) et la
+[qualification 0.8.1](docs/RELEASE-0.8.1.md) précisent la portée des résultats.
 
 ## Données et confidentialité
 

@@ -1,6 +1,6 @@
 # Distribution macOS hors App Store
 
-La version **0.8.2 (build 21)** prépare un correctif de lecture de l’historique
+La version **0.8.2 (build 21)** livre un correctif de lecture de l’historique
 et des clients. Elle conserve l’installation autonome par DMG et le flux
 Sparkle stable signé introduit en 0.7.0. Voir
 [la recette 0.8.2](RELEASE-0.8.2.md). Toute publication
@@ -155,9 +155,11 @@ Construire avec `KATALOG_UPDATE_CHANNEL=stable`, l’URL HTTPS publique et la cl
 publique vérifiée sous `updates/stable/public-key.txt`. Garder la clé privée dans
 le Trousseau, compte `katalog-sparkle-stable`. Notariser et agrafer le bundle,
 puis recréer le ZIP final avant toute signature Sparkle ou calcul de checksum.
-Préparer le flux avec `tools/update-feed.py prepare` et `--previous-build 20`
-pour cette release 0.8.2 (build 21). Revérifier le build public précédent au
-moment de publier : il ne doit pas avoir changé entre préparation et publication.
+Pour la release 0.8.2 (build 21), le flux a été préparé avec
+`tools/update-feed.py prepare` et `--previous-build 20`. Pour la prochaine
+release, utiliser le dernier build public vérifié, actuellement **21**.
+Revérifier ce build au moment de publier : il ne doit pas avoir changé entre
+préparation et publication.
 Publier d’abord le ZIP et le DMG vérifiés, puis le flux signé sous
 `updates/stable/appcast.xml`. Vérifier les octets et signatures en accès anonyme.
 

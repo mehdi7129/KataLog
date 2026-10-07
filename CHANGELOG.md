@@ -1,11 +1,11 @@
 # Changelog
 
-Version stable actuelle : [0.8.1](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.1),
-build **20**. [Télécharger le DMG](https://github.com/mehdi7129/KataLog/releases/download/v0.8.1/KataLog-0.8.1-macOS-arm64.dmg)
+Version stable actuelle : [0.8.2](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.2),
+build **21**. [Télécharger le DMG](https://github.com/mehdi7129/KataLog/releases/download/v0.8.2/KataLog-0.8.2-macOS-arm64.dmg)
 ou suivre les [instructions de mise à jour](docs/UPDATING.md).
 Les sections antérieures conservent l’état de leur version au moment de sa livraison.
 
-## 0.8.2 — correctif en préparation
+## 0.8.2 — 2026-10-07
 
 - Pagination de l’historique : la liste des sources et les statistiques d’import
   sont comptées dans la limite de réponse avant de remplir la page de logs.
@@ -19,8 +19,10 @@ Les sections antérieures conservent l’état de leur version au moment de sa l
 
 Version **0.8.2**, build **21**. La correction conserve les analyses, les clients
 et leurs attributions ; aucun réimport ni changement de projection SQLite n’est
-requis depuis 0.8.1. Les résultats de tests et les contrôles de publication restants
-sont suivis dans [RELEASE-0.8.2.md](docs/RELEASE-0.8.2.md).
+requis depuis 0.8.1. Publiée sous le tag **`v0.8.2`** (`1c15e0c`) : DMG signé et
+notarisé, ZIP de mise à jour, sources correspondantes et SHA-256 vérifiés en accès
+anonyme. Le flux stable signé propose le build 21. Les tests et contrôles sont
+consignés dans [RELEASE-0.8.2.md](docs/RELEASE-0.8.2.md).
 
 ## 0.8.1 — 2026-10-05
 

@@ -2,17 +2,21 @@
 
 ## État
 
-Le dépôt est **public**. La version stable actuelle est **0.8.1 (build 20)**,
-publiée le **5 octobre 2026**. Voir la [release et sa qualification](RELEASE-0.8.1.md)
+Le dépôt est **public**. La version stable actuelle est **0.8.2 (build 21)**,
+publiée le **7 octobre 2026**. Voir la [release et sa qualification](RELEASE-0.8.2.md)
 et le [guide utilisateur](README.md).
-
-Le correctif **0.8.2 (build 21)** est en préparation. Ses résultats déjà obtenus
-et les contrôles restant à effectuer sur le DMG, les archives publiques et le flux
-signé sont suivis séparément dans [RELEASE-0.8.2.md](RELEASE-0.8.2.md).
 
 Les contrôles de confidentialité couvrent le contenu publié et son historique,
 pas seulement les fichiers de la branche principale. Les rapports détaillés,
 marqueurs privés et preuves opérationnelles restent hors du dépôt.
+
+### Revue de la release du 7 octobre 2026
+
+Le correctif 0.8.2, sa documentation, la PR et la CI ont été contrôlés sans nouveau
+signalement non classé. L’archive des sources publiée contient **254 fichiers**,
+identiques au tag `v0.8.2`. Les quatre assets et le flux ont été téléchargés sans
+authentification ; leurs octets, empreintes et signatures ont été rapprochés
+des éléments qualifiés localement. Les preuves détaillées restent privées.
 
 ### Revue du 5 octobre 2026
 
@@ -65,10 +69,10 @@ par cet audit avec les permissions API disponibles.
 
 ## Périmètre de la distribution actuelle
 
-Les contrôles de la release **0.8.1** sont consignés dans
-[RELEASE-0.8.1.md](RELEASE-0.8.1.md). Ils portent sur le code qualifié, le commit
-final et ses archives ; les [contrôles 0.8.0](RELEASE-0.8.0.md) restent historiques.
-Les quatre assets publics et le flux stable 0.8.1 ont été téléchargés sans
+Les contrôles de la release **0.8.2** sont consignés dans
+[RELEASE-0.8.2.md](RELEASE-0.8.2.md). Ils portent sur le code qualifié, le commit
+final et ses archives ; les [contrôles 0.8.1](RELEASE-0.8.1.md) restent historiques.
+Les quatre assets publics et le flux stable 0.8.2 ont été téléchargés sans
 authentification et vérifiés après publication. Les notes, le tag et les
 métadonnées de release ont également été contrôlés.
 
@@ -153,9 +157,9 @@ fichiers ; voir [GitHub — visibilité](https://docs.github.com/en/repositories
 
 ## Installation utilisateur
 
-La distribution autonome 0.8.1 se fait **hors App Store** : télécharger le DMG, l'ouvrir,
+La distribution autonome 0.8.2 se fait **hors App Store** : télécharger le DMG, l'ouvrir,
 glisser KataLog dans Applications, éjecter puis lancer. Le moteur est embarqué.
 Un appcast public signé permet les updates Sparkle sans compte GitHub utilisateur
 à partir de la release 0.7.0. Les versions 0.6.x nécessitent une première installation
 par DMG ; leur flux était désactivé.
-Voir la [recette 0.8.1](RELEASE-0.8.1.md) et la [procédure de release](RELEASING.md).
+Voir la [recette 0.8.2](RELEASE-0.8.2.md) et la [procédure de release](RELEASING.md).

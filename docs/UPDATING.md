@@ -17,13 +17,15 @@ release une première fois par DMG : leurs builds n’activent pas le flux publi
 Ensuite les mises à jour se font depuis l’app. KataLog Preview reste une app de
 review indépendante.
 
-## Passage à 0.8.2 — en préparation
+## Passage à 0.8.2
 
 Le correctif **0.8.2 (build 21)** rétablit la consultation de l’historique lorsque
 les informations sur les sources rendent une page trop volumineuse. Il permet
 également de charger et de réessayer la lecture des clients indépendamment de
 l’historique. La qualification de l’app est consignée dans
-[RELEASE-0.8.2.md](RELEASE-0.8.2.md) ; la distribution publique reste en préparation.
+[RELEASE-0.8.2.md](RELEASE-0.8.2.md). La version est distribuée par DMG et par le
+flux stable signé depuis le **7 octobre 2026**. Depuis 0.7.0, elle peut être
+installée avec **Réglages → Mises à jour → Rechercher une mise à jour**.
 
 Depuis 0.8.1, le parseur et la projection SQLite restent inchangés. Les analyses,
 clients, attributions, identités et réglages sont conservés. Aucun réimport,
@@ -31,12 +33,11 @@ nouveau téléchargement GCS ni réinitialisation n’est nécessaire pour appli
 ce correctif. La préparation d’un index ou une restauration attend désormais
 l’arrêt de la lecture des clients avant de remplacer ou modifier la bibliothèque.
 
-## Passage à 0.8.1
+## Changements introduits en 0.8.1
 
-La version **0.8.1 (build 20)** est distribuée par DMG et par le flux stable
-signé. Les utilisateurs de 0.7.0 et 0.8.0 peuvent l’installer depuis l’app. Le
-[suivi de qualification](RELEASE-0.8.1.md) distingue les résultats de la Preview
-approuvée des contrôles du package stable.
+Les changements de **0.8.1 (build 20)** sont inclus lors d’une mise à jour directe
+vers 0.8.2. Le [suivi de qualification 0.8.1](RELEASE-0.8.1.md) conserve les
+résultats de la Preview approuvée et des contrôles de ce package stable.
 
 La bibliothèque stable, les identités, les clients, les réglages et les dossiers
 choisis sont conservés. La projection SQLite passe de 7 à 8, avec conservation
