@@ -116,4 +116,25 @@ final class GCSCountStateTests: XCTestCase {
         XCTAssertNotNil(store.countsError)
     }
 
+    func testRestoredCountsRefreshAfterMaintenanceGateReleases() async throws {
+        let (store, root) = try fixture()
+        let library = LibraryStore(storageDirectory: root)
+        store.attach(library: library)
+        defer { store.stopForTermination(); library.prepareForTermination() }
+        XCTAssertTrue(store.countsAreCurrent)
+        try await library.performMaintenance {
+            try store.preparePersistedStorageForRestore()
+            try store.reloadPersistedStateAfterRestore()
+            XCTAssertFalse(store.countsAreCurrent)
+            XCTAssertFalse(store.hasQueueCounts, "Restoration must discard the previous snapshot even when its selection is unchanged.")
+            XCTAssertNil(store.diagnosticJobCount)
+        }
+        let deadline = Date().addingTimeInterval(3)
+        while !store.countsAreCurrent, Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(store.countsAreCurrent, "The existing refresh timer must resume full reads after maintenance.")
+        XCTAssertEqual(store.retryableCount, 500)
+        XCTAssertEqual(store.batchProgress.totalCount, 500)
+        XCTAssertEqual(store.diagnosticJobCount, 500)
+    }
+
 }
