@@ -150,7 +150,8 @@ final class DiagnosticStore: ObservableObject {
         exportTask = Task { [weak self] in
             do {
                 let result = try await exporter(url, report, snapshot, gcs, privateGCS, ulogs)
-                try Task.checkCancellation()
+                // A successful return confirms atomic publication. Cancellation
+                // after that commit must not turn the completed export into a failure.
                 guard let self else { return }
                 exportMessage = "Diagnostic exporté · \(result.fileCount) fichiers. Aucun envoi automatique.";
                 journal.record(.exportCompleted, metrics: [.items: Int64(result.fileCount)])
