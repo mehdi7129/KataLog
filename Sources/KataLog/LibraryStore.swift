@@ -702,16 +702,24 @@ final class LibraryStore: ObservableObject {
                 let result = try await LibraryQueryService.page(LibraryDronePage.self, request: request, database: database, engine: engine, readOnly: true)
                 return (.drones(result), stamp)
             } else if kind == "map" {
+                // Pages run in separate helpers. Keep the exact geographic
+                // selection only for this read, and discard it on cancellation.
+                let cacheDirectory = request.proximity.map { _ in
+                    FileManager.default.temporaryDirectory.appendingPathComponent("katalog-map-\(UUID().uuidString)")
+                }
+                if let cacheDirectory { try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true) }
+                defer { if let cacheDirectory { try? FileManager.default.removeItem(at: cacheDirectory) } }
+                let proximityCache = cacheDirectory?.appendingPathComponent("selection.jsonl")
                 var current = request
                 var result: LibraryMapPage
                 var mapStamp = stamp
                 if request.proximity != nil, !isReadOnly, activeDetailLoads == 0, !hasExternalActivity() {
                     result = try await performMaintenance(allowOwnedQuery: true) {
-                        try await LibraryQueryService.page(LibraryMapPage.self, request: current, database: database, engine: engine, readOnly: false)
+                        try await LibraryQueryService.page(LibraryMapPage.self, request: current, database: database, engine: engine, readOnly: false, proximityCache: proximityCache)
                     }
                     mapStamp = navigationCache.stamp()
                 } else {
-                    result = try await LibraryQueryService.page(LibraryMapPage.self, request: current, database: database, engine: engine, readOnly: true)
+                    result = try await LibraryQueryService.page(LibraryMapPage.self, request: current, database: database, engine: engine, readOnly: true, proximityCache: proximityCache)
                 }
                 // The optional preparation above may have retained exact GPS
                 // caches. Pagination itself remains a read-only operation.
@@ -720,7 +728,7 @@ final class LibraryStore: ObservableObject {
                     try Task.checkCancellation()
                     guard seen.insert(cursor).inserted else { throw AnalysisError.engine("La pagination de la carte n’a pas progressé. Rechargez la sélection.") }
                     current.cursor = cursor
-                    let next = try await LibraryQueryService.page(LibraryMapPage.self, request: current, database: database, engine: engine, readOnly: true)
+                    let next = try await LibraryQueryService.page(LibraryMapPage.self, request: current, database: database, engine: engine, readOnly: true, proximityCache: proximityCache)
                     guard next.revision == result.revision, next.scopeHash == result.scopeHash else {
                         throw AnalysisError.engine("La bibliothèque a changé pendant la lecture de la carte. Rechargez la sélection.")
                     }

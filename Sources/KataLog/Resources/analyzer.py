@@ -1428,6 +1428,7 @@ def main(argv=None):
     query_command.add_argument("--database", required=True)
     query_command.add_argument("--output", required=True)
     query_command.add_argument("--read-only", action="store_true")
+    query_command.add_argument("--proximity-cache", help=argparse.SUPPRESS)
     index_command = commands.add_parser("ensure-index")
     index_command.add_argument("--database", required=True)
     index_command.add_argument("--output", required=True)
@@ -1524,7 +1525,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         if args.command not in ('scan', 'detail', 'refresh-analysis'):
-            outputs = [args.output, getattr(args, 'progress', None)]
+            outputs = [args.output, getattr(args, 'progress', None), getattr(args, 'proximity_cache', None)]
             inputs = [__file__, *[getattr(args, name, None) for name in ('request', 'file', 'archive', 'capture', 'recovery')]]
             if args.command == 'restore' and (Path(args.output).exists() or Path(args.output).is_symlink()):
                 inputs.extend(backup_source_paths(args.archive))
@@ -1636,7 +1637,7 @@ def main(argv=None):
                     if Path(args.request).stat().st_size > 16 * 1024 * 1024:
                         raise ValueError("La requête de bibliothèque dépasse 16 Mio.")
                     request = json.loads(Path(args.request).read_text(encoding="utf-8"))
-                    result = library_repository.query(db, request, read_only=args.read_only)
+                    result = library_repository.query(db, request, read_only=args.read_only, proximity_cache=args.proximity_cache)
             finally:
                 db.close()
             atomic_json(args.output, result)

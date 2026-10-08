@@ -106,9 +106,11 @@ def cache_track(db, identity, track):
     encoded = json.dumps(track, allow_nan=False, separators=(',', ':')).encode()
     if len(encoded) <= MAX_CACHE_BYTES:
         db.execute('INSERT OR REPLACE INTO spatial_tracks VALUES(?,?,?)', (identity, CACHE_VERSION, zlib.compress(encoded)))
+        return True
+    return False
 
 
-def complete_track(db, identity, read_only=False):
+def complete_track(db, identity, read_only=False, cache_status=None):
     import analyzer
     from flight_data import extract_track
     cached = db.execute('SELECT version,payload FROM spatial_tracks WHERE log_id=?', (identity,)).fetchone()
@@ -118,7 +120,10 @@ def complete_track(db, identity, read_only=False):
             raw = decoder.decompress(cached[1], MAX_CACHE_BYTES + 1)
             if len(raw) > MAX_CACHE_BYTES or not decoder.eof:
                 raise ValueError('Cache de trajectoire trop volumineux.')
-            return json.loads(raw), True
+            track = json.loads(raw)
+            if cache_status is not None:
+                cache_status.append(True)
+            return track, True
         except (ValueError, zlib.error, UnicodeError):
             pass  # Rebuild from an original; never use an incomplete preview.
     for row in db.execute('SELECT path FROM sources WHERE log_id=? ORDER BY path', (identity,)):
@@ -132,23 +137,36 @@ def complete_track(db, identity, read_only=False):
             track = extract_track(ulog.data_list, ulog.start_timestamp / 1e6, ulog.last_timestamp / 1e6)
             if analyzer.stat_signature(path.stat()) != before:
                 continue
-            if not read_only:
-                cache_track(db, identity, track)
+            retained = not read_only and cache_track(db, identity, track)
+            if cache_status is not None:
+                cache_status.append(retained)
             return track, True
         except (OSError, ValueError, TypeError, KeyError, IndexError, OverflowError, EOFError, RuntimeError, struct.error):
             continue
+    if cache_status is not None:
+        cache_status.append(False)
     return None, False
 
 
-def prepare_scope(db, scope, proximity, read_only=False, overview=False):
+def prepare_scope(db, scope, proximity, read_only=False, overview=False, cache_key=None, cache_path=None):
     import library_repository as repository
-    statement, params, _ = repository.selection_statement(scope)
-    identities = [row[0] for row in db.execute(statement + 'SELECT id FROM selected', params)]
+    import proximity_cache
+    db.execute('CREATE TEMP TABLE IF NOT EXISTS kl_proximity_metadata(key TEXT)')
+    cached = db.execute('SELECT key FROM kl_proximity_metadata').fetchone()
+    if cache_key is not None and cached and cached[0] == cache_key:
+        return dict(scope, _proximityFiltered=True), 0
+    db.execute('DELETE FROM kl_proximity_metadata')
     db.execute('DROP TABLE IF EXISTS temp.kl_proximity_matches')
     db.execute('CREATE TEMP TABLE kl_proximity_matches(id TEXT PRIMARY KEY,latitude REAL,longitude REAL)')
+    if cache_key is not None and proximity_cache.load(db, cache_path, cache_key):
+        db.execute('INSERT INTO kl_proximity_metadata VALUES(?)', (cache_key,))
+        return dict(scope, _proximityFiltered=True), 0
+    statement, params, _ = repository.selection_statement(scope)
+    identities = [row[0] for row in db.execute(statement + 'SELECT id FROM selected', params)]
     unavailable = 0
+    cache_status = []
     for identity in identities:
-        track, available = complete_track(db, identity, read_only)
+        track, available = complete_track(db, identity, read_only, cache_status)
         if not available:
             unavailable += 1
         elif intersects(track, proximity):
@@ -160,4 +178,7 @@ def prepare_scope(db, scope, proximity, read_only=False, overview=False):
                             key=lambda point: angle(center, vector(point['latitude'], point['longitude'])), default=None)
             db.execute('INSERT INTO kl_proximity_matches VALUES(?,?,?)',
                        (identity, point['latitude'] if point else None, point['longitude'] if point else None))
+    if cache_key is not None and all(cache_status):
+        db.execute('INSERT INTO kl_proximity_metadata VALUES(?)', (cache_key,))
+        proximity_cache.save(db, cache_path, cache_key)
     return dict(scope, _proximityFiltered=True), unavailable
