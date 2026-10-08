@@ -432,7 +432,6 @@ def prepare_restored_state(staging, manifest, root, archive_directory):
 
 def restore(archive_path, library):
     """Validate, stage and swap managed files; preserve the root lease inode."""
-    require_local_source(archive_path)
     root = Path(library).resolve()
     root.mkdir(parents=True, exist_ok=True)
     if root.is_symlink():
@@ -440,6 +439,7 @@ def restore(archive_path, library):
     journal = root / ".restore-journal.json"
     if journal.exists():
         raise ValueError("Une restauration interrompue nécessite une récupération avant de continuer.")
+    require_local_source(archive_path)
     token = uuid.uuid4().hex
     recovery = root / ("recovery-" + token)
     archive_directory = "restored-ulogs-" + token
