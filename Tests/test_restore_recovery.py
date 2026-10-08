@@ -183,6 +183,33 @@ class RestoreRecoveryTests(unittest.TestCase):
             storage.recover_restore(root)
         self.assertTrue((root / '.restore-journal.json').exists())
 
+    def test_restore_and_recovery_refuse_journal_symlinks_without_changing_any_file(self):
+        for action in ('restore', 'recover'):
+            for dangling in (False, True):
+                with self.subTest(action=action, dangling=dangling):
+                    root, recovery, record = self.fixture()
+                    journal = root / '.restore-journal.json'
+                    target = root / 'referenced-journal.json'
+                    contents = journal.read_bytes()
+                    journal.unlink()
+                    if not dangling:
+                        target.write_bytes(contents)
+                    journal.symlink_to(target)
+                    active = self.contents(root, record['installed'])
+                    original = self.contents(recovery / 'original-files', record['moved'])
+                    with self.assertRaisesRegex(ValueError, 'symbolique'):
+                        if action == 'restore':
+                            storage.restore(root / 'unread-backup.zip', root)
+                        else:
+                            storage.recover_restore(root)
+                    self.assertTrue(journal.is_symlink())
+                    self.assertEqual(journal.readlink(), target)
+                    self.assertEqual(target.exists(), not dangling)
+                    if not dangling:
+                        self.assertEqual(target.read_bytes(), contents)
+                    self.assertEqual(self.contents(root, record['installed']), active)
+                    self.assertEqual(self.contents(recovery / 'original-files', record['moved']), original)
+
     def test_completed_restore_is_verified_before_journal_removal(self):
         for missing in (None, 'incoming', 'original'):
             with self.subTest(missing=missing):
