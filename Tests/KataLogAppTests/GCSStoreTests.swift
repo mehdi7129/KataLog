@@ -1,3 +1,4 @@
+import SQLite3
 import XCTest
 import Combine
 import CryptoKit
@@ -1338,6 +1339,38 @@ else:
             try JSONSerialization.data(withJSONObject: measurement, options: [.prettyPrinted, .sortedKeys])
                 .write(to: directory.appendingPathComponent("gcs-pipeline-\(variant).json"))
         }
+    }
+
+    func testUnavailableFullCountsNeverEmitCollectionCompletedAfterAnalysis() async throws {
+        var imports = 0
+        var fixtureRoot: URL?
+        let (store, root) = try fixture(mode: "normal", importer: { file, _ in
+            imports += 1
+            if imports == 4 {
+                let root = try XCTUnwrap(fixtureRoot)
+                var database: OpaquePointer?
+                XCTAssertEqual(sqlite3_open(root.appendingPathComponent("gcs-queue.sqlite").path, &database), SQLITE_OK)
+                defer { sqlite3_close(database) }
+                XCTAssertEqual(sqlite3_exec(database, "ALTER TABLE transfers RENAME TO unavailable_transfers", nil, nil, nil), SQLITE_OK)
+            }
+            return try self.analyzedSnapshot(file)
+        })
+        fixtureRoot = root
+        let library = LibraryStore(storageDirectory: root)
+        store.attach(library: library)
+        defer { store.stopForTermination(); library.prepareForTermination(); try? FileManager.default.removeItem(at: root) }
+        store.autoImport = true
+        try await waitUntil { store.canCollectAll }
+        store.collectAll()
+        try await waitUntil { !store.isBusy && store.queue.count == 4 && store.queue.allSatisfy(\.isSuccessful) }
+        XCTAssertEqual(imports, 4)
+        XCTAssertNotNil(store.countsError)
+        XCTAssertFalse(store.countsAreCurrent)
+        XCTAssertLessThan(store.collectionFraction, 1)
+        XCTAssertFalse(store.batchStatusMessage.contains("terminée"))
+        let events = try library.diagnostics.snapshot().events
+        XCTAssertEqual(events.filter { $0.kind == .transferCompleted && $0.code == .none }.count, 4)
+        XCTAssertFalse(events.contains { $0.kind == .collectionCompleted }, "A bounded in-memory page cannot establish completion of the full batch.")
     }
 
     private func log(hash: String, status: String = "ok", parserVersion: String) throws -> FlightLog {

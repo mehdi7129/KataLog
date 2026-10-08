@@ -182,6 +182,31 @@ final class GCSQueueRepositoryTests: XCTestCase {
         XCTAssertEqual(try repository.batchProgress(id: "batch", overlay: [dirty]).completedBytes, progress.completedBytes + 40)
     }
 
+    func testGroupedCountsApplyLatestOverlayToProgressRetryAndFullHistory() throws {
+        let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
+        let repository = try GCSQueueRepository(url: root.appendingPathComponent("queue.sqlite"))
+        let failed = job(1, state: "failed"), complete = job(2)
+        _ = try repository.saveTransfers([failed, complete])
+        var retried = failed; retried.state = "queued"; retried.batchID = "new-batch"
+        var newFailure = job(3, state: "failed", batch: "new-batch")
+        let unauthorized = job(4, state: "stopped", batch: "new-batch")
+        let allowed: Set<String> = [failed.droneUUID, newFailure.droneUUID]
+        var snapshot = try repository.counts(batchID: "new-batch", authorizedUUIDs: allowed,
+                                             overlay: [failed, retried, newFailure, unauthorized])
+        XCTAssertEqual(snapshot.total, 4)
+        XCTAssertEqual(snapshot.retryable, 1)
+        XCTAssertEqual(snapshot.progress.totalCount, 3)
+        XCTAssertEqual(snapshot.progress.pendingCount, 1)
+        XCTAssertEqual(snapshot.progress.failedCount, 1)
+        XCTAssertEqual(snapshot.progress.stoppedCount, 1)
+        newFailure.state = "complete"
+        snapshot = try repository.counts(batchID: "new-batch", authorizedUUIDs: allowed,
+                                          overlay: [retried, newFailure, unauthorized])
+        XCTAssertEqual(snapshot.retryable, 0)
+        XCTAssertEqual(snapshot.progress.completedCount, 1)
+        XCTAssertEqual(try repository.retryableCount(authorizedUUIDs: allowed), 1, "Read overlays never persist jobs.")
+    }
+
     func testLegacyMigrationIsAtomicIdempotentAndIndexedSourceLookupUsesBoundParameters() throws {
         let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
         let repository = try GCSQueueRepository(url: root.appendingPathComponent("queue.sqlite"))
