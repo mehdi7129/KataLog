@@ -461,6 +461,8 @@ def restore(archive_path, library):
     if root.is_symlink():
         raise ValueError("Le dossier de bibliothèque ne doit pas être un lien symbolique.")
     journal = root / ".restore-journal.json"
+    if journal.is_symlink():
+        raise ValueError('Journal de restauration lié symboliquement ; opération refusée.')
     if journal.exists():
         raise ValueError("Une restauration interrompue nécessite une récupération avant de continuer.")
     token = uuid.uuid4().hex
@@ -531,6 +533,8 @@ def recover_restore(library):
     """Recover an interrupted file swap under the caller's writer lease."""
     root = Path(library).resolve()
     journal = root / ".restore-journal.json"
+    if journal.is_symlink():
+        raise ValueError('Journal de restauration lié symboliquement ; opération refusée.')
     if not journal.exists():
         return {"restoreVersion": 1, "recovered": False}
     record = json.loads(journal.read_bytes())
