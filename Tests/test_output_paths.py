@@ -120,6 +120,19 @@ class OutputPathTests(unittest.TestCase):
                 self.assert_rejected(['snapshot', '--database', str(self.database), '--output', str(target)])
                 self.assertEqual(target.read_bytes() if target.exists() else None, before)
 
+    def test_unrelated_corrupt_gcs_queue_does_not_block_import_or_become_writable_output(self):
+        output = self.library / 'library.json'
+        analyzer.scan(self.source, self.database, output=output)
+        queue = self.library / 'gcs-queue.sqlite'
+        damaged = b'synthetic corrupt independent GCS queue'
+        queue.write_bytes(damaged)
+        result = analyzer.scan(self.source, self.database, output=output)
+        self.assertEqual(result['importStats']['unchanged'], 1)
+        self.assertEqual(queue.read_bytes(), damaged)
+        with self.assertRaisesRegex(ValueError, 'sortie'):
+            analyzer.scan(self.source, self.database, output=queue)
+        self.assertEqual(queue.read_bytes(), damaged)
+
     def test_output_and_progress_must_differ(self):
         output = self.root / 'result.json'
         before = self.database.read_bytes()
