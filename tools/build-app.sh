@@ -3,6 +3,11 @@ set -euo pipefail
 
 # Build outside Desktop/iCloud: file-provider FinderInfo can break code signing.
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
+# One lock covers shared caches, compilation and capture of the final bundle.
+# build-engine inherits the descriptor when called by build-app.
+if [[ "${KATALOG_BUILD_LOCK_SCRIPT:-}" != "$project_dir/tools/build-app.sh" ]]; then
+    exec python3 "$project_dir/tools/build-lock.py" "$project_dir/tools/build-app.sh" "$@"
+fi
 build_dir="${KATALOG_BUILD_DIR:-/private/tmp/katalog-swift-build}"
 configuration="${KATALOG_CONFIGURATION:-release}"
 sign_identity="${KATALOG_SIGN_IDENTITY:--}"
