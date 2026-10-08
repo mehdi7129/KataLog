@@ -161,7 +161,7 @@ def capture_report(database, capture, request, cancel=None):
         try:
             repository.initialize(copy)
             scope, _, _, annotations, masks, _, scope_hash = repository.parse_request(context['query'])
-            repository.setup_annotations(copy, annotations, masks)
+            repository.setup_query(copy, scope, annotations, masks)
             statement, params, active = repository.selection_statement(scope)
             revision = int(copy.execute("SELECT value FROM kl_meta WHERE key='revision'").fetchone()[0])
             totals = {'logs': copy.execute(statement + 'SELECT COUNT(*) FROM selected', params).fetchone()[0],
@@ -308,7 +308,7 @@ def prepare_report(capture, destination, cancel=None, progress=None):
     completed = False
     last_progress = time.monotonic()
     try:
-        repository.setup_annotations(db, annotations, masks)
+        repository.setup_query(db, scope, annotations, masks)
         db.execute('CREATE TEMP TABLE report_source_folders(path TEXT PRIMARY KEY)')
         statement, params, active = repository.selection_statement(scope)
         context['messageActive'] = active
