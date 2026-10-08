@@ -19,7 +19,7 @@ final class WorkspacePreviewTests: XCTestCase {
             .deletingLastPathComponent().appendingPathComponent("Sources/KataLog/Resources")
     }
 
-    private func fixture(count: Int = 120, blockQueries: Bool = false, flightSeconds: Double? = nil, withMapPoints: Bool = false) async throws -> Fixture {
+    private func fixture(count: Int = 120, blockQueries: Bool = false, flightSeconds: Double? = nil, withMapPoints: Bool = false, pagedNavigation: Bool = true) async throws -> Fixture {
         let environment = ProcessInfo.processInfo.environment
         guard let python = environment["KATALOG_TEST_PYTHON"] ?? environment["KATALOG_PYTHON"],
               FileManager.default.isExecutableFile(atPath: python) else {
@@ -86,7 +86,7 @@ final class WorkspacePreviewTests: XCTestCase {
             runpy.run_path(\(String(reflecting: resources.appendingPathComponent("analyzer.py").path)),run_name='__main__')
             """.write(to: engine, atomically: true, encoding: .utf8)
         }
-        let library = LibraryStore(storageDirectory: root, engine: engine, pagedNavigation: true)
+        let library = LibraryStore(storageDirectory: root, engine: engine, pagedNavigation: pagedNavigation)
         addTeardownBlock { @MainActor in library.prepareForTermination() }
         let gcs = GCSStore(storageDirectory: root, collector: collector, snapshot: { library.snapshot })
         let fixture = Fixture(root: root, library: library, gcs: gcs, noNetworkMarker: noNetworkMarker)
@@ -99,6 +99,23 @@ final class WorkspacePreviewTests: XCTestCase {
         } else { try await settle(library) }
         XCTAssertNil(library.queryError)
         return fixture
+    }
+
+    func testLegacySwiftPMShellStillRendersBothThemesWithSharedServices() async throws {
+        let fixture = try await fixture(count: 1, pagedNavigation: false)
+        let suite = "katalog-legacy-test-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite); fixture.gcs.disconnect() }
+        XCTAssertFalse(fixture.library.usesPagedNavigation)
+        for dark in [false, true] {
+            defaults.set(dark, forKey: "katalog.darkMode")
+            _ = try await render(LegacyWorkspaceView(store: fixture.library, gcs: fixture.gcs).defaultAppStorage(defaults),
+                                 name: "legacy-\(dark ? "dark" : "light")", width: 1440, height: 980,
+                                 scheme: dark ? .dark : .light)
+        }
+        XCTAssertEqual(fixture.library.snapshot.logs.count, 1)
+        XCTAssertEqual(fixture.library.storageDirectory, fixture.root)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.noNetworkMarker.path))
     }
 
     private func settle(_ library: LibraryStore) async throws {
