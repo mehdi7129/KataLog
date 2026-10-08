@@ -38,6 +38,9 @@ MAX_FILES = 100_000
 MAX_DIRECTORIES = 4096
 MAX_DEPTH = 8
 MAX_INVENTORY_FRAME_BYTES = 256 * 1024
+# Keep the existing maximum entry counts and 1,024-character paths, including
+# four-byte UTF-8, plus record markers, size and separators for every entry.
+MAX_LISTING_BYTES = (MAX_FILES + MAX_DIRECTORIES) * (4 * 1024 + 32)
 HTTP_COPY_MIN_SECONDS = 60
 # Darwin's UF_DATALESS is absent from some bundled Python stat modules. Other
 # platforms have no st_flags and therefore never take the cloud-only branch.
@@ -369,24 +372,66 @@ def same_drone(data, identity):
     return isinstance(data.get("uuid"), str) and data["uuid"].upper() == identity
 
 
+class DirectoryListing:
+    """Retain only validated entries; duplicate records still consume the budget."""
+
+    def __init__(self, parent):
+        self.parent = parent
+        self.directories = set()
+        self.files = {}
+        self.directory_count = self.file_count = self.line_count = self.byte_count = 0
+
+    def add_directory(self, name):
+        self.directory_count += 1
+        if self.directory_count > MAX_DIRECTORIES:
+            raise CollectionError("Listing GCS trop volumineux.")
+        self.directories.add(child_path(self.parent, name))
+
+    def add_file(self, entry):
+        self.file_count += 1
+        if self.file_count > MAX_FILES:
+            raise CollectionError("Listing GCS trop volumineux.")
+        if not isinstance(entry, list) or len(entry) != 2:
+            raise CollectionError("Entrée fichier GCS invalide.")
+        path = child_path(self.parent, entry[0])
+        if path.lower().endswith(".ulg"):
+            size = file_size(entry[1])
+            if path in self.files and self.files[path] != size:
+                raise CollectionError("Taille incohérente dans le listing GCS.")
+            self.files[path] = size
+
+    def add_raw(self, payload):
+        self.byte_count += len(payload.encode("utf-8"))
+        if self.byte_count > MAX_LISTING_BYTES:
+            raise CollectionError("Le listing GCS dépasse le budget d’octets autorisé.")
+        for line in payload.replace("\x00", "\n").splitlines():
+            self.line_count += 1
+            if self.line_count > MAX_FILES + MAX_DIRECTORIES:
+                raise CollectionError("Listing GCS trop volumineux.")
+            if line.startswith("D"):
+                self.add_directory(line[1:])
+            elif line.startswith("F"):
+                pieces = line[1:].rsplit("\t", 1)
+                if len(pieces) != 2:
+                    raise CollectionError("Listing brut GCS invalide.")
+                self.add_file(pieces)
+
+    def result(self):
+        return sorted(self.directories), [{"path": path, "size": size} for path, size in sorted(self.files.items())]
+
+
 def parse_listing(data, parent):
     directories, files = data.get("directories"), data.get("files")
     if not isinstance(directories, list) or not isinstance(files, list):
         raise CollectionError("Listing GCS invalide.")
     if len(directories) > MAX_DIRECTORIES or len(files) > MAX_FILES:
         raise CollectionError("Listing GCS trop volumineux.")
-    child_directories = sorted({child_path(parent, name) for name in directories})
-    child_files = {}
+    listing = DirectoryListing(parent)
+    for name in directories:
+        listing.add_directory(name)
     for entry in files:
-        if not isinstance(entry, list) or len(entry) != 2:
-            raise CollectionError("Entrée fichier GCS invalide.")
-        path = child_path(parent, entry[0])
-        if path.lower().endswith(".ulg"):
-            size = file_size(entry[1])
-            if path in child_files and child_files[path] != size:
-                raise CollectionError("Taille incohérente dans le listing GCS.")
-            child_files[path] = size
-    return child_directories, [{"path": p, "size": s} for p, s in sorted(child_files.items())]
+        listing.add_file(entry)
+    return listing.result()
 
 
 def list_directory(host, port, identity, path, timeout=20):
@@ -394,7 +439,7 @@ def list_directory(host, port, identity, path, timeout=20):
     # A new clean session per directory excludes old retained/session messages.
     with MQTT(host, port, topics=("ftp_list_dir", "send_mqtt_ftp_list", "send_mqtt_ftp_end_session")) as mqtt:
         mqtt.publish("recv_mqtt_ftp_list_request", {"uuid": identity, "path": path})
-        raw_lines = []
+        listing = DirectoryListing(path)
         raw_received = False
         for topic, data in mqtt.messages(timeout):
             if not same_drone(data, identity):
@@ -405,9 +450,7 @@ def list_directory(host, port, identity, path, timeout=20):
                 return parse_listing(data, path)
             if topic == "send_mqtt_ftp_list" and isinstance(data.get("payload"), str):
                 raw_received = True
-                raw_lines.extend(data["payload"].replace("\x00", "\n").splitlines())
-                if len(raw_lines) > MAX_FILES + MAX_DIRECTORIES:
-                    raise CollectionError("Listing GCS trop volumineux.")
+                listing.add_raw(data["payload"])
             if topic == "send_mqtt_ftp_end_session" and data.get("opcode") == 0:
                 if data.get("filename") not in (None, "", path):
                     continue
@@ -415,16 +458,7 @@ def list_directory(host, port, identity, path, timeout=20):
                     raise CollectionError("Échec du listing GCS (code %s)." % data.get("ret_code"),
                                           retryable=data.get("ret_code") in (1, 2, 3))
                 if raw_received:
-                    directories, files = [], []
-                    for line in raw_lines:
-                        if line.startswith("D"):
-                            directories.append(line[1:])
-                        elif line.startswith("F"):
-                            pieces = line[1:].rsplit("\t", 1)
-                            if len(pieces) != 2:
-                                raise CollectionError("Listing brut GCS invalide.")
-                            files.append(pieces)
-                    return parse_listing({"directories": directories, "files": files}, path)
+                    return listing.result()
                 # Empty directory: wait for converted listing, whose order may differ.
     raise CollectionError("Aucun listing reçu pour %s." % path, retryable=True)
 
