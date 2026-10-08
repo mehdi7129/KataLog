@@ -495,7 +495,7 @@ def restore(archive_path, library):
         write_restore_journal(journal, record)
         try:
             for name in sorted(managed):
-                for suffix in ("", "-wal", "-shm") if DB_NAME.fullmatch(name) else ("",):
+                for suffix in ("", "-wal", "-shm", "-journal") if DB_NAME.fullmatch(name) else ("",):
                     filename = name + suffix
                     if (root / filename).exists():
                         moved.append(filename)
@@ -548,7 +548,7 @@ def recover_restore(library):
         if not isinstance(names, list):
             raise ValueError("Liste de fichiers du journal invalide.")
         for name in names:
-            database = re.sub(r"-(?:wal|shm)$", "", name) if isinstance(name, str) else ""
+            database = re.sub(r"-(?:wal|shm|journal)$", "", name) if isinstance(name, str) else ""
             if not isinstance(name, str) or (name not in (archive_directory, 'event-dictionaries') and name not in CONFIG_NAMES and not DB_NAME.fullmatch(database)):
                 raise ValueError("Chemin de récupération non autorisé.")
         if len(names) != len(set(names)):

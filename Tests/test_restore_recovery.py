@@ -38,7 +38,7 @@ class RestoreRecoveryTests(unittest.TestCase):
     def rich_fixture(self):
         root, recovery, record = self.fixture()
         original = recovery / 'original-files'
-        for name in ('cache.sqlite', 'cache.sqlite-wal', 'cache.sqlite-shm'):
+        for name in ('cache.sqlite', 'cache.sqlite-wal', 'cache.sqlite-shm', 'cache.sqlite-journal'):
             (original / name).write_bytes(b'original-' + name.encode())
             record['moved'].append(name)
         (original / 'event-dictionaries').mkdir()
