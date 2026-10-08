@@ -28,6 +28,9 @@ final class LibraryStartupRecoveryTests: XCTestCase {
         root=Path(sys.argv[3]); root.mkdir()
         source=root.parent/'source.ulg'; source.write_bytes(synthetic_ulog(samples=3))
         analyzer.scan(source,root/'library.sqlite',skip_snapshot=True)
+        db=analyzer.open_database(root/'library.sqlite')
+        db.execute('INSERT INTO clients VALUES(?,?)',('11111111-1111-1111-1111-111111111111','Recovered client'))
+        db.commit(); db.close()
         token='a'*32
         recovery=root/('recovery-'+token); original=recovery/'original-files'; original.mkdir(parents=True)
         (root/'library.sqlite').rename(original/'library.sqlite')
@@ -47,10 +50,10 @@ final class LibraryStartupRecoveryTests: XCTestCase {
     }
     private func settle(_ store: LibraryStore) async throws {
         let deadline = Date().addingTimeInterval(15)
-        while store.isMaintainingLibrary || store.isLoading || store.isQuerying, Date() < deadline {
+        while store.isMaintainingLibrary || store.isLoading || store.isQuerying || store.clients.isLoading, Date() < deadline {
             try await Task.sleep(for: .milliseconds(10))
         }
-        XCTAssertFalse(store.isMaintainingLibrary || store.isLoading || store.isQuerying)
+        XCTAssertFalse(store.isMaintainingLibrary || store.isLoading || store.isQuerying || store.clients.isLoading)
     }
     private func managedFiles(_ root: URL) throws -> [String: Data] {
         let names = ["library.sqlite", "annotations.json", "views.json", "gcs-settings.json", "gcs-queue.sqlite"]
@@ -67,6 +70,7 @@ final class LibraryStartupRecoveryTests: XCTestCase {
             let gcs = GCSStore(storageDirectory: root)
             defer { store.prepareForTermination(); gcs.stopForTermination() }
             gcs.attach(library: store)
+            store.clients.reload() // The view may appear while recovery still owns the gate.
             XCTAssertTrue(store.isMaintainingLibrary, "Recovery must own the gate before init returns.")
             XCTAssertThrowsError(try store.annotations.setStockNumber("456", forKey: "ulog:fixture"))
             XCTAssertThrowsError(try store.views.setTheme("dark"))
@@ -76,6 +80,7 @@ final class LibraryStartupRecoveryTests: XCTestCase {
             XCTAssertFalse(store.isReadOnly)
             XCTAssertNil(store.errorMessage)
             XCTAssertEqual(store.snapshot.logs.count, 1)
+            XCTAssertEqual(store.clients.profiles.map(\.name), ["Recovered client"])
             XCTAssertEqual(store.annotations.state.stockNumbers["ulog:fixture"], "123")
             XCTAssertEqual(store.views.state.theme, "light")
             XCTAssertEqual(gcs.host, "restored.invalid")
