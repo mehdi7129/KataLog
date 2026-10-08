@@ -1,6 +1,7 @@
 """Storage must not hydrate evicted File Provider sources as a side effect."""
 import contextlib
 import hashlib
+import io
 from pathlib import Path
 import sys
 import tempfile
@@ -159,6 +160,33 @@ class LocalSourceGuardTests(unittest.TestCase):
         manifest.write_text('{}')
         with self.evicted(manifest), self.assertRaisesRegex(OSError, 'Finder'):
             archives.restore_detail_cache(self.database, recovery)
+
+    def test_restore_cli_checks_cloud_archive_before_existing_result_preflight(self):
+        backup = self.root / 'backup.zip'
+        storage.backup(self.library, backup)
+        output = self.root / 'existing-result.json'
+        output.write_text('{"preserved":true}')
+        messages = io.StringIO()
+        with self.evicted(backup), patch.object(zipfile, 'ZipFile', side_effect=AssertionError('Archive opened before local guard')), contextlib.redirect_stderr(messages):
+            result = analyzer.main(['restore', '--archive', str(backup), '--library', str(self.library), '--output', str(output)])
+        self.assertEqual(result, 1)
+        self.assertIn('Finder', messages.getvalue())
+        self.assertEqual(output.read_text(), '{"preserved":true}')
+
+    def test_backup_cli_preflight_checks_cloud_database_and_sidecars(self):
+        output = self.root / 'existing-result.json'
+        output.write_text('{"preserved":true}')
+        destination = self.root / 'backup.zip'
+        wal = Path(str(self.database) + '-wal')
+        wal.write_bytes(b'synthetic evicted sidecar')
+        for target in (self.database, wal):
+            messages = io.StringIO()
+            with self.subTest(target=target.name), self.evicted(target), contextlib.redirect_stderr(messages):
+                result = analyzer.main(['backup', '--library', str(self.library), '--destination', str(destination), '--output', str(output)])
+            self.assertEqual(result, 1)
+            self.assertIn('Finder', messages.getvalue())
+            self.assertFalse(destination.exists())
+            self.assertEqual(output.read_text(), '{"preserved":true}')
 
 
 if __name__ == '__main__':
