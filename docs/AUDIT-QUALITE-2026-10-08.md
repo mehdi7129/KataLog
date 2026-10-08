@@ -792,12 +792,102 @@ Python 3.13.15, NumPy 2.5.3, pyulog 1.2.4) :
   source final. Cette recette ne qualifie ni notarisation, ni installation,
   ni flotte réelle ; les mises à jour de cette copie sont désactivées.
 
-Les PR #7 et #8 ont leurs quatre checks CI verts. Les corrections finales des
-PR #9–#12 relancent la matrice macOS 15/26 et packaging macOS 15/Xcode 27 ;
-consulter leurs checks au SHA courant avant fusion. Le premier passage Q02 a
-révélé une limite de type-check de l’ancien compilateur ; le tableau d’arguments
-explicite corrige l’expression et les tests CLI locaux passent, mais seul le
-nouveau passage CI qualifie ce compilateur.
+Suivi du 8 octobre : les PR #7, #8, #10, #11 et #12 ont leurs quatre checks CI
+verts aux commits courants. Sur #9, les tests macOS 15 et les deux packages
+passent ; le job macOS 26 a été annulé deux fois sans exécution, GitHub signalant
+un manque de capacité de runners ARM64. Ce check reste à obtenir avant fusion.
+Un premier run #11 avait dépassé le budget de heartbeat de 500 ms (532 ms) ;
+la relance au même SHA passe, sans modification du seuil. Le premier passage
+Q02 avait révélé une limite de type-check de l’ancien compilateur ; le tableau
+d’arguments explicite est maintenant validé sur les deux versions de la CI.
+
+## Développement du deuxième lot — 8 octobre 2026
+
+Le lot de cohérence fait l’objet de six nouvelles PR. Q24 est déjà traité dans
+la PR #8 du premier lot. Les cases restent ouvertes jusqu’à fusion sur `main`.
+
+| Point | PR | Dépendance | Résultat proposé |
+| --- | --- | --- | --- |
+| Q03 | [#13](https://github.com/mehdi7129/KataLog/pull/13) | #12 | Provenance canonique conservée lors d’une réanalyse, d’un réimport et de l’archivage |
+| Q04 | [#16](https://github.com/mehdi7129/KataLog/pull/16) | #10 | Suppression de client réconciliée après commit, nettoyage de collecte relançable |
+| Q05 | [#14](https://github.com/mehdi7129/KataLog/pull/14) | `main` | Pages d’événements liées à leur requête complète et curseurs validés avec le résultat |
+| Q07 | [#17](https://github.com/mehdi7129/KataLog/pull/17) | #10 | Totaux GCS complets et état de fraîcheur explicite ; fin conditionnée à des comptes complets et courants |
+| Q20 | [#15](https://github.com/mehdi7129/KataLog/pull/15) | #13 | Grandes sélections via table temporaire commune, sans dépasser le budget de paramètres SQLite |
+| Q25 | [#18](https://github.com/mehdi7129/KataLog/pull/18) | #16 | Reset confirmé répercuté dans les pages, clients et sélections malgré un nettoyage incomplet |
+
+Les nouvelles chaînes sont donc #7 → #12 → #13 → #15 et #9 → #10 → #16 → #18 ;
+#17 se place après #10, et #14 est indépendante. #11 reste également après #10.
+Chaque enfant doit être recalé et revérifié après fusion de son parent.
+
+Les tests de développement reproduisent les défauts avant correction : origine
+perdue, affichage d’une ancienne requête, réduction silencieuse de 500 tâches
+aux 200 éléments de la page, dépassement SQLite, suppression/reset partiel et
+obstacles de persistance. Ils couvrent les deux modes de navigation, les reprises,
+la lecture seule et la conservation des sources. Les nettoyages connus sont
+prévalidés avant le reset ; après confirmation moteur, l’interface réconcilie
+son état même lorsqu’une seconde opération échoue.
+
+La revue de l’assemblage a trouvé une interaction supplémentaire entre Q04 et
+Q07 : le rafraîchissement des comptes pouvait attendre un verrou détenu par le
+nettoyage en arrière-plan. Une attente demandée de 1,2 s bloquait alors le
+MainActor pendant 5,275 s avant échec. La garde commune de maintenance corrige
+ce cas ; le test de réactivité, la reprise des 500 comptes après maintenance et
+les scénarios startup/restore passent ensemble. Aucun relèvement du budget du
+benchmark GCS existant n’a été appliqué.
+
+Validation de l’assemblage local des deux lots sur fixtures synthétiques,
+avec Python 3.13.15, NumPy 2.5.3 et pyulog 1.2.4. Le code applicatif de
+`ca3b446` est identique à celui de `a267051`, utilisé pour Python et le bundle ;
+le dernier delta corrige seulement l’attente d’un test et ajoute sa reproduction :
+
+- **454 tests Python réussis sur 455 découverts**, zéro échec/erreur, un seul
+  skip attendu : corpus privé externe absent. Durée : 52,616 s.
+- **Suite Swift finale de 394 cas**, avec une limite explicite sur le gate
+  local final : le premier assemblage `a267051` passe ses 393 tests d’un seul
+  run, puis `ca3b446` exécute 394 cas avec **389 réussites et 5 échecs**
+  (7 assertions, dont deux erreurs de garde après une attente expirée).
+  Les cinq cas passent ensuite sans changement de code ni de seuil,
+  en **40,802 s**, zéro skip. Le gate complet final reste donc enregistré
+  comme **échoué**, malgré les reprises ciblées vertes et les CI vertes.
+  Il s’agit du reset après échec de sauvegarde du filtre et de quatre aperçus
+  (pages utilitaires bento, menus clients, revue client, événements).
+  La cause des dépassements locaux n’est pas démontrée ; aucune qualification
+  de performance générale n’en est déduite. Fenêtres natives exécutées.
+- **18 tests JavaScript réussis** ; garde de publication : **268 fichiers,
+  aucun signalement** ; `git diff --check` propre.
+- **Bundle ad hoc macOS 27.0.1 ARM64 : 6/6 catégories de contrôle réussies**,
+  15 modules Python vérifiés, 22 binaires natifs sans dépendance externe,
+  signature stricte et moteur testé dans le bundle. Import/déduplication,
+  sauvegarde, restauration et collecte loopback synthétique passent.
+  Mises à jour désactivées ; ni notarisation ni installation qualifiée ici.
+
+Mesures ciblées : la préparation/enqueue synthétique de 50 000 tâches prend
+1,792 s, avec une pause maximale du MainActor de 30,32 ms (budget 500 ms) et
+un P95 d’enqueue de 6,62 ms. Ce scénario ne mesure pas les rafales de progression
+ni une flotte réelle. Q06, notamment les I/O hors MainActor, reste à traiter.
+Pour Q20, les sélections de 32 767 et 100 000 identifiants ont été exécutées ;
+le microbenchmark synthétique à 100 000 valeurs prend environ 139 ms. La parité
+des résultats et les petites sélections sont vérifiées ; cette mesure ne prédit
+pas la latence d’une grande bibliothèque utilisateur.
+
+Deux premières CI macOS 15 (#16 et #18) ont signalé un `CancellationError`
+dans le workflow client existant. Le passage instrumenté suivant réussit
+(370 tests), sans démontrer l’origine précise de l’annulation. Une reproduction
+contrôlée distincte établit que le helper pouvait déclarer la bibliothèque prête
+alors que les clients étaient encore en réconciliation. L’attente de ces états
+réels est ajoutée avec un test ; deadline et période de polling inchangées.
+Les traces temporaires sont retirées du diff final.
+
+Au 8 octobre 2026 à 16:46 UTC, **les six PR #13–#18 ont chacune leurs quatre
+checks CI verts** : tests macOS 15/26 et packaging macOS 15/Xcode 27, soit
+**24/24 checks réussis**. Cela inclut les versions finales #16 `161aa22`
+et #18 `10c000d`, après correction du helper. Le check macOS 26 de #9 reste
+le seul contrôle du premier lot non obtenu pour indisponibilité de runner,
+comme indiqué plus haut. Consulter les checks au SHA courant avant fusion.
+
+Les modifications locales de développement, les bibliothèques utilisateur et
+l’app installée sont préservées. Aucune fusion, release, installation, nouvelle
+qualification matérielle ou connexion à une GCS réelle n’accompagne ce lot.
 
 ## Reproductions minimales des trois P1
 
