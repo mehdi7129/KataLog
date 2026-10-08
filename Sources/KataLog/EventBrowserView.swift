@@ -4,32 +4,90 @@ import KataLogCore
 
 @MainActor
 final class EventBrowserStore: ObservableObject {
-    @Published private(set) var page: LibraryEventPage?
-    @Published private(set) var isLoading = false
-    @Published private(set) var error: String?
-    private var task: Task<Void, Never>?
-    private var token = UUID()
-    func load(library: LibraryStore, logID: String?, levelSource: String, level: String, search: String, cursor: String? = nil) {
-        task?.cancel(); token = UUID(); let captured = token
-        guard let engine = library.engineURL else { error = "Moteur indisponible."; return }
-        var scope = logID == nil ? library.views.state.activeScope : SelectionScope()
-        if let logID { scope.logIDs = [logID]; scope.includeMasked = true }
-        var request = LibraryQueryRequest(kind: "events", scope: scope, annotations: library.annotations.state, maskedMessageKeys: library.views.state.maskedMessageKeys)
-        request.eventLevelSource = levelSource; request.eventLevels = level.isEmpty ? [] : [level]
-        request.eventSearch = search; request.cursor = cursor
-        let database = library.databaseURL
-        isLoading = true; error = nil
-        task = Task {
-            defer { if token == captured { isLoading = false } }
-            do {
-                let value = try await LibraryQueryService.page(LibraryEventPage.self, request: request, database: database, engine: engine, readOnly: true)
-                try Task.checkCancellation()
-                guard token == captured else { return }
-                page = value
-            } catch is CancellationError {} catch { if token == captured { self.error = error.localizedDescription } }
+    struct Query {
+        struct Key: Hashable {
+            let database: URL
+            let engine: URL?
+            let request: Data
+            let viewRevision: Int
+            let libraryRevision: Int
+        }
+        let request: LibraryQueryRequest
+        let database: URL
+        let engine: URL?
+        let key: Key
+
+        @MainActor init(request: LibraryQueryRequest, database: URL, engine: URL?, viewRevision: Int = 0, libraryRevision: Int = 0) {
+            var request = request; request.cursor = nil
+            self.request = request; self.database = database; self.engine = engine
+            key = Key(database: database, engine: engine, request: LibraryNavigationCache.key(request),
+                      viewRevision: viewRevision, libraryRevision: libraryRevision)
+        }
+        @MainActor init(library: LibraryStore, logID: String?, levelSource: String, level: String, search: String) {
+            var scope = logID == nil ? library.views.state.activeScope : SelectionScope()
+            if let logID { scope.logIDs = [logID]; scope.includeMasked = true }
+            var request = LibraryQueryRequest(kind: "events", scope: scope, annotations: library.annotations.state,
+                                              maskedMessageKeys: library.views.state.maskedMessageKeys)
+            request.eventLevelSource = levelSource; request.eventLevels = level.isEmpty ? [] : [level]
+            request.eventSearch = search
+            self.init(request: request, database: library.databaseURL, engine: library.engineURL,
+                      viewRevision: library.views.state.revision, libraryRevision: library.historyPage?.revision ?? 0)
         }
     }
-    func cancel() { task?.cancel(); token = UUID(); isLoading = false }
+    struct Result {
+        let key: Query.Key
+        let page: LibraryEventPage
+        let cursors: [String?]
+        var pageNumber: Int { cursors.count }
+        var previousCursor: String? { cursors.count > 1 ? cursors[cursors.count - 2] : nil }
+    }
+    typealias Loader = @MainActor @Sendable (LibraryQueryRequest, URL, URL) async throws -> LibraryEventPage
+    @Published private(set) var result: Result?
+    @Published private(set) var requestedKey: Query.Key?
+    @Published private(set) var isLoading = false
+    @Published private(set) var error: String?
+    private(set) var requestedCursor: String?
+    private let loader: Loader
+    private var task: Task<Void, Never>?
+    private var token = UUID()
+
+    init(loader: @escaping Loader = { request, database, engine in
+        try await LibraryQueryService.page(LibraryEventPage.self, request: request, database: database, engine: engine, readOnly: true)
+    }) { self.loader = loader }
+
+    var page: LibraryEventPage? { result?.key == requestedKey ? result?.page : nil }
+    // The view checks its current key during rendering, before SwiftUI starts the next task.
+    func result(for key: Query.Key) -> Result? { result?.key == key ? result : nil }
+
+    func load(library: LibraryStore, logID: String?, levelSource: String, level: String, search: String, cursor: String? = nil) {
+        load(Query(library: library, logID: logID, levelSource: levelSource, level: level, search: search), cursor: cursor)
+    }
+    func load(_ query: Query, cursor: String? = nil) {
+        cancel(); let captured = token
+        requestedKey = query.key; requestedCursor = cursor; error = nil
+        guard let engine = query.engine else { error = "Moteur indisponible."; return }
+        var cursors = result(for: query.key)?.cursors ?? [nil]
+        if cursor == nil { cursors = [nil] }
+        else if let index = cursors.firstIndex(of: cursor) { cursors = Array(cursors.prefix(index + 1)) }
+        else { cursors.append(cursor) }
+        var request = query.request; request.cursor = cursor
+        let loader = self.loader
+        isLoading = true
+        task = Task { [weak self] in
+            do {
+                let value = try await loader(request, query.database, engine)
+                try Task.checkCancellation()
+                guard let self, token == captured else { return }
+                result = Result(key: query.key, page: value, cursors: cursors)
+                isLoading = false; task = nil
+            } catch {
+                guard let self, token == captured else { return }
+                if !(error is CancellationError) { self.error = error.localizedDescription }
+                isLoading = false; task = nil
+            }
+        }
+    }
+    func cancel() { task?.cancel(); task = nil; token = UUID(); isLoading = false }
 }
 
 /// Binary events stay separate from text messages. Missing detail caches are
@@ -41,7 +99,6 @@ struct EventBrowserView: View {
     @State private var levelSource = "internal"
     @State private var level = ""
     @State private var search = ""
-    @State private var cursors: [String?] = [nil]
     @State private var selected: LibraryEventOccurrence?
     @State private var presentation = "table"
     @State private var showingCoverage = false
@@ -49,7 +106,11 @@ struct EventBrowserView: View {
     @State private var dictionaryBusy = false
     @Environment(\.colorScheme) private var scheme
     private var palette: Palette { Palette(dark: scheme == .dark) }
-    private var filterKey: String { [levelSource, level, search, logID ?? "", library.views.state.activeScope.description, String(library.views.state.revision), String(library.historyPage?.revision ?? 0)].joined(separator: "|") }
+    private var query: EventBrowserStore.Query {
+        EventBrowserStore.Query(library: library, logID: logID, levelSource: levelSource, level: level, search: search)
+    }
+    private var filterKey: EventBrowserStore.Query.Key { query.key }
+    private var visibleResult: EventBrowserStore.Result? { store.result(for: filterKey) }
 
     var body: some View {
         ScrollView {
@@ -73,7 +134,7 @@ struct EventBrowserView: View {
                     presentationButton("Tableau", value: "table", symbol: "list.bullet.rectangle")
                     Spacer()
                 }
-                if let coverage = store.page?.coverage {
+                if let coverage = visibleResult?.page.coverage {
                     DisclosureGroup("Couverture du décodage · \(coverage.cachedLogs) / \(coverage.selectedLogs) fiches en cache", isExpanded: $showingCoverage) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("\(coverage.cachedLogs) / \(coverage.selectedLogs) logs avec fiche en cache · \(coverage.eventLogs) avec événements · \(coverage.translatedLogs) avec traduction").font(.callout)
@@ -87,16 +148,17 @@ struct EventBrowserView: View {
                         .background(palette.raised, in: RoundedRectangle(cornerRadius: 12))
                 }
                 if let message = dictionaryMessage { Text(message).font(.callout).textSelection(.enabled) }
-                if let error = store.error {
-                    VStack(alignment: .leading) { Text(error).textSelection(.enabled); Button("Réessayer") { reload() } }
+                if store.requestedKey == filterKey, let error = store.error {
+                    VStack(alignment: .leading) { Text(error).textSelection(.enabled); Button("Réessayer") { reload(cursor: store.requestedCursor) } }
                 }
                 if store.isLoading { ProgressView("Lecture des événements…") }
-                if let page = store.page {
+                if let result = visibleResult {
+                    let page = result.page
                     HStack {
-                        Text("\(page.total) occurrences disponibles · page \(cursors.count)").font(.caption).foregroundStyle(.secondary)
+                        Text("\(page.total) occurrences disponibles · page \(result.pageNumber)").font(.caption).foregroundStyle(.secondary)
                         Spacer()
-                        Button("Précédente") { cursors.removeLast(); reload(cursor: cursors.last ?? nil) }.disabled(cursors.count <= 1 || store.isLoading)
-                        Button("Suivante") { if let next = page.nextCursor { cursors.append(next); reload(cursor: next) } }.disabled(page.nextCursor == nil || store.isLoading)
+                        Button("Précédente") { reload(cursor: result.previousCursor) }.disabled(result.pageNumber <= 1 || store.isLoading)
+                        Button("Suivante") { if let next = page.nextCursor { reload(cursor: next) } }.disabled(page.nextCursor == nil || store.isLoading)
                     }
                     if page.occurrences.isEmpty, !store.isLoading {
                         VStack(alignment: .leading, spacing: 8) {
@@ -128,7 +190,7 @@ struct EventBrowserView: View {
                 .overlay(RoundedRectangle(cornerRadius: 18).stroke(palette.border, lineWidth: 1))
         }
         .foregroundStyle(palette.primary).buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true)).tint(palette.primary)
-        .task(id: filterKey) { cursors = [nil]; selected = nil; reload() }
+        .task(id: filterKey) { selected = nil; reload() }
         .onDisappear { store.cancel() }
         .sheet(item: $selected) { occurrence in
             EventDetailSheet(occurrence: occurrence)
@@ -199,7 +261,7 @@ struct EventBrowserView: View {
         (levelSource == "external" ? event.externalLevelName : event.internalLevelName) ?? event.level
     }
     private func reload(cursor: String? = nil) {
-        store.load(library: library, logID: logID, levelSource: levelSource, level: level, search: search, cursor: cursor)
+        store.load(query, cursor: cursor)
     }
     private func chooseDictionary() {
         let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
