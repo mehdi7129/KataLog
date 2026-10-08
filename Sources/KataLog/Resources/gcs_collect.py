@@ -38,6 +38,7 @@ MAX_FILES = 100_000
 MAX_DIRECTORIES = 4096
 MAX_DEPTH = 8
 MAX_INVENTORY_FRAME_BYTES = 256 * 1024
+HTTP_COPY_MIN_SECONDS = 60
 # Darwin's UF_DATALESS is absent from some bundled Python stat modules. Other
 # platforms have no st_flags and therefore never take the cloud-only branch.
 UF_DATALESS = getattr(stat, "UF_DATALESS", 0x40000000)
@@ -649,6 +650,55 @@ class NoRedirect(HTTPRedirectHandler):
         raise CollectionError("Redirection HTTP GCS refusée.")
 
 
+class HTTPBodyReader:
+    """Keep the buffered response, but bound even chunk framing by one deadline."""
+
+    def __init__(self, stream, deadline):
+        self.stream = stream
+        # urllib's HTTPResponse owns this SocketIO; keep its existing buffer.
+        self.socket = stream.raw._sock
+        self.deadline = deadline
+
+    def check_deadline(self):
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise CollectionError("Copie HTTP trop longue.", retryable=True)
+        return remaining
+
+    def read1(self, size):
+        self.socket.settimeout(min(15, self.check_deadline()))
+        result = self.stream.read1(size)
+        self.check_deadline()
+        return result
+
+    def read(self, size):
+        result = bytearray()
+        while len(result) < size:
+            chunk = self.read1(size - len(result))
+            if not chunk:
+                break
+            result.extend(chunk)
+        return bytes(result)
+
+    def readline(self, limit):
+        # HTTPResponse uses this only for bounded chunk headers and trailers.
+        result = bytearray()
+        while len(result) < limit:
+            byte = self.read1(1)
+            if not byte:
+                break
+            result.extend(byte)
+            if byte == b"\n":
+                break
+        return bytes(result)
+
+    def close(self):
+        self.stream.close()
+
+    def flush(self):
+        self.stream.flush()
+
+
 def copy_http(host, http_port, staging, part, expected, report):
     http_host = "[" + host.replace("%", "%25") + "]" if ":" in host else host
     url = "http://%s:%s/downloadFile/%s" % (http_host, http_port, quote(PurePosixPath(staging).name, safe=""))
@@ -664,11 +714,12 @@ def copy_http(host, http_port, staging, part, expected, report):
             raise CollectionError("La taille HTTP ne correspond pas au listing.")
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
         with os.fdopen(os.open(part, flags, 0o600), "wb") as output:
-            deadline = time.monotonic() + max(60, min(900, expected / (64 * 1024)))
+            deadline = time.monotonic() + max(HTTP_COPY_MIN_SECONDS, min(900, expected / (64 * 1024)))
+            reader = HTTPBodyReader(response.fp, deadline)
+            response.fp = reader
             while True:
-                if time.monotonic() > deadline:
-                    raise CollectionError("Copie HTTP trop longue.", retryable=True)
-                chunk = response.read(min(256 * 1024, expected - total + 1))
+                reader.check_deadline()
+                chunk = response.read1(min(256 * 1024, expected - total + 1))
                 if not chunk:
                     break
                 total += len(chunk)

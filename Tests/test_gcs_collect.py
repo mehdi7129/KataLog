@@ -155,6 +155,9 @@ class HTTPHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         sim = self.server.sim
         sim.http_requests.append(self.path)
+        if sim.http_writer is not None:
+            sim.http_writer(self)
+            return
         if sim.redirect:
             self.send_response(302)
             self.send_header("Location", "http://127.0.0.1:1/unrelated")
@@ -182,6 +185,7 @@ class Simulator:
         self.discovery_end = False
         self.transfer_error = self.listings = 0
         self.http_body = BODY
+        self.http_writer = None
         self.requests, self.http_requests, self.client_ids = [], [], []
         self.subscribed = threading.Event()
 
