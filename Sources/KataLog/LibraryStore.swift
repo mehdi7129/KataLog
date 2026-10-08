@@ -170,7 +170,7 @@ final class LibraryStore: ObservableObject {
                 diagnostics.record(.appStarted)
                 statusMessage = "Bibliothèque récupérée après une restauration interrompue. Les fichiers de récupération sont conservés."
                 isMaintainingLibrary = false
-                reload()
+                clients.reload(); reload()
             } catch {
                 isReadOnly = true; statusMessage = nil
                 errorMessage = "La restauration interrompue n’a pas pu être récupérée : \(error.localizedDescription) La bibliothèque reste bloquée ; ses fichiers sont conservés. Relancez KataLog après réparation."
