@@ -433,6 +433,27 @@ def prepare_restored_state(staging, manifest, root, archive_directory):
             db.close()
 
 
+def sync_directory(path):
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def write_restore_journal(journal, record):
+    atomic_json(journal, record)
+    sync_directory(journal.parent)
+
+
+def move_restore_entry(source, destination):
+    """Order the file move durably before publishing the next journal phase."""
+    os.replace(source, destination)
+    sync_directory(source.parent)
+    if destination.parent != source.parent:
+        sync_directory(destination.parent)
+
+
 def restore(archive_path, library):
     """Validate, stage and swap managed files; preserve the root lease inode."""
     root = Path(library).resolve()
@@ -460,6 +481,7 @@ def restore(archive_path, library):
         backup(root, recovery / "before.zip", include_ulog=False)
         original = recovery / "original-files"
         original.mkdir()
+        sync_directory(recovery)
         managed = set(database_names(root)) | {name for name in CONFIG_NAMES if (root / name).exists()}
         if (root / 'event-dictionaries').exists():
             managed.add('event-dictionaries')
@@ -470,41 +492,34 @@ def restore(archive_path, library):
         moved, installed = [], []
         record = {"restoreVersion": 1, "phase": "prepared", "recoveryDirectory": recovery.name,
                   "archiveDirectory": archive_directory, "moved": moved, "installed": installed}
-        atomic_json(journal, record)
+        write_restore_journal(journal, record)
         try:
             for name in sorted(managed):
                 for suffix in ("", "-wal", "-shm") if DB_NAME.fullmatch(name) else ("",):
                     filename = name + suffix
                     if (root / filename).exists():
                         moved.append(filename)
-                        atomic_json(journal, record)
-                        os.replace(root / filename, original / filename)
+                        write_restore_journal(journal, record)
+                        move_restore_entry(root / filename, original / filename)
             for name in sorted(incoming):
                 installed.append(name)
-                atomic_json(journal, record)
-                os.replace(staging / "state" / name, root / name)
+                write_restore_journal(journal, record)
+                move_restore_entry(staging / "state" / name, root / name)
             if (staging / 'event-dictionaries').exists():
                 installed.append('event-dictionaries')
-                atomic_json(journal, record)
-                os.replace(staging / 'event-dictionaries', root / 'event-dictionaries')
+                write_restore_journal(journal, record)
+                move_restore_entry(staging / 'event-dictionaries', root / 'event-dictionaries')
             if (staging / "ulogs").exists():
                 installed.append(archive_directory)
-                atomic_json(journal, record)
-                os.replace(staging / "ulogs", root / archive_directory)
+                write_restore_journal(journal, record)
+                move_restore_entry(staging / "ulogs", root / archive_directory)
             record["phase"] = "complete"
-            atomic_json(journal, record)
-            journal.unlink()
+            write_restore_journal(journal, record)
+            recover_restore(root)
         except BaseException:
-            for name in reversed(installed):
-                target = root / name
-                if target.is_dir():
-                    shutil.rmtree(target)
-                else:
-                    target.unlink(missing_ok=True)
-            for name in reversed(moved):
-                if (original / name).exists():
-                    os.replace(original / name, root / name)
-            journal.unlink(missing_ok=True)
+            # Read the durable phase, including a possibly published commit.
+            # The same recovery is safe if this rollback is itself interrupted.
+            recover_restore(root)
             raise
         return {"restoreVersion": 1, "recoveryDirectory": str(recovery),
                 "fileCount": len(incoming), "logCount": len(manifest.get("sources", [])),
@@ -527,24 +542,64 @@ def recover_restore(library):
     archive_directory = record.get("archiveDirectory", "")
     if not re.fullmatch(r"restored-ulogs-[a-f0-9]{32}", archive_directory):
         raise ValueError("Dossier d’archives du journal invalide.")
+    if record.get('phase') not in ('prepared', 'recovering-entrants', 'recovering-originals', 'complete'):
+        raise ValueError('Phase du journal de restauration inconnue.')
     for names in (record.get("moved", []), record.get("installed", [])):
         if not isinstance(names, list):
             raise ValueError("Liste de fichiers du journal invalide.")
         for name in names:
             database = re.sub(r"-(?:wal|shm)$", "", name) if isinstance(name, str) else ""
-            if name not in (archive_directory, 'event-dictionaries') and name not in CONFIG_NAMES and not DB_NAME.fullmatch(database):
+            if not isinstance(name, str) or (name not in (archive_directory, 'event-dictionaries') and name not in CONFIG_NAMES and not DB_NAME.fullmatch(database)):
                 raise ValueError("Chemin de récupération non autorisé.")
-    if record.get("phase") != "complete":
-        leftovers = recovery / "interrupted-restored-files"
-        leftovers.mkdir(exist_ok=True)
-        for name in reversed(record.get("installed", [])):
+        if len(names) != len(set(names)):
+            raise ValueError('Fichier dupliqué dans le journal de restauration.')
+    original = recovery / 'original-files'
+    leftovers = recovery / 'interrupted-restored-files'
+    for directory in (original, leftovers):
+        if directory.is_symlink() or (directory.exists() and not directory.is_dir()):
+            raise ValueError('Dossier de récupération invalide.')
+    if not original.is_dir():
+        raise ValueError('Les fichiers originaux de la restauration sont introuvables.')
+    moved, installed = record.get('moved', []), record.get('installed', [])
+    for name in set(moved + installed):
+        if any((directory / name).is_symlink() for directory in (root, original, leftovers)):
+            raise ValueError('Fichier de récupération lié symboliquement ; récupération refusée.')
+    if record['phase'] != 'complete':
+        for name in moved:
+            if not (original / name).exists() and not (root / name).exists():
+                raise ValueError('Fichier original manquant ; journal conservé : ' + name)
+        if record['phase'] == 'prepared':
+            record['phase'] = 'recovering-entrants'
+            write_restore_journal(journal, record)
+        if record['phase'] == 'recovering-entrants':
+            leftovers.mkdir(exist_ok=True)
+            sync_directory(recovery)
+            for name in reversed(installed):
+                target = root / name
+                # A legacy v1 recovery may already have returned an original,
+                # or the original move was only an intent when interrupted.
+                if name in moved and not (original / name).exists():
+                    continue
+                if target.exists():
+                    if (leftovers / name).exists():
+                        raise ValueError('Deux fichiers à préserver ; journal conservé : ' + name)
+                    move_restore_entry(target, leftovers / name)
+            record['phase'] = 'recovering-originals'
+            write_restore_journal(journal, record)
+        for name in reversed(moved):
+            source = original / name
             target = root / name
-            if target.exists():
-                os.replace(target, leftovers / name)
-        original = recovery / "original-files"
-        for name in reversed(record.get("moved", [])):
-            if (original / name).exists():
-                os.replace(original / name, root / name)
+            if source.exists():
+                if target.exists():
+                    raise ValueError('Un fichier empêche la remise de l’original : ' + name)
+                move_restore_entry(source, target)
+        if any(not (root / name).exists() or (original / name).exists() for name in moved):
+            raise ValueError('Récupération incomplète ; journal conservé.')
+        if any((root / name).exists() for name in set(installed) - set(moved)):
+            raise ValueError('Fichiers entrants encore actifs ; journal conservé.')
+    elif any(not (root / name).exists() for name in installed) or any(not (original / name).exists() for name in moved):
+        raise ValueError('Restauration complète non vérifiable ; journal conservé.')
     journal.unlink()
+    sync_directory(root)
     return {"restoreVersion": 1, "recovered": True, "recoveryDirectory": str(recovery),
             "completedRestore": record.get("phase") == "complete"}
