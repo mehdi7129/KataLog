@@ -119,8 +119,10 @@ final class GCSStore: ObservableObject {
     // Called by model updates, never by SwiftUI getters. A failed read preserves
     // only the last explicit snapshot for this batch and authorized fleet.
     func refreshQueueCounts() {
+        // Background maintenance may own the repository lock. Its final save or
+        // the existing timer refreshes counts after the gate is released.
+        guard !isMaintenanceBlocked else { return }
         do {
-            guard !startupStorageDeferred else { throw AnalysisError.unavailable("Restauration en cours.") }
             if let queueStorageIssue { throw AnalysisError.unavailable(queueStorageIssue) }
             let progress: GCSBatchProgress, retryable: Int, total: Int
             if let queueRepository {
