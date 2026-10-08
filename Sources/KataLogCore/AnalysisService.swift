@@ -20,9 +20,9 @@ public enum AnalysisService {
         return snapshot
     }
 
-    public static func scan(folder: URL, database: URL, output: URL, progress: URL, engine: URL, archiveDestination: URL? = nil, clientID: String? = nil) async throws -> FleetSnapshot {
+    public static func scan(folder: URL, database: URL, output: URL, progress: URL, engine: URL, archiveDestination: URL? = nil, clientID: String? = nil, additionalOutputs: [URL] = []) async throws -> FleetSnapshot {
         try await scan(folder: folder, database: database, output: output, progress: progress, engine: engine,
-                       archiveDestination: archiveDestination, clientID: clientID, runtimeConfiguration: .current)
+                       archiveDestination: archiveDestination, clientID: clientID, additionalOutputs: additionalOutputs, runtimeConfiguration: .current)
     }
 
     public static func scanPaged(folder: URL, database: URL, output: URL, progress: URL, engine: URL, archiveDestination: URL? = nil, clientID: String? = nil) async throws -> FleetSnapshot {
@@ -34,6 +34,7 @@ public enum AnalysisService {
                      skipSnapshot: Bool = false,
                      archiveDestination: URL? = nil,
                      clientID: String? = nil,
+                     additionalOutputs: [URL] = [],
                      runtimeConfiguration: EngineRuntimeResolver.Configuration) async throws -> FleetSnapshot {
         guard archiveDestination?.isFileURL ?? true else { throw AnalysisError.engine("Choisissez un dossier local pour les archives.") }
         let control = ProcessLifetime()
@@ -55,6 +56,7 @@ public enum AnalysisService {
                     + (skipSnapshot ? ["--skip-snapshot"] : [])
                     + (archiveDestination.map { ["--archive-destination", $0.path] } ?? [])
                     + (clientID.map { ["--client-id", $0] } ?? [])
+                    + additionalOutputs.flatMap { ["--additional-output", $0.path] }
                 let status = try execute(runtime, arguments: arguments, control: control, stderr: stderr)
                 guard status == 0 else {
                     let detail = (try? String(contentsOf: stderr, encoding: .utf8)) ?? ""

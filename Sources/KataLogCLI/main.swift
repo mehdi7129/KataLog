@@ -29,9 +29,16 @@ struct KataLogCLI {
                 }
                 snapshot = try await AnalysisService.scan(folder: URL(fileURLWithPath: folder), database: db, output: output,
                     progress: db.deletingLastPathComponent().appendingPathComponent("progress.json"), engine: engine,
-                    archiveDestination: option("--archive-destination").map { URL(fileURLWithPath: $0) })
+                    archiveDestination: option("--archive-destination").map { URL(fileURLWithPath: $0) },
+                    additionalOutputs: option("--html").map { [URL(fileURLWithPath: $0)] } ?? [])
             } else if let path = option("--snapshot") {
                 snapshot = try AnalysisService.decode(Data(contentsOf: URL(fileURLWithPath: path)))
+                if let html = option("--html") {
+                    let sources = snapshot.logs.flatMap { $0.sourcePaths + ($0.sourceAvailability ?? []).map(\.path) }
+                    try validateHTMLDestination(URL(fileURLWithPath: html),
+                                                snapshot: URL(fileURLWithPath: path),
+                                                inputs: sources.map { URL(fileURLWithPath: $0) })
+                }
             } else {
                 print("katalog-cli --folder DOSSIER --database BIBLIOTHEQUE.sqlite [--output JSON] [--html RAPPORT.html] [--archive-destination DOSSIER] [--engine analyzer.py]\nkatalog-cli --snapshot BIBLIOTHEQUE.json --html RAPPORT.html")
                 return
@@ -49,6 +56,45 @@ struct KataLogCLI {
         } catch {
             FileHandle.standardError.write(Data((error.localizedDescription + "\n").utf8))
             exit(1)
+        }
+    }
+
+    private static func validateHTMLDestination(_ output: URL, snapshot: URL, inputs: [URL]) throws {
+        func identity(_ url: URL) throws -> (String, String?) {
+            let resolved = url.standardizedFileURL.resolvingSymlinksInPath()
+            // Reserve case/normalization variants on all volumes, including
+            // when a missing file will later be created on a macOS volume.
+            let key = resolved.path.decomposedStringWithCanonicalMapping
+                .folding(options: .caseInsensitive, locale: Locale(identifier: "en_US_POSIX"))
+            guard FileManager.default.fileExists(atPath: resolved.path) else { return (key, nil) }
+            let attributes = try FileManager.default.attributesOfItem(atPath: resolved.path)
+            guard let device = attributes[.systemNumber] as? NSNumber,
+                  let inode = attributes[.systemFileNumber] as? NSNumber else { return (key, nil) }
+            return (key, "\(device):\(inode)")
+        }
+        let target = try identity(output)
+        var protectedInputs = inputs + [snapshot, URL(fileURLWithPath: CommandLine.arguments[0])]
+        let roots = Set([snapshot.deletingLastPathComponent(), snapshot.resolvingSymlinksInPath().deletingLastPathComponent()])
+        for root in roots {
+            let controls = ["annotations.json", "views.json", "fleet.json", "settings.json", "gcs-collection.json",
+                            "gcs-settings.json", "import-options.json", ".library-writer.lock", ".restore-journal.json", ".archive-journal.json"]
+            protectedInputs += controls.map { root.appendingPathComponent($0) }
+            let entries = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+            let databases = entries.filter { ["sqlite", "sqlite3"].contains($0.pathExtension.lowercased()) }
+                + [root.appendingPathComponent("library.sqlite"), root.appendingPathComponent("gcs-queue.sqlite")]
+            protectedInputs += databases.flatMap { database in
+                ["", "-wal", "-shm", "-journal"].map { URL(fileURLWithPath: database.path + $0) }
+            }
+            let dictionaries = try identity(root.appendingPathComponent("event-dictionaries")).0
+            if target.0 == dictionaries || target.0.hasPrefix(dictionaries + "/") {
+                throw AnalysisError.engine("Le chemin de sortie empiète sur les dictionnaires de la bibliothèque.")
+            }
+        }
+        for input in protectedInputs {
+            let protected = try identity(input)
+            if target.0 == protected.0 || (target.1 != nil && target.1 == protected.1) {
+                throw AnalysisError.engine("Le chemin de sortie remplacerait le snapshot, une source ou une donnée de la bibliothèque.")
+            }
         }
     }
 }
