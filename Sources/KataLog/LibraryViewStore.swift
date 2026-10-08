@@ -11,19 +11,20 @@ final class LibraryViewStore: ObservableObject {
     private let canWrite: Bool
     private var persisted: Data?
     private var loadFailed = false
+    private var reconciledScopeNeedsSave = false
     init(url: URL, canWrite: Bool = true) {
         self.url = url; self.canWrite = canWrite
         reload()
     }
     func reload() {
         guard FileManager.default.fileExists(atPath: url.path) else {
-            persisted = nil; state = .init(); loadFailed = false; errorMessage = nil; return
+            persisted = nil; state = .init(); loadFailed = false; reconciledScopeNeedsSave = false; errorMessage = nil; return
         }
         do {
             let data = try Data(contentsOf: url)
             let decoded = try JSONDecoder().decode(LibraryViewState.self, from: data)
             guard decoded.schemaVersion == 1 else { throw AnalysisError.schema(decoded.schemaVersion) }
-            persisted = data; state = decoded; loadFailed = false; errorMessage = nil
+            persisted = data; state = decoded; loadFailed = false; reconciledScopeNeedsSave = false; errorMessage = nil
         } catch { loadFailed = true; errorMessage = "Vues illisibles : \(error.localizedDescription). Le fichier est conservé." }
     }
     func setScope(_ scope: SelectionScope) throws {
@@ -38,6 +39,26 @@ final class LibraryViewStore: ObservableObject {
     }
     func setAdvancedMode(_ enabled: Bool) throws {
         var next = state; next.advancedMode = enabled; try save(next)
+    }
+    /// A deleted client cannot remain the active filter even if saving fails.
+    func reconcileClientScope(validIDs: Set<String>) throws {
+        let invalidClient = state.activeScope.clientID.map { !$0.isEmpty && !validIDs.contains($0) } ?? false
+        guard invalidClient || reconciledScopeNeedsSave else { return }
+        do {
+            if invalidClient { try chooseClient("") }
+            else { try save(state) }
+        }
+        catch {
+            if invalidClient {
+                var next = state
+                next.activeScope.clientID = ""; next.activeScope.logIDs = []; next.activeScope.droneKeys = []
+                next.revision += 1; state = next
+            }
+            reconciledScopeNeedsSave = true
+            let message = "Le client supprimé a été retiré du filtre affiché, mais le réglage n’a pas pu être enregistré : \(error.localizedDescription)"
+            errorMessage = message
+            throw AnalysisError.engine(message)
+        }
     }
     /// A secondary reader may explore the library without writing settings.
     func chooseScope(_ scope: SelectionScope) throws {
@@ -86,6 +107,6 @@ final class LibraryViewStore: ObservableObject {
         let data = try encoder.encode(next)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: url, options: .atomic)
-        persisted = data; state = next; errorMessage = nil
+        persisted = data; state = next; reconciledScopeNeedsSave = false; errorMessage = nil
     }
 }

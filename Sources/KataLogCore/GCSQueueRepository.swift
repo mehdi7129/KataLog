@@ -256,6 +256,17 @@ public final class GCSQueueRepository: @unchecked Sendable {
         try step(statement); encoded = [:]
     }
 
+    /// Repair orphan attributions after a committed deletion, including jobs
+    /// outside the bounded UI page. Repeating this update is harmless.
+    public func reconcileClientAttributions(validIDs: Set<String>) throws {
+        lock.lock(); defer { lock.unlock() }
+        guard !readOnly else { throw AnalysisError.engine("La file de collecte est ouverte en lecture seule.") }
+        let statement = try prepare("UPDATE transfers SET payload=CAST(json_remove(payload,'$.clientID') AS BLOB) WHERE json_extract(payload,'$.clientID') IS NOT NULL AND json_extract(payload,'$.clientID') NOT IN (SELECT value FROM json_each(?))")
+        defer { sqlite3_finalize(statement) }
+        bind(String(decoding: try encoder.encode(validIDs.sorted()), as: UTF8.self), at: 1, to: statement)
+        try step(statement); encoded = [:]
+    }
+
     private func add(_ item: GCSTransfer, direction: Double, values: inout [Double]) {
         let p = GCSBatchProgress(transfers: [item])
         let delta = [Double(p.totalCount), Double(p.completedCount), Double(p.failedCount), Double(p.activeCount), Double(p.pendingCount), Double(p.stoppedCount),

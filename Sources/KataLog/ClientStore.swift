@@ -62,6 +62,17 @@ final class ClientStore: ObservableObject {
                 let result = try JSONDecoder().decode(Response.self, from: data)
                 guard !Task.isCancelled, token == expected else { return }
                 profiles = result.clients; hasLoaded = true; errorMessage = nil
+                let validIDs = Set(profiles.map(\.id)), previousScope = library.views.state.activeScope
+                var issues: [String] = []
+                do { try library.views.reconcileClientScope(validIDs: validIDs) }
+                catch { issues.append(error.localizedDescription) }
+                if previousScope != library.views.state.activeScope { library.reload() }
+                if !library.isReadOnly {
+                    do { try await library.clientProfilesDidLoad(validIDs) }
+                    catch { issues.append("Nettoyage de la collecte incomplet : \(error.localizedDescription)") }
+                }
+                guard !Task.isCancelled, token == expected else { return }
+                if !issues.isEmpty { errorMessage = issues.joined(separator: " ") + " Réessayez de charger les clients." }
             } catch {
                 guard !Task.isCancelled, token == expected else { return }
                 errorMessage = error.localizedDescription
@@ -86,12 +97,20 @@ final class ClientStore: ObservableObject {
 
     func remove(id: String) async throws {
         struct Request: Encodable { var id: String }
+        var issues: [String] = []
         _ = try await mutate("delete-client", request: Request(id: id)) { [weak library] in
-            try await library?.clientDidDelete(id)
+            do { try await library?.clientDidDelete(id) }
+            catch { issues.append("Nettoyage de la collecte incomplet : \(error.localizedDescription)") }
         }
         profiles.removeAll { $0.id == id }
-        if library?.views.state.activeScope.clientID == id { try library?.views.chooseClient("") }
+        do { try library?.views.reconcileClientScope(validIDs: Set(profiles.map(\.id))) }
+        catch { issues.append(error.localizedDescription) }
         library?.reload()
+        if !issues.isEmpty {
+            let message = "Client supprimé ; ses logs sont conservés sans client. " + issues.joined(separator: " ") + " Réessayez de charger les clients pour reprendre le nettoyage."
+            errorMessage = message
+            throw AnalysisError.engine(message)
+        }
     }
 
     func assign(scope: SelectionScope, to clientID: String?) async throws {
