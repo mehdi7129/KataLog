@@ -722,6 +722,16 @@ def gps_date(datasets, start, coverage):
     return None
 
 
+def analysis_origin(path, root, digest, size, canonical=None):
+    """Seed a fresh parse with its recorded origin, never previous analysis data."""
+    origin = base_log(path, root, digest, size)
+    if canonical is not None:
+        for field in ('droneID', 'droneName', 'date', 'dateSource', 'fileName', 'sourcePaths'):
+            origin[field] = canonical[field]
+    # analyze_file can replace identity/name/date with authoritative ULog data.
+    return origin
+
+
 def analyze_file(path, root, digest=None, detailed=False, event_dictionary_directory=None, origin_context=None, track_sink=None):
     path = Path(path).resolve()
     require_local_source(path)
@@ -986,7 +996,7 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
                 signature = stat_signature(before)
                 cached = db.execute("SELECT files.*,logs.parser_version,logs.summary AS cached_summary FROM files JOIN logs ON logs.id=files.log_id WHERE path=?", (absolute,)).fetchone()
                 if cached and tuple(cached[key] for key in ("size", "mtime_ns", "ctime_ns", "inode")) == signature and cached["parser_version"] == PARSER_VERSION and json.loads(cached["cached_summary"]).get("status") != "error":
-                    origin_context = base_log(path, root, cached['log_id'], before.st_size)
+                    origin_context = analysis_origin(path, root, cached['log_id'], before.st_size, json.loads(cached['cached_summary']))
                     managed = archive_import(cached['log_id'], index, path, signature, origin_context)
                     # Card name metadata can appear after the first import.
                     _, name = card_context(path, root)
@@ -1005,11 +1015,11 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
                     stats["unchanged"] += 1
                     continue
                 digest = digest_file(path)
-                origin_context = base_log(path, root, digest, before.st_size)
+                existing = db.execute("SELECT parser_version,summary FROM logs WHERE id=?", (digest,)).fetchone()
+                origin_context = analysis_origin(path, root, digest, before.st_size, json.loads(existing['summary']) if existing else None)
                 managed = archive_import(digest, index, path, signature, origin_context)
                 analysis_signature = stat_signature(managed.stat()) if archive_result is not None else signature
                 full_tracks = []
-                existing = db.execute("SELECT parser_version,summary FROM logs WHERE id=?", (digest,)).fetchone()
                 if existing and existing["parser_version"] == PARSER_VERSION and json.loads(existing["summary"]).get("status") != "error":
                     saved = json.loads(existing["summary"])
                     _, name = card_context(path, root)
@@ -1018,7 +1028,9 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
                         remember_log(db, saved)
                     category = "duplicates"
                 else:
-                    saved = analyze_file(managed, root, digest, origin_context=origin_context, track_sink=full_tracks.append) if archive_result is not None else analyze_file(path, root, digest, track_sink=full_tracks.append)
+                    saved = analyze_file(managed, root, digest,
+                                         origin_context=origin_context if existing is not None or archive_result is not None else None,
+                                         track_sink=full_tracks.append)
                     remember_log(db, saved)
                     category = "failed" if saved["status"] == "error" else "imported"
                 if existing is None and client_id is not None:
@@ -1269,12 +1281,10 @@ def refresh_analysis(database, output=None, progress=None):
                     if digest_file(path) != identity:
                         continue
                     available = True
-                    candidate = analyze_file(path, path.parent, identity)
+                    origin = analysis_origin(path, path.parent, identity, before[0], saved)
+                    candidate = analyze_file(path, path.parent, identity, origin_context=origin)
                     if stat_signature(path.stat()) != before or candidate['status'] == 'error':
                         continue
-                    candidate['droneID'], candidate['droneName'] = saved['droneID'], saved['droneName']
-                    if not candidate.get('date') and saved.get('date'):
-                        candidate['date'], candidate['dateSource'] = saved['date'], saved['dateSource']
                     remember_log(db, candidate)
                     db.commit()
                     refreshed = True
