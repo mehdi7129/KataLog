@@ -245,16 +245,22 @@ final class GCSStore: ObservableObject {
         guard !isBusy else { throw AnalysisError.engine("Arrêtez la collecte avant la réinitialisation.") }
         discoveryTask?.cancel(); discoveryTask = nil
         inventoryTask?.cancel(); inventoryTask = nil
-        pendingAttachmentReconnect = false; reconnect = false
+        pendingAttachmentReconnect = false; reconnect = false; isQueuePaused = true; configurationDirty = true
         isConnected = false; isConnecting = false; connectedHost = nil
+        try validateResetForApplication()
         queueRepository = nil; repositoryWritable = false
-        try LibraryStore.removeConfigurationFiles(in: stateURL.deletingLastPathComponent(), names: [
-            "gcs-settings.json", "gcs-collection.json", "gcs-queue.sqlite", "gcs-queue.sqlite-wal",
-            "gcs-queue.sqlite-shm", "fleet.json"
-        ])
+        try LibraryStore.removeConfigurationFiles(in: stateURL.deletingLastPathComponent(), names: Self.resetConfigurationNames)
         try loadRestoredCollectionState()
         collectionClientID = nil; isQueuePaused = false
         errorMessage = nil; statusMessage = nil; configurationDirty = true
+    }
+
+    private static let resetConfigurationNames = ["gcs-settings.json", "gcs-collection.json",
+        "gcs-queue.sqlite", "gcs-queue.sqlite-wal", "gcs-queue.sqlite-shm", "fleet.json"]
+
+    private func validateResetForApplication() throws {
+        guard !isBusy else { throw AnalysisError.engine("Arrêtez la collecte avant la réinitialisation.") }
+        try LibraryStore.validateConfigurationFiles(in: stateURL.deletingLastPathComponent(), names: Self.resetConfigurationNames)
     }
 
     func attach(library: LibraryStore) {
@@ -265,6 +271,7 @@ final class GCSStore: ObservableObject {
         library.willRestoreLibrary = { [weak self] in try self?.preparePersistedStorageForRestore() }
         library.didRestoreLibrary = { [weak self] in try self?.reloadPersistedStateAfterRestore() }
         library.resetCollectionState = { [weak self] in try self?.resetForApplication() }
+        library.validateCollectionReset = { [weak self] in try self?.validateResetForApplication() }
         library.clientDidDelete = { [weak self] id in try await self?.removeClientAttribution(id) }
         library.clientProfilesDidLoad = { [weak self] ids in try await self?.reconcileClientAttributions(validIDs: ids) }
         if !library.isStartupBlocked && (startupStorageDeferred || library.recoveredAtStartup) {

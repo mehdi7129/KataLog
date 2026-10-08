@@ -66,6 +66,8 @@ final class LibraryStore: ObservableObject {
     lazy var clients = ClientStore(library: self)
     @Published private(set) var mapProximity: GeographicProximity?
     var resetCollectionState: () throws -> Void = {}
+    var validateCollectionReset: () throws -> Void = {}
+    private(set) var resetGeneration = 0
     var clientDidDelete: (String) async throws -> Void = { _ in }
     var clientProfilesDidLoad: (Set<String>) async throws -> Void = { _ in }
     private var annotationSubscription: AnyCancellable?
@@ -823,7 +825,12 @@ final class LibraryStore: ObservableObject {
         guard !diagnosticStore.isExporting, !diagnosticStore.isFetchingGCS, !diagnosticStore.isLoading else {
             throw AnalysisError.engine("Terminez ou arrêtez le diagnostic avant de réinitialiser la bibliothèque.")
         }
+        let settings = ["views.json", "annotations.json", "import-options.json"]
+        let indices = ["library.json", "progress.json"]
+        var cleanupIssues: [String] = []
         try await performMaintenance {
+            try Self.validateConfigurationFiles(in: storageDirectory, names: indices + (allSettings ? settings : []))
+            if allSettings { try validateCollectionReset() }
             FlightWindowCoordinator.shared.closeAll(library: self)
             closeFlight()
             let data = try await AnalysisService.run(["reset-library", "--database", databaseURL.path,
@@ -832,16 +839,21 @@ final class LibraryStore: ObservableObject {
             guard try JSONDecoder().decode(Result.self, from: data).originalsDeleted == false else {
                 throw AnalysisError.engine("Le moteur n’a pas confirmé la conservation des fichiers originaux.")
             }
+            resetGeneration += 1
             if allSettings {
-                try resetCollectionState()
-                try Self.removeConfigurationFiles(in: storageDirectory,
-                    names: ["views.json", "annotations.json", "import-options.json"])
+                clients.clearAfterApplicationReset()
+                do { try resetCollectionState() }
+                catch { cleanupIssues.append("Collecte : \(error.localizedDescription)") }
+                do { try Self.removeConfigurationFiles(in: storageDirectory, names: settings) }
+                catch { cleanupIssues.append("Réglages : \(error.localizedDescription)") }
                 annotations.reload(); views.reload()
                 diagnosticStore.dismiss()
-                try diagnostics.clear()
+                do { try diagnostics.clear() }
+                catch { cleanupIssues.append("Diagnostic : \(error.localizedDescription)") }
             }
             // Clearing indices must never revive a legacy JSON snapshot.
-            try Self.removeConfigurationFiles(in: storageDirectory, names: ["library.json", "progress.json"])
+            do { try Self.removeConfigurationFiles(in: storageDirectory, names: indices) }
+            catch { cleanupIssues.append("Anciens index : \(error.localizedDescription)") }
             displayedQueryKeys.removeAll()
             historyResultsCurrent = false; groupResultsCurrent = false; droneResultsCurrent = false; occurrenceResultsCurrent = false
             snapshot = .empty; historyPage = nil; groupPage = nil; dronePage = nil; mapPage = nil
@@ -850,15 +862,30 @@ final class LibraryStore: ObservableObject {
         }
         if !allSettings {
             // Keep preferences and selected client, but drop filters tied to deleted logs.
-            var scope = SelectionScope(); scope.clientID = views.state.activeScope.clientID
-            try views.chooseScope(scope)
+            do { try views.clearLogFiltersAfterReset() }
+            catch { cleanupIssues.append("Filtre affiché : \(error.localizedDescription)") }
         }
         clients.reload(); reload()
         statusMessage = allSettings ? "KataLog réinitialisé. Vos fichiers .ulg sont conservés." : "Bibliothèque vidée. Clients, identifications, réglages et fichiers .ulg conservés."
+        if !cleanupIssues.isEmpty {
+            let message = (statusMessage ?? "") + " Nettoyage incomplet : " + cleanupIssues.joined(separator: " ")
+            errorMessage = message
+            throw AnalysisError.engine(message)
+        }
+        errorMessage = nil
     }
 
     /// Only known regular configuration files can be removed. Never recurse into a directory.
     static func removeConfigurationFiles(in directory: URL, names: [String]) throws {
+        for name in names {
+            try validateConfigurationFiles(in: directory, names: [name])
+            let file = directory.appendingPathComponent(name)
+            if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }
+        }
+    }
+
+    /// Refuse known obstacles before a database mutation; cleanup validates again.
+    static func validateConfigurationFiles(in directory: URL, names: [String]) throws {
         for name in names {
             guard !name.contains("/"), !name.lowercased().hasSuffix(".ulg") else {
                 throw AnalysisError.engine("Nom de configuration inattendu.")
@@ -867,9 +894,8 @@ final class LibraryStore: ObservableObject {
             guard FileManager.default.fileExists(atPath: file.path) else { continue }
             let values = try file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
             guard values.isRegularFile == true || values.isSymbolicLink == true else {
-                throw AnalysisError.engine("Un dossier occupe l’emplacement d’un réglage. Il a été conservé.")
+                throw AnalysisError.engine("Un dossier occupe l’emplacement du réglage \(name). Il a été conservé.")
             }
-            try FileManager.default.removeItem(at: file)
         }
     }
 

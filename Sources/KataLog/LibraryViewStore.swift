@@ -44,18 +44,23 @@ final class LibraryViewStore: ObservableObject {
     func reconcileClientScope(validIDs: Set<String>) throws {
         let invalidClient = state.activeScope.clientID.map { !$0.isEmpty && !validIDs.contains($0) } ?? false
         guard invalidClient || reconciledScopeNeedsSave else { return }
-        do {
-            if invalidClient { try chooseClient("") }
-            else { try save(state) }
+        var scope = state.activeScope
+        if invalidClient {
+            scope.clientID = ""; scope.logIDs = []; scope.droneKeys = []
         }
+        try reconcileScope(scope)
+    }
+    func clearLogFiltersAfterReset() throws {
+        var scope = SelectionScope(); scope.clientID = state.activeScope.clientID
+        try reconcileScope(scope)
+    }
+    private func reconcileScope(_ scope: SelectionScope) throws {
+        do { try chooseScope(scope) }
         catch {
-            if invalidClient {
-                var next = state
-                next.activeScope.clientID = ""; next.activeScope.logIDs = []; next.activeScope.droneKeys = []
-                next.revision += 1; state = next
-            }
+            var next = state; next.activeScope = scope
+            next.revision += 1; state = next
             reconciledScopeNeedsSave = true
-            let message = "Le client supprimé a été retiré du filtre affiché, mais le réglage n’a pas pu être enregistré : \(error.localizedDescription)"
+            let message = "Le filtre affiché a été actualisé, mais le réglage n’a pas pu être enregistré : \(error.localizedDescription)"
             errorMessage = message
             throw AnalysisError.engine(message)
         }
