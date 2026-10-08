@@ -977,13 +977,15 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
             signature = None
             category = None
             try:
+                # Keep remember_log's savepoint inside this file transaction:
+                # RELEASE must not publish before source and cache checks pass.
+                db.execute('BEGIN')
                 before = path.stat()
                 signature = stat_signature(before)
                 cached = db.execute("SELECT files.*,logs.parser_version,logs.summary AS cached_summary FROM files JOIN logs ON logs.id=files.log_id WHERE path=?", (absolute,)).fetchone()
                 if cached and tuple(cached[key] for key in ("size", "mtime_ns", "ctime_ns", "inode")) == signature and cached["parser_version"] == PARSER_VERSION and json.loads(cached["cached_summary"]).get("status") != "error":
                     origin_context = base_log(path, root, cached['log_id'], before.st_size)
                     managed = archive_import(cached['log_id'], index, path, signature, origin_context)
-                    stats["unchanged"] += 1
                     # Card name metadata can appear after the first import.
                     _, name = card_context(path, root)
                     if name:
@@ -998,6 +1000,7 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
                     observation = source_availability(path, cached['log_id'], cached)
                     db.execute('INSERT OR REPLACE INTO source_observations VALUES(?,?,?,?)', (cached['log_id'], absolute, observation['state'], observation['checkedAt']))
                     db.commit()
+                    stats["unchanged"] += 1
                     continue
                 digest = digest_file(path)
                 origin_context = base_log(path, root, digest, before.st_size)
@@ -1056,6 +1059,8 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
                 saved["issues"] = [f"{type(error).__name__}: {error}"]
                 saved["coverage"] = ["Fichier non analysable; réessayer l'import lorsque la source est disponible."]
                 existing_error = db.execute('SELECT 1 FROM logs WHERE id=?', (digest,)).fetchone()
+                # Publish the retryable error and its source together as well.
+                db.execute('BEGIN')
                 remember_log(db, saved)
                 if existing_error is None and client_id is not None:
                     db.execute('INSERT INTO log_clients VALUES(?,?)', (digest, client_id))
