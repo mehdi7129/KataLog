@@ -5,6 +5,8 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+import signal
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -62,6 +64,7 @@ class CorruptStateRestoreTests(unittest.TestCase):
                     (target / name).write_bytes(b'not a database\x00' * 256)
                     (target / (name + '-wal')).write_bytes(b'original invalid WAL')
                     (target / (name + '-shm')).write_bytes(b'original invalid SHM')
+                    (target / (name + '-journal')).write_bytes(b'original invalid DELETE journal')
                 else:
                     (target / 'annotations.json').write_bytes(b'{"schemaVersion":' if kind == 'json' else b'\xff\xfe\x00')
                 before = self.active_bytes(target)
@@ -87,7 +90,7 @@ class CorruptStateRestoreTests(unittest.TestCase):
                 self.assertFalse((target / '.restore-journal.json').exists())
 
     def test_real_restore_cli_preserves_corrupt_database_and_sidecars_before_any_open(self):
-        for suffix in ('', '-wal', '-shm'):
+        for suffix in ('', '-wal', '-shm', '-journal'):
             (self.target / ('library.sqlite' + suffix)).write_bytes(('corrupt original ' + suffix).encode())
         before = self.active_bytes(self.target)
         output = self.root / 'result.json'
@@ -107,6 +110,42 @@ class CorruptStateRestoreTests(unittest.TestCase):
         self.assertFalse((recovery / 'raw-files').exists())
         self.assertFalse((recovery / 'raw-manifest.json').exists())
         self.assert_incoming_installed()
+
+    def test_hot_delete_journal_is_recovered_only_on_copy_and_cannot_roll_back_incoming(self):
+        database = self.target / 'cache.sqlite'
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute('PRAGMA journal_mode=DELETE')
+            db.execute('CREATE TABLE state(id INTEGER PRIMARY KEY, value BLOB)')
+            db.executemany('INSERT INTO state VALUES(?,?)', [(index, b'original' * 600) for index in range(100)])
+        script = '''import os,signal,sqlite3,sys
+db=sqlite3.connect(sys.argv[1]); db.execute('PRAGMA cache_size=5')
+db.execute('PRAGMA synchronous=FULL'); db.execute('BEGIN IMMEDIATE')
+db.execute('UPDATE state SET value=?',(b'uncommitted'*600,))
+os.kill(os.getpid(),signal.SIGKILL)
+'''
+        killed = subprocess.run([sys.executable, '-B', '-c', script, str(database)], capture_output=True, timeout=10)
+        self.assertEqual(killed.returncode, -signal.SIGKILL, killed.stderr.decode(errors='replace'))
+        journal = self.target / 'cache.sqlite-journal'
+        self.assertTrue(journal.is_file())
+        before = {path.name: path.read_bytes() for path in (database, journal)}
+        with closing(sqlite3.connect(self.incoming / 'cache.sqlite')) as db, db:
+            db.execute('CREATE TABLE incoming(value TEXT)')
+            db.execute("INSERT INTO incoming VALUES('replacement')")
+        storage.backup(self.incoming, self.archive)
+        result = storage.restore(self.archive, self.target)
+        recovery = Path(result['recoveryDirectory'])
+        self.assertEqual({name: (recovery / 'original-files' / name).read_bytes() for name in before}, before)
+        self.assertFalse((recovery / 'raw-manifest.json').exists())
+        self.assertFalse(journal.exists())
+        with closing(sqlite3.connect(database)) as db:
+            self.assertEqual(db.execute('SELECT value FROM incoming').fetchall(), [('replacement',)])
+            self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0], 'ok')
+        captured = self.root / 'captured-cache.sqlite'
+        with zipfile.ZipFile(recovery / 'before.zip') as archive:
+            captured.write_bytes(archive.read('state/cache.sqlite'))
+        with closing(sqlite3.connect(captured)) as db:
+            self.assertEqual(db.execute('SELECT DISTINCT value FROM state').fetchall(), [(b'original' * 600,)])
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM state').fetchone()[0], 100)
 
     def test_healthy_committed_wal_is_captured_without_changing_active_sidecars(self):
         with closing(sqlite3.connect(self.target / 'library.sqlite')) as db:

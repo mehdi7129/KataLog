@@ -476,7 +476,7 @@ def capture_state_files(root, destination_root, managed, *, reserve_for_backup=F
             candidates = sorted(directory.iterdir())
         else:
             candidates = [root / (name + suffix) for suffix in
-                          (('', '-wal', '-shm') if DB_NAME.fullmatch(name) else ('',))]
+                          (('', '-wal', '-shm', '-journal') if DB_NAME.fullmatch(name) else ('',))]
         for path in candidates:
             if path.is_symlink():
                 raise ValueError('Fichier lié symboliquement ; conservation brute refusée.')
@@ -568,6 +568,15 @@ def restore(archive_path, library):
             captured = Path(temporary_before)
             capture_state_files(root, captured, managed, reserve_for_backup=True)
             try:
+                # A crashed DELETE-mode writer needs rollback before a coherent
+                # read. Only our disposable copy may be opened for that write.
+                for name in database_names(captured):
+                    if (captured / (name + '-journal')).exists():
+                        connection = sqlite3.connect(captured / name)
+                        try:
+                            connection.execute('SELECT name FROM sqlite_master LIMIT 1').fetchall()
+                        finally:
+                            connection.close()
                 backup(captured, recovery / "before.zip", include_ulog=False)
             except (ValueError, sqlite3.DatabaseError) as error:
                 if not is_stored_content_corruption(error):
