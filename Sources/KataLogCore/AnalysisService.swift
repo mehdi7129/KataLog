@@ -51,12 +51,12 @@ public enum AnalysisService {
                 let stderr = work.appendingPathComponent("stderr.txt")
                 let runtime = try EngineRuntimeResolver.resolve(configuration: runtimeConfiguration,
                                                                launch: control.run, finished: control.finish)
-                let arguments = ["-B", engine.path, "scan", "--folder", folder.path,
+                var arguments: [String] = ["-B", engine.path, "scan", "--folder", folder.path,
                     "--database", database.path, "--output", output.path, "--progress", progress.path]
-                    + (skipSnapshot ? ["--skip-snapshot"] : [])
-                    + (archiveDestination.map { ["--archive-destination", $0.path] } ?? [])
-                    + (clientID.map { ["--client-id", $0] } ?? [])
-                    + additionalOutputs.flatMap { ["--additional-output", $0.path] }
+                if skipSnapshot { arguments.append("--skip-snapshot") }
+                if let archiveDestination { arguments.append(contentsOf: ["--archive-destination", archiveDestination.path]) }
+                if let clientID { arguments.append(contentsOf: ["--client-id", clientID]) }
+                for output in additionalOutputs { arguments.append(contentsOf: ["--additional-output", output.path]) }
                 let status = try execute(runtime, arguments: arguments, control: control, stderr: stderr)
                 guard status == 0 else {
                     let detail = (try? String(contentsOf: stderr, encoding: .utf8)) ?? ""
