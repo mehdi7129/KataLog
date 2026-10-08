@@ -132,5 +132,8 @@ def validate_outputs(outputs, database=None, library=None, folder=None, inputs=(
                 raise ValueError(f'Le chemin de sortie remplacerait une donnée protégée : {path}')
 
     reject_collisions(protected)
-    for path in set(databases):
+    # Other SQLite files (notably the independent GCS queue) are protected
+    # destinations, but their state must not gate queries/imports of this library.
+    source_databases = (database,) if database is not None else {root / 'library.sqlite' for root in roots}
+    for path in source_databases:
         reject_collisions(source_paths(path, outputs, inspect_aliases=any(identity[2] for identity in identities), use_copy=copy_sources))
