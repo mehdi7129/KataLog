@@ -234,6 +234,44 @@ class CrashRecoveryTests(unittest.TestCase):
                 self.assertEqual(sha(library / "library.sqlite"), after)
                 self.assertEqual((sha(source), source.stat().st_mtime_ns), source_signature)
 
+    def test_recovery_retains_hot_delete_journal_with_its_original_database(self):
+        library = self.root / 'hot-journal-library'
+        library.mkdir()
+        database = library / 'cache.sqlite'
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute('PRAGMA journal_mode=DELETE')
+            db.execute('CREATE TABLE state(id INTEGER PRIMARY KEY, value BLOB)')
+            db.executemany('INSERT INTO state VALUES(?,?)', [(index, b'original' * 600) for index in range(100)])
+        script = '''import os,signal,sqlite3,sys
+db=sqlite3.connect(sys.argv[1]); db.execute('PRAGMA cache_size=5')
+db.execute('PRAGMA synchronous=FULL'); db.execute('BEGIN IMMEDIATE')
+db.execute('UPDATE state SET value=?',(b'uncommitted'*600,))
+os.kill(os.getpid(),signal.SIGKILL)
+'''
+        killed = subprocess.run([sys.executable, '-B', '-c', script, str(database)], capture_output=True, timeout=10)
+        self.assertEqual(killed.returncode, -signal.SIGKILL, killed.stderr.decode(errors='replace'))
+        journal = library / 'cache.sqlite-journal'
+        self.assertTrue(journal.is_file())
+        before = {path.name: path.read_bytes() for path in (database, journal)}
+        recovery = library / ('recovery-' + 'b' * 32)
+        original = recovery / 'original-files'
+        original.mkdir(parents=True)
+        for name in before:
+            (library / name).rename(original / name)
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute('CREATE TABLE incoming(value TEXT)')
+            db.execute("INSERT INTO incoming VALUES('replacement')")
+        storage.atomic_json(library / '.restore-journal.json', {
+            'restoreVersion': 1, 'phase': 'prepared', 'recoveryDirectory': recovery.name,
+            'archiveDirectory': 'restored-ulogs-' + 'b' * 32,
+            'moved': list(before), 'installed': ['cache.sqlite']})
+        self.assertTrue(storage.recover_restore(library)['recovered'])
+        self.assertEqual({name: (library / name).read_bytes() for name in before}, before)
+        self.assertFalse(storage.recover_restore(library)['recovered'])
+        with closing(sqlite3.connect(database)) as db:
+            self.assertEqual(db.execute('SELECT DISTINCT value FROM state').fetchall(), [(b'original' * 600,)])
+            self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0], 'ok')
+
     def test_prepared_import_death_retains_provenance_without_inventing_analysis(self):
         for point in ("before", "after"):
             with self.subTest(point=point):
