@@ -4,6 +4,11 @@ set -euo pipefail
 # Build inputs are pinned, fetched with SHA-256 verification, and extracted only
 # under /private/tmp. No Python installation or user preference is modified.
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
+# One lock covers shared caches, compilation and capture of the final bundle.
+# build-engine inherits the descriptor when called by build-app.
+if [[ "${KATALOG_BUILD_LOCK_SCRIPT:-}" != "$project_dir/tools/build-engine.sh" ]]; then
+    exec python3 "$project_dir/tools/build-lock.py" "$project_dir/tools/build-engine.sh" "$@"
+fi
 build_dir="${KATALOG_ENGINE_BUILD_DIR:-/private/tmp/katalog-engine-build}"
 case "$build_dir" in
     /private/tmp/*) ;;
