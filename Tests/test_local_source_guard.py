@@ -79,6 +79,16 @@ class LocalSourceGuardTests(unittest.TestCase):
             db.close()
         return path
 
+    def test_pending_restore_is_rejected_before_inspecting_another_archive(self):
+        journal = self.library / '.restore-journal.json'
+        journal.write_text('{"restoreVersion":1}')
+        before = self.database.read_bytes()
+        with patch.object(storage, 'require_local_source', side_effect=AssertionError('archive inspected before recovery gate')):
+            with self.assertRaisesRegex(ValueError, 'restauration interrompue'):
+                storage.restore(self.root / 'not-yet-read.zip', self.library)
+        self.assertEqual(self.database.read_bytes(), before)
+        self.assertEqual(journal.read_text(), '{"restoreVersion":1}')
+
     def test_both_hash_entry_points_refuse_before_open(self):
         with self.evicted(self.source):
             for digest in (analyzer.digest_file, storage.digest):
