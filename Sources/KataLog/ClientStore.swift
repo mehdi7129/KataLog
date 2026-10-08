@@ -38,6 +38,11 @@ final class ClientStore: ObservableObject {
         await pending?.value
     }
 
+    /// The full reset has committed; a failed refresh must not revive old clients.
+    func clearAfterApplicationReset() {
+        profiles = []; hasLoaded = false; errorMessage = nil
+    }
+
     func reload() {
         guard !isWorking, library?.isMaintainingLibrary != true else { return }
         let previous = readTask

@@ -1503,12 +1503,17 @@ struct Workspace06View: View {
     private func clearLibrary(reset: Bool) {
         guard !mutationBusy, !library.isReadOnly, !library.isExporting else { return }
         maintenanceTask = Task {
+            let previousReset = library.resetGeneration
             do {
-                if reset { try await library.resetApplication(); updates.setAutomaticallyChecksForUpdates(false) }
+                if reset { try await library.resetApplication() }
                 else { try await library.clearLibrary() }
-                selectedHistoryLogs = []; selectedStorageLogs = []; storageOffsets = [0]
-                storage.load(); sourcesSummary.load(); localError = nil
+                localError = nil
             } catch { localError = error.localizedDescription }
+            if library.resetGeneration != previousReset {
+                if reset { updates.setAutomaticallyChecksForUpdates(false) }
+                selectedHistoryLogs = []; selectedStorageLogs = []; storageOffsets = [0]
+                storage.load(); sourcesSummary.load()
+            }
             maintenanceTask = nil
         }
     }
