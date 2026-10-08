@@ -33,6 +33,10 @@ ACTIVE_JOB_STATES = frozenset(("queued", "pending", "waiting", "transferring", "
 SPACE_RESERVE = 16 * 1024 * 1024
 
 
+class CorruptLibraryStateError(ValueError):
+    """Unreadable stored content, distinct from I/O or unsupported versions."""
+
+
 def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
@@ -70,7 +74,7 @@ def copy_database(source, destination):
     try:
         reader.backup(writer, pages=256)
         if writer.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
-            raise ValueError("La sauvegarde SQLite n’a pas passé le contrôle d’intégrité.")
+            raise CorruptLibraryStateError("La sauvegarde SQLite n’a pas passé le contrôle d’intégrité.")
         version = writer.execute("PRAGMA user_version").fetchone()[0]
         writer.commit()
         return version
@@ -454,6 +458,79 @@ def move_restore_entry(source, destination):
         sync_directory(destination.parent)
 
 
+def is_stored_content_corruption(error):
+    if isinstance(error, (CorruptLibraryStateError, json.JSONDecodeError, UnicodeDecodeError)):
+        return True
+    return isinstance(error, sqlite3.DatabaseError) and (
+        getattr(error, 'sqlite_errorcode', -1) & 0xff) in (sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB)
+
+
+def capture_state_files(root, destination_root, managed, *, reserve_for_backup=False):
+    """Copy and verify managed bytes without opening any active SQLite file."""
+    files = []
+    for name in sorted(managed):
+        if name == 'event-dictionaries':
+            directory = root / name
+            if directory.is_symlink() or not directory.is_dir():
+                raise ValueError('Dossier de dictionnaires non sûr ; conservation refusée.')
+            candidates = sorted(directory.iterdir())
+        else:
+            candidates = [root / (name + suffix) for suffix in
+                          (('', '-wal', '-shm') if DB_NAME.fullmatch(name) else ('',))]
+        for path in candidates:
+            if path.is_symlink():
+                raise ValueError('Fichier lié symboliquement ; conservation brute refusée.')
+            if not path.exists():
+                continue
+            attributes = path.stat()
+            if not stat.S_ISREG(attributes.st_mode):
+                raise ValueError('Fichier non régulier ; conservation brute refusée.')
+            files.append((path, attributes))
+    total = sum(value.st_size for _, value in files)
+    required = total + SPACE_RESERVE
+    if reserve_for_backup:
+        # One raw working copy plus backup's database capture and ZIP, including
+        # a conservative compression overhead, manifest and entry metadata.
+        required += 2 * total + (total + 49) // 50 + 2 * MAX_MANIFEST_BYTES + len(files) * 1024
+    if len(files) > MAX_ENTRIES or total > MAX_BACKUP_BYTES or shutil.disk_usage(destination_root.parent).free < required:
+        raise ValueError('Espace ou budget insuffisant pour conserver les fichiers bruts.')
+    destination_root.mkdir(exist_ok=True)
+    entries = []
+
+    def signature(attributes):
+        return attributes.st_dev, attributes.st_ino, attributes.st_size, attributes.st_mtime_ns, attributes.st_ctime_ns
+
+    for source, before in files:
+        name = source.relative_to(root).as_posix()
+        destination = destination_root / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with source.open('rb') as reader, destination.open('xb') as writer:
+            if signature(os.fstat(reader.fileno())) != signature(before):
+                raise ValueError('Un fichier actif a changé avant sa conservation : ' + name)
+            shutil.copyfileobj(reader, writer, length=1024 * 1024)
+            writer.flush()
+            os.fsync(writer.fileno())
+        checksum = digest(destination)
+        if checksum != digest(source) or signature(source.stat()) != signature(before):
+            raise ValueError('La conservation brute ne correspond pas aux fichiers actifs : ' + name)
+        entries.append({'name': name, 'sizeBytes': before.st_size, 'sha256': checksum,
+                        'mtimeNs': before.st_mtime_ns, 'mode': stat.S_IMODE(before.st_mode)})
+        sync_directory(destination.parent)
+    sync_directory(destination_root)
+    return entries
+
+
+def preserve_raw_state(root, recovery, managed, validation_error):
+    """Preserve unreadable bytes, without claiming a coherent SQLite backup."""
+    entries = capture_state_files(root, recovery / 'raw-files', managed)
+    manifest = {'preservationVersion': 1, 'kind': 'raw-unvalidated-state', 'createdAt': now(),
+                'validationError': {'type': type(validation_error).__name__, 'message': str(validation_error),
+                                    'sqliteCode': getattr(validation_error, 'sqlite_errorcode', None)},
+                'files': entries}
+    atomic_json(recovery / 'raw-manifest.json', manifest)
+    sync_directory(recovery)
+
+
 def restore(archive_path, library):
     """Validate, stage and swap managed files; preserve the root lease inode."""
     root = Path(library).resolve()
@@ -477,11 +554,6 @@ def restore(archive_path, library):
                     shutil.copyfileobj(source, destination, length=1024 * 1024)
         (staging / "state").mkdir(exist_ok=True)
         prepare_restored_state(staging, manifest, root, archive_directory)
-        recovery.mkdir()
-        backup(root, recovery / "before.zip", include_ulog=False)
-        original = recovery / "original-files"
-        original.mkdir()
-        sync_directory(recovery)
         managed = set(database_names(root)) | {name for name in CONFIG_NAMES if (root / name).exists()}
         if (root / 'event-dictionaries').exists():
             managed.add('event-dictionaries')
@@ -489,6 +561,21 @@ def restore(archive_path, library):
         for name in set(managed) | incoming:
             if (root / name).is_symlink():
                 raise ValueError("Fichier de bibliothèque lié symboliquement ; restauration refusée.")
+        recovery.mkdir()
+        # Even a read-only SQLite connection can rewrite a corrupt SHM file.
+        # Validate the pre-restore backup on an owned copy, never active bytes.
+        with tempfile.TemporaryDirectory(prefix='.before-capture-', dir=recovery) as temporary_before:
+            captured = Path(temporary_before)
+            capture_state_files(root, captured, managed, reserve_for_backup=True)
+            try:
+                backup(captured, recovery / "before.zip", include_ulog=False)
+            except (ValueError, sqlite3.DatabaseError) as error:
+                if not is_stored_content_corruption(error):
+                    raise
+                preserve_raw_state(root, recovery, managed, error)
+        original = recovery / "original-files"
+        original.mkdir()
+        sync_directory(recovery)
         moved, installed = [], []
         record = {"restoreVersion": 1, "phase": "prepared", "recoveryDirectory": recovery.name,
                   "archiveDirectory": archive_directory, "moved": moved, "installed": installed}
