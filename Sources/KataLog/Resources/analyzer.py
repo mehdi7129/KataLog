@@ -33,6 +33,8 @@ from pyulog import ULog
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from flight_data import enrich
 from output_paths import backup_source_paths, validate_outputs
+from local_files import (CLOUD_SOURCE_DETAIL, CloudSourceUnavailableError,
+                         require_local_source, digest_file, stat_signature)
 
 SCHEMA_VERSION = 1
 PARSER_VERSION = "1.4.0"
@@ -43,9 +45,6 @@ MIN_FLIGHT_COVERAGE_FRACTION = 0.99
 ANALYSIS_REVISION_VERSION = 1
 MAX_ANALYSIS_BYTES = 64 * 1024 * 1024
 MAX_REVISION_STORAGE_BYTES = 512 * 1024 * 1024
-CLOUD_SOURCE_DETAIL = ("Fichier présent dans le cloud, mais non téléchargé sur ce Mac. "
-                       "Dans le Finder, utilisez « Télécharger » sur le fichier ou son dossier. "
-                       "Le résumé et les analyses en cache restent disponibles.")
 
 
 class RevisionBudgetError(ValueError):
@@ -54,20 +53,6 @@ class RevisionBudgetError(ValueError):
 
 class ArchiveImportError(ValueError):
     """Refuse this import before any new analysis is published."""
-
-
-class CloudSourceUnavailableError(OSError):
-    """Reading a File Provider placeholder could block while macOS hydrates it."""
-
-
-def require_local_source(path, metadata=None):
-    metadata = metadata if metadata is not None else Path(path).stat()
-    # Some bundled Python versions omit the Darwin constant even though stat
-    # still exposes st_flags. Do not interpret this bit on other platforms.
-    dataless = getattr(stat_module, 'UF_DATALESS', 0x40000000 if sys.platform == 'darwin' else 0)
-    if getattr(metadata, 'st_flags', 0) & dataless:
-        raise CloudSourceUnavailableError(CLOUD_SOURCE_DETAIL)
-    return metadata
 
 
 def utc_now():
@@ -277,19 +262,6 @@ def analysis_revisions(log_id, database, offset=0, limit=32, read_only=False):
                 'nextOffset': offset + len(values) if offset + len(values) < total else None}
     finally:
         db.close()
-
-
-def digest_file(path):
-    require_local_source(path)
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def stat_signature(stat):
-    return (stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino)
 
 
 def source_availability(path, log_id, known_file=None, checked_at=None):

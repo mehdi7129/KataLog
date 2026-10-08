@@ -20,6 +20,8 @@ import time
 import uuid
 import zipfile
 
+from local_files import digest_file as digest, require_local_source, stat_signature
+
 BACKUP_VERSION = 1
 CONFIG_NAMES = frozenset(("annotations.json", "views.json", "fleet.json", "settings.json",
                           "gcs-collection.json", "gcs-settings.json", 'import-options.json'))
@@ -39,14 +41,6 @@ class CorruptLibraryStateError(ValueError):
 
 def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-
-
-def digest(path):
-    value = hashlib.sha256()
-    with Path(path).open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            value.update(block)
-    return value.hexdigest()
 
 
 def atomic_json(path, value):
@@ -69,6 +63,7 @@ def database_names(root):
 
 
 def copy_database(source, destination):
+    require_local_source(source)
     reader = sqlite3.connect(Path(source).resolve().as_uri() + "?mode=ro", uri=True, timeout=30)
     writer = sqlite3.connect(destination)
     try:
@@ -86,6 +81,7 @@ def copy_database(source, destination):
 def source_manifest(database):
     if not database.exists():
         return []
+    require_local_source(database)
     db = sqlite3.connect(database)
     try:
         tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
@@ -122,7 +118,7 @@ def backup(library, destination, include_ulog=False):
             if source.is_symlink():
                 raise ValueError("Un fichier de configuration est un lien symbolique ; sauvegarde refusée.")
             if source.exists():
-                if source.stat().st_size > MAX_CONFIG_BYTES:
+                if require_local_source(source).st_size > MAX_CONFIG_BYTES:
                     raise ValueError("Configuration trop volumineuse pour une sauvegarde sûre : " + name)
                 raw = source.read_bytes()
                 value = json.loads(raw)
@@ -138,7 +134,7 @@ def backup(library, destination, include_ulog=False):
             for source in sorted(dictionaries.iterdir()):
                 if source.name.startswith('.dictionary-') and source.name.endswith('.partial'):
                     continue
-                if not source.is_file() or source.is_symlink() or not DICTIONARY_NAME.fullmatch(source.name) or source.stat().st_size > MAX_ARTIFACT_BYTES:
+                if not source.is_file() or source.is_symlink() or not DICTIONARY_NAME.fullmatch(source.name) or require_local_source(source).st_size > MAX_ARTIFACT_BYTES:
                     raise ValueError('Artefact de dictionnaire non sûr ; sauvegarde refusée.')
                 with source.open('rb') as handle:
                     payload = handle.read(MAX_ARTIFACT_BYTES + 1)
@@ -155,12 +151,12 @@ def backup(library, destination, include_ulog=False):
                     path = Path(path_string)
                     target = staging / "ulogs" / (source["logID"] + ".ulg")
                     try:
-                        before = path.stat()
+                        before = require_local_source(path)
                         if not stat.S_ISREG(before.st_mode):
                             continue
                         shutil.copyfile(path, target)
                         after = path.stat()
-                        if (before.st_size, before.st_mtime_ns, before.st_ctime_ns, before.st_ino) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns, after.st_ino):
+                        if stat_signature(before) != stat_signature(after):
                             target.unlink(missing_ok=True)
                             continue
                         if digest(target) != source["logID"]:
@@ -239,7 +235,7 @@ def backup_preflight(library, destination, include_ulog=False):
         sizes = []
         for path in source['paths']:
             try:
-                attributes = Path(path).stat()
+                attributes = require_local_source(path)
                 if stat.S_ISREG(attributes.st_mode):
                     sizes.append(attributes.st_size)
             except OSError:
@@ -339,6 +335,7 @@ def validated_manifest(archive):
 
 
 def inspect_backup(path, *, _database_files=None):
+    require_local_source(path)
     with zipfile.ZipFile(path) as archive:
         manifest = validated_manifest(archive)
         versions = manifest.get("databaseVersions", {})
@@ -533,6 +530,7 @@ def preserve_raw_state(root, recovery, managed, validation_error):
 
 def restore(archive_path, library):
     """Validate, stage and swap managed files; preserve the root lease inode."""
+    require_local_source(archive_path)
     root = Path(library).resolve()
     root.mkdir(parents=True, exist_ok=True)
     if root.is_symlink():
@@ -633,6 +631,7 @@ def recover_restore(library):
         raise ValueError('Journal de restauration lié symboliquement ; opération refusée.')
     if not journal.exists():
         return {"restoreVersion": 1, "recovered": False}
+    require_local_source(journal)
     record = json.loads(journal.read_bytes())
     if record.get("restoreVersion") != 1 or not re.fullmatch(r"recovery-[a-f0-9]{32}", record.get("recoveryDirectory", "")):
         raise ValueError("Journal de restauration invalide ; récupération automatique refusée.")

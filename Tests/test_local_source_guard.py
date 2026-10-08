@@ -1,0 +1,165 @@
+"""Storage must not hydrate evicted File Provider sources as a side effect."""
+import contextlib
+import hashlib
+from pathlib import Path
+import sys
+import tempfile
+from types import SimpleNamespace
+import unittest
+from unittest.mock import patch
+import zipfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'Sources/KataLog/Resources'))
+import analyzer
+import library_archives as archives
+import library_storage as storage
+import local_files
+
+
+class LocalSourceGuardTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix='katalog-local-source-')
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name).resolve()
+        self.library = self.root / 'library'
+        self.library.mkdir()
+        self.source = self.root / 'a-cloud.ulg'
+        self.payload = b'synthetic-preserved-source'
+        self.source.write_bytes(self.payload)
+        self.identity = hashlib.sha256(self.payload).hexdigest()
+        self.database = self.library / 'library.sqlite'
+        db = analyzer.open_database(self.database)
+        try:
+            analyzer.remember_log(db, analyzer.base_log(self.source, self.root, self.identity, len(self.payload)))
+            db.execute('INSERT INTO sources VALUES(?,?)', (self.identity, str(self.source)))
+            db.commit()
+        finally:
+            db.close()
+
+    @contextlib.contextmanager
+    def evicted(self, *paths):
+        paths = set(paths)
+        original_stat, original_open, original_copy = Path.stat, Path.open, storage.shutil.copyfile
+        attempts = []
+
+        def metadata(path, *args, **kwargs):
+            actual = original_stat(path, *args, **kwargs)
+            if path not in paths:
+                return actual
+            values = {name: getattr(actual, name) for name in dir(actual) if name.startswith('st_')}
+            values['st_flags'] = values.get('st_flags', 0) | 0x40000000
+            return SimpleNamespace(**values)
+
+        def open_local(path, *args, **kwargs):
+            if path in paths:
+                attempts.append(path)
+                raise AssertionError('Cloud source opened before the local guard')
+            return original_open(path, *args, **kwargs)
+
+        def copy_local(source, *args, **kwargs):
+            if Path(source) in paths:
+                attempts.append(source)
+                raise AssertionError('Cloud source copied before the local guard')
+            return original_copy(source, *args, **kwargs)
+
+        with patch.object(Path, 'stat', metadata), patch.object(Path, 'open', open_local), \
+             patch.object(storage.shutil, 'copyfile', copy_local), patch.object(sys, 'platform', 'darwin'):
+            yield
+        self.assertEqual(attempts, [])
+
+    def add_local_copy(self):
+        path = self.root / 'z-local.ulg'
+        path.write_bytes(self.payload)
+        db = analyzer.open_database(self.database)
+        try:
+            db.execute('INSERT INTO sources VALUES(?,?)', (self.identity, str(path)))
+            db.commit()
+        finally:
+            db.close()
+        return path
+
+    def test_both_hash_entry_points_refuse_before_open(self):
+        with self.evicted(self.source):
+            for digest in (analyzer.digest_file, storage.digest):
+                with self.subTest(digest=digest.__module__), self.assertRaisesRegex(OSError, 'Finder'):
+                    digest(self.source)
+
+    def test_archive_source_and_existing_target_refuse_before_copy_or_hash(self):
+        target = self.root / 'archive.ulg'
+        with self.evicted(self.source), self.assertRaisesRegex(OSError, 'Finder'):
+            archives.verified_archive_copy(self.source, target, self.identity)
+        self.assertFalse(target.exists())
+        target.write_bytes(self.payload)
+        with self.evicted(target), self.assertRaisesRegex(OSError, 'Finder'):
+            archives.verified_archive_copy(self.source, target, self.identity)
+        self.assertEqual(target.read_bytes(), self.payload)
+        self.assertEqual(list(self.root.glob('*.partial')), [])
+
+    def test_archive_uses_local_alias_and_keeps_originals(self):
+        local = self.add_local_copy()
+        destination = self.root / 'archive'
+        with self.evicted(self.source):
+            result = archives.archive_logs(self.database, self.library, destination, [self.identity])
+        self.assertEqual((result['completed'], result['failed']), (1, 0))
+        self.assertEqual((destination / (self.identity + '.ulg')).read_bytes(), self.payload)
+        self.assertEqual(local.read_bytes(), self.source.read_bytes())
+
+    def test_reassociate_reports_cloud_source_and_links_local_alias(self):
+        local = self.add_local_copy()
+        with self.evicted(self.source):
+            result = archives.reassociate(self.database, self.root)
+        self.assertEqual(result['matched'], 1)
+        self.assertEqual(len(result['errors']), 1)
+        self.assertIn('Finder', result['errors'][0])
+        self.assertEqual(local.read_bytes(), self.source.read_bytes())
+
+    def test_backup_records_unavailable_then_uses_local_alias(self):
+        destination = self.root / 'backup.zip'
+        with self.evicted(self.source):
+            result = storage.backup(self.library, destination, include_ulog=True)
+        self.assertEqual((result['archivedLogCount'], result['missingSourceCount']), (0, 1))
+        self.assertEqual(result['preflight']['missingSourceCount'], 1)
+        with zipfile.ZipFile(destination) as archive:
+            self.assertFalse(any(name.endswith('.ulg') for name in archive.namelist()))
+        self.add_local_copy()
+        with self.evicted(self.source):
+            result = storage.backup(self.library, destination, include_ulog=True)
+        self.assertEqual((result['archivedLogCount'], result['missingSourceCount']), (1, 0))
+        with zipfile.ZipFile(destination) as archive:
+            self.assertEqual(archive.read('ulogs/' + self.identity + '.ulg'), self.payload)
+        self.assertEqual(self.source.read_bytes(), self.payload)
+
+    def test_backup_refuses_evicted_configuration_and_database(self):
+        config = self.library / 'settings.json'
+        config.write_text('{"schemaVersion":1}')
+        destination = self.root / 'backup.zip'
+        with self.evicted(config), self.assertRaisesRegex(OSError, 'Finder'):
+            storage.backup(self.library, destination)
+        self.assertFalse(destination.exists())
+        with self.evicted(self.database), patch.object(storage.sqlite3, 'connect', side_effect=AssertionError('Must check before SQLite open')), self.assertRaisesRegex(OSError, 'Finder'):
+            storage.backup(self.library, destination)
+        self.assertFalse(destination.exists())
+
+    def test_missing_darwin_constant_still_refuses_placeholder(self):
+        with self.evicted(self.source), patch.object(local_files, 'stat_module', SimpleNamespace()), self.assertRaisesRegex(OSError, 'Finder'):
+            storage.digest(self.source)
+
+    def test_evicted_backup_and_cache_manifest_refused_before_read(self):
+        backup = self.root / 'backup.zip'
+        storage.backup(self.library, backup)
+        target = self.root / 'new-library'
+        with self.evicted(backup):
+            for action in (lambda: storage.inspect_backup(backup), lambda: storage.restore(backup, target)):
+                with self.assertRaisesRegex(OSError, 'Finder'):
+                    action()
+        self.assertFalse(target.exists())
+        recovery = self.root / 'cache-recovery'
+        recovery.mkdir()
+        manifest = recovery / 'manifest.json'
+        manifest.write_text('{}')
+        with self.evicted(manifest), self.assertRaisesRegex(OSError, 'Finder'):
+            archives.restore_detail_cache(self.database, recovery)
+
+
+if __name__ == '__main__':
+    unittest.main()

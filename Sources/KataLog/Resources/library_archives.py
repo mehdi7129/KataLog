@@ -18,6 +18,7 @@ import uuid
 import analyzer
 import library_repository
 from library_storage import atomic_json, digest
+from local_files import require_local_source
 
 SHA = re.compile(r'[a-f0-9]{64}')
 SPACE_RESERVE = 16 * 1024 * 1024
@@ -47,7 +48,7 @@ def verified_archive_copy(source, target, identity, expected_signature=None, on_
         if expected_signature is not None and target.stat().st_size != expected_signature[0]:
             raise ValueError('La taille de l’archive ne correspond pas à la source préparée.')
         return True
-    before = source.stat()
+    before = require_local_source(source)
     if source.is_symlink() or not stat.S_ISREG(before.st_mode):
         raise ValueError('La source d’archive doit être un fichier régulier.')
     if expected_signature is not None and analyzer.stat_signature(before) != expected_signature:
@@ -227,6 +228,7 @@ def recover_archive(database, library):
     journal = root / '.archive-journal.json'
     if not journal.exists():
         return {'archiveVersion': 1, 'recovered': False, 'completed': 0, 'interrupted': 0}
+    require_local_source(journal)
     state = json.loads(journal.read_bytes())
     if state.get('archiveVersion') != 1 or not isinstance(state.get('jobs'), list):
         raise ValueError('Journal d’archivage invalide.')
@@ -366,6 +368,7 @@ def clean_detail_cache(database, library, log_ids):
 
 def restore_detail_cache(database, recovery_directory):
     root = Path(recovery_directory).resolve()
+    require_local_source(root / 'manifest.json')
     manifest = json.loads((root / 'manifest.json').read_bytes())
     target = root / 'details.sqlite'
     if manifest.get('cacheRecoveryVersion') != 1 or target.is_symlink() or digest(target) != manifest.get('sha256'):
