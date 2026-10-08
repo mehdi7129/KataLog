@@ -111,6 +111,70 @@ final class GCSQueueRepositoryTests: XCTestCase {
         assertProgressEqual(try repository.batchProgress(id: "huge"), GCSBatchProgress(transfers: [hugeA, hugeB]))
     }
 
+    func testEveryStateAndPhaseKeepsItsCategoriesAndProgressInSQLiteAndJSON() throws {
+        let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("queue.sqlite")
+        let repository = try GCSQueueRepository(url: url)
+        let states = [
+            ("queued", "pending"), ("retrying", "pending"),
+            ("downloading", "active"), ("importing", "active"),
+            ("downloaded", "success"), ("complete", "success"),
+            ("failed", "failed"), ("interrupted", "failed"), ("stopped", "stopped"),
+            ("future' OR 1=1;--", "unknown"), ("", "unknown")
+        ]
+        let phases: [(String?, Double)] = [
+            (nil, 0.4), ("drone", 0.15), ("http", 0.7), ("verification", 0.4),
+            ("verified", 0.4), ("import", 0.4), ("future-phase", 0.4), ("", 0.4)
+        ]
+        XCTAssertEqual(Set(GCSTransferState.allCases.map(\.rawValue)), Set(states.filter { $0.1 != "unknown" }.map(\.0)))
+        XCTAssertEqual(Set(GCSTransferPhase.allCases.map(\.rawValue)), ["drone", "http", "verification", "verified", "import"])
+        var items: [GCSTransfer] = []
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        for (state, category) in states {
+            for (phase, partialWork) in phases {
+                var item = job(items.count, state: state, batch: "case-\(items.count)")
+                item.phase = phase; item.phaseBytes = 30; item.phaseTotal = 100; item.completedBytes = 40
+                let memory = GCSBatchProgress(transfers: [item])
+                XCTAssertEqual(item.isPending, category == "pending")
+                XCTAssertEqual(item.isActive, category == "active")
+                XCTAssertEqual(item.isSuccessful, category == "success")
+                XCTAssertEqual(memory.completedCount, category == "success" ? 1 : 0)
+                XCTAssertEqual(memory.failedCount, category == "failed" ? 1 : 0)
+                XCTAssertEqual(memory.stoppedCount, category == "stopped" ? 1 : 0)
+                let expectedWork = category == "success" ? 1 : (category == "pending" ? 0 : partialWork)
+                XCTAssertEqual(memory.fraction, expectedWork, accuracy: 0.000001)
+                items.append(item)
+            }
+        }
+        try repository.saveTransfers(items)
+        let reopened = try GCSQueueRepository(url: url, readOnly: true)
+        for item in items {
+            assertProgressEqual(try reopened.batchProgress(id: try XCTUnwrap(item.batchID)), GCSBatchProgress(transfers: [item]))
+            let restored = try XCTUnwrap(reopened.transfer(id: item.id))
+            XCTAssertEqual(try encoder.encode(restored), try encoder.encode(item), "Raw states/phases, including unknown values, must round-trip without normalization.")
+        }
+        let retryable = items.filter { ["failed", "interrupted", "stopped"].contains($0.state) }
+        XCTAssertEqual(try reopened.retryableTransfers().map(\.id), retryable.map(\.id))
+        XCTAssertEqual(try reopened.retryableCount(authorizedUUIDs: Set(items.map(\.droneUUID))), retryable.count)
+        XCTAssertEqual(try reopened.retainedTransfers(terminalLimit: 0).map(\.id), items.filter { $0.isPending || $0.isActive }.map(\.id))
+    }
+
+    func testUnknownLegacyStringsAndMissingPhasePreserveExactJSONFields() throws {
+        for phase in [nil, "future-transport"] as [String?] {
+            var fields: [String: Any] = [
+                "id": "legacy", "droneUUID": "0102030405060708090A0B0C", "remotePath": "/legacy.ulg",
+                "size": 100, "host": "gcs.local", "destination": "/tmp/collection",
+                "completedBytes": 40, "state": "future-state"
+            ]
+            if let phase { fields["phase"] = phase }
+            var item = try JSONDecoder().decode(GCSTransfer.self, from: JSONSerialization.data(withJSONObject: fields))
+            item.recoverAfterRelaunch()
+            let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(item)) as? NSDictionary)
+            XCTAssertEqual(encoded, fields as NSDictionary)
+            XCTAssertEqual(item.workFraction, 0.4)
+        }
+    }
+
     func testSuccessfulAndQueuedHistoryAggregateDoesNotReadTheirPayloadsOrMigrateSchema() throws {
         let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("queue.sqlite")

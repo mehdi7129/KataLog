@@ -2,6 +2,31 @@ import XCTest
 @testable import KataLogCore
 
 final class GCSModelsTests: XCTestCase {
+    func testPhaseTransitionsPreserveLegacyScaleAndIgnoreUnknownOrDelayedEvents() {
+        for phase in [nil, "drone", "http", "verification", "verified", "import", "future-phase"] as [String?] {
+            var item = GCSTransfer(droneUUID: "0102030405060708090A0B0C", remotePath: "/log.ulg", size: 100,
+                                   host: "gcs.local", destination: "/tmp")
+            item.state = "downloading"; item.phase = phase
+            item.phaseBytes = 30; item.phaseTotal = 100; item.completedBytes = 40
+            item.receiveProgress(phase: "future-phase", bytes: 90, total: 100)
+            XCTAssertEqual(item.phase, phase)
+            XCTAssertEqual(item.phaseBytes, 30)
+            XCTAssertEqual(item.completedBytes, 40)
+            item.receiveProgress(phase: "drone", bytes: 20, total: 100)
+            if ["http", "verification", "verified", "import"].contains(phase ?? "") {
+                XCTAssertEqual(item.phase, phase)
+                XCTAssertEqual(item.phaseBytes, 30)
+            } else {
+                XCTAssertEqual(item.phase, "drone")
+                XCTAssertEqual(item.phaseBytes, phase == "drone" ? 30 : 20)
+            }
+            item.receiveProgress(phase: nil, bytes: 50, total: 100)
+            XCTAssertNil(item.phase)
+            XCTAssertEqual(item.completedBytes, 50)
+            XCTAssertEqual(item.workFraction, 0.5)
+        }
+    }
+
     func testGlobalProgressAdvancesAcrossBothTransportPhasesWithoutCountingDroneBytesAsMacBytes() throws {
         var item = GCSTransfer(droneUUID: "0102030405060708090A0B0C", remotePath: "/fs/microsd/log/log.ulg", size: 64,
                                host: "localhost", destination: "/private/tmp")

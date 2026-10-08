@@ -14,6 +14,20 @@ public final class GCSQueueRepository: @unchecked Sendable {
     private let readOnly: Bool
     private let encoder: JSONEncoder
     private let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+    private static let pendingStates = states(in: .pending)
+    private static let activeStates = states(in: .active)
+    private static let successfulStates = states(in: .successful)
+    private static let failedStates = states(in: .failed)
+    private static let stoppedStates = states(in: .stopped)
+    private static let retainedStates = states(in: .pending, .active)
+    private static let retryableStates = states(in: .failed, .stopped)
+
+    /// Only closed enum constants become SQL syntax; persisted/user values are
+    /// still bound parameters. Swift predicates and SQL use the same categories.
+    private static func states(in categories: GCSTransferState.Category...) -> String {
+        GCSTransferState.allCases.filter { categories.contains($0.category) }
+            .map { "'\($0.rawValue)'" }.joined(separator: ",")
+    }
 
     public init(url: URL, readOnly: Bool = false) throws {
         self.readOnly = readOnly
@@ -110,7 +124,7 @@ public final class GCSQueueRepository: @unchecked Sendable {
 
     public func retainedTransfers(terminalLimit: Int = 200) throws -> [GCSTransfer] {
         lock.lock(); defer { lock.unlock() }
-        let statement = try prepare("SELECT payload FROM transfers WHERE state IN ('queued','retrying','downloading','importing') OR remote_busy_until > ? OR id IN (SELECT id FROM transfers WHERE state NOT IN ('queued','retrying','downloading','importing') ORDER BY position DESC LIMIT ?) ORDER BY position")
+        let statement = try prepare("SELECT payload FROM transfers WHERE state IN (\(Self.retainedStates)) OR remote_busy_until > ? OR id IN (SELECT id FROM transfers WHERE state NOT IN (\(Self.retainedStates)) ORDER BY position DESC LIMIT ?) ORDER BY position")
         defer { sqlite3_finalize(statement) }
         sqlite3_bind_double(statement, 1, Date().timeIntervalSince1970)
         sqlite3_bind_int(statement, 2, Int32(max(0, min(terminalLimit, 1_000))))
@@ -122,7 +136,7 @@ public final class GCSQueueRepository: @unchecked Sendable {
         if authorizedUUIDs?.isEmpty == true { return [] }
         let ids = authorizedUUIDs?.sorted()
         let filter = ids.map { " AND uuid IN (" + Array(repeating: "?", count: $0.count).joined(separator: ",") + ")" } ?? ""
-        let statement = try prepare("SELECT payload FROM transfers WHERE state IN ('failed','interrupted','stopped')" + filter + " ORDER BY position")
+        let statement = try prepare("SELECT payload FROM transfers WHERE state IN (\(Self.retryableStates))" + filter + " ORDER BY position")
         defer { sqlite3_finalize(statement) }
         for (index, id) in (ids ?? []).enumerated() { bind(id, at: Int32(index + 1), to: statement) }
         return try rows(statement)
@@ -133,7 +147,7 @@ public final class GCSQueueRepository: @unchecked Sendable {
         guard !authorizedUUIDs.isEmpty else { return 0 }
         let ids = authorizedUUIDs.sorted()
         let placeholders = Array(repeating: "?", count: ids.count).joined(separator: ",")
-        let statement = try prepare("SELECT COUNT(*) FROM transfers WHERE state IN ('failed','interrupted','stopped') AND uuid IN (\(placeholders))")
+        let statement = try prepare("SELECT COUNT(*) FROM transfers WHERE state IN (\(Self.retryableStates)) AND uuid IN (\(placeholders))")
         defer { sqlite3_finalize(statement) }
         for (index, id) in ids.enumerated() { bind(id, at: Int32(index + 1), to: statement) }
         guard sqlite3_step(statement) == SQLITE_ROW else { throw AnalysisError.engine("Impossible de compter les fichiers à relancer.") }
@@ -187,23 +201,23 @@ public final class GCSQueueRepository: @unchecked Sendable {
         // SQLite reads the existing phase fields without materializing the history in Swift.
         // This keeps the v1 schema/settings and read-only backup compatibility intact.
         let statement = try prepare("""
-            SELECT COUNT(*),COALESCE(SUM(state IN ('downloaded','complete')),0),
-                   COALESCE(SUM(state IN ('failed','interrupted')),0),
-                   COALESCE(SUM(state IN ('downloading','importing')),0),
-                   COALESCE(SUM(state IN ('queued','retrying')),0),COALESCE(SUM(state='stopped'),0),
+            SELECT COUNT(*),COALESCE(SUM(state IN (\(Self.successfulStates))),0),
+                   COALESCE(SUM(state IN (\(Self.failedStates))),0),
+                   COALESCE(SUM(state IN (\(Self.activeStates))),0),
+                   COALESCE(SUM(state IN (\(Self.pendingStates))),0),COALESCE(SUM(state IN (\(Self.stoppedStates))),0),
                    COALESCE(SUM(CAST(size AS REAL)),0),COALESCE(SUM(CAST(completed_bytes AS REAL)),0),
                    COALESCE(SUM(CAST(size AS REAL) * (
-                       CASE WHEN state IN ('downloaded','complete') THEN 1.0
-                            WHEN state IN ('queued','retrying') OR size <= 0 THEN 0.0
+                       CASE WHEN state IN (\(Self.successfulStates)) THEN 1.0
+                            WHEN state IN (\(Self.pendingStates)) OR size <= 0 THEN 0.0
                             ELSE MIN(0.99, MAX(0.0,
                                 CASE json_extract(CAST(payload AS TEXT),'$.phase')
-                                WHEN 'drone' THEN 0.5 *
+                                WHEN '\(GCSTransferPhase.drone.rawValue)' THEN 0.5 *
                                     CASE WHEN json_extract(CAST(payload AS TEXT),'$.phaseTotal') > 0
                                          THEN MIN(1.0, MAX(0.0, COALESCE(
                                              CAST(json_extract(CAST(payload AS TEXT),'$.phaseBytes') AS REAL) /
                                              CAST(json_extract(CAST(payload AS TEXT),'$.phaseTotal') AS REAL),0.0)))
                                          ELSE 0.0 END
-                                WHEN 'http' THEN 0.5 + 0.5 * MIN(1.0,MAX(0.0,CAST(completed_bytes AS REAL)/size))
+                                WHEN '\(GCSTransferPhase.http.rawValue)' THEN 0.5 + 0.5 * MIN(1.0,MAX(0.0,CAST(completed_bytes AS REAL)/size))
                                 ELSE MIN(1.0,MAX(0.0,CAST(completed_bytes AS REAL)/size)) END)) END
                    )),0)
             FROM transfers WHERE batch_id=?
