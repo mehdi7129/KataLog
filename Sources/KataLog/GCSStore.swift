@@ -104,7 +104,7 @@ final class GCSStore: ObservableObject {
         return cachedFileCount > 0 && allPreviewFilesPresent && !isScanningFleet && !hasIncompleteInventory ? 1 : 0
     }
     var isReadOnly: Bool { library?.isReadOnly == true }
-    var isMaintenanceBlocked: Bool { library?.isMaintainingLibrary == true }
+    var isMaintenanceBlocked: Bool { startupStorageDeferred || library?.isStartupBlocked == true || library?.isMaintainingLibrary == true }
     /// Discovery is limited to the connected GCS. Explicit bulk collection also
     /// registers its new UUIDs; assigning a stock number is a separate operation.
     var collectableDrones: [GCSDrone] { drones.filter { GCSIdentity.isValid($0.uuid) && $0.isOnline && $0.armed != true } }
@@ -160,6 +160,7 @@ final class GCSStore: ObservableObject {
     private var pendingAttachmentReconnect = false
     private var connectedHost: String?
     private var lastSave = Date.distantPast
+    private var startupStorageDeferred = false
 
     init(storageDirectory: URL? = nil, collector: URL? = nil,
          snapshot: (() -> FleetSnapshot)? = nil,
@@ -173,6 +174,7 @@ final class GCSStore: ObservableObject {
         directoryIssueOverride = directoryIssue
         let base = previewConfiguration.libraryDirectory(storageDirectory: storageDirectory,
                                                         applicationSupportDirectory: applicationSupportDirectory)
+        startupStorageDeferred = LibraryStorageService.hasPendingRestore(in: base)
         stateURL = base.appendingPathComponent("gcs-settings.json")
         legacyStateURL = base.appendingPathComponent("gcs-collection.json")
         queueDatabaseURL = base.appendingPathComponent("gcs-queue.sqlite")
@@ -180,7 +182,7 @@ final class GCSStore: ObservableObject {
         initialDestination = FileManager.default.fileExists(atPath: inputStateURL.path) ? nil : base.appendingPathComponent("Collected Logs")
         var state = GCSCollectionState(downloadDirectory: base.appendingPathComponent("Collected Logs").path)
         var loadError: String?
-        if FileManager.default.fileExists(atPath: inputStateURL.path) {
+        if !startupStorageDeferred, FileManager.default.fileExists(atPath: inputStateURL.path) {
             do {
                 let saved = try JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: inputStateURL))
                 guard saved.schemaVersion == 1 else { throw AnalysisError.schema(saved.schemaVersion) }
@@ -194,8 +196,8 @@ final class GCSStore: ObservableObject {
         host = state.host
         collectionClientID = state.collectionClientID
         allowedUUIDs = Set(state.allowedUUIDs.filter(GCSIdentity.isValid).map { $0.uppercased() })
-        if let saved = try? JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: legacyStateURL)) { legacyTransfers = saved.queue }
-        if FileManager.default.fileExists(atPath: queueDatabaseURL.path) {
+        if !startupStorageDeferred, let saved = try? JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: legacyStateURL)) { legacyTransfers = saved.queue }
+        if !startupStorageDeferred, FileManager.default.fileExists(atPath: queueDatabaseURL.path) {
             do {
                 let repository = try GCSQueueRepository(url: queueDatabaseURL, readOnly: true)
                 if try repository.hasMigratedLegacy { state.queue = try repository.retainedTransfers() }
@@ -262,6 +264,10 @@ final class GCSStore: ObservableObject {
         library.didRestoreLibrary = { [weak self] in try self?.reloadPersistedStateAfterRestore() }
         library.resetCollectionState = { [weak self] in try self?.resetForApplication() }
         library.clientDidDelete = { [weak self] id in try await self?.removeClientAttribution(id) }
+        if !library.isStartupBlocked && (startupStorageDeferred || library.recoveredAtStartup) {
+            do { try reloadPersistedStateAfterRestore() }
+            catch { errorMessage = error.localizedDescription }
+        }
         recordFleetObservations([])
         // A first launch can attach while the index is being prepared. Preserve
         // this pending initialization so the app-owned destination and queue are
@@ -325,7 +331,7 @@ final class GCSStore: ObservableObject {
         queueStorageIssue = "La file de collecte restaurée n’a pas encore été vérifiée."
         queue = []; rebuildQueueIndexes(); legacyTransfers = []; dirtyTransferIDs = []; configurationDirty = false
         isQueuePaused = true
-        do { try loadRestoredCollectionState() }
+        do { try loadRestoredCollectionState(); startupStorageDeferred = false }
         catch {
             queueRepository = nil; repositoryWritable = false
             queue = []; rebuildQueueIndexes(); legacyTransfers = []; dirtyTransferIDs = []; configurationDirty = false

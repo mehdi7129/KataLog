@@ -15,6 +15,9 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var isExporting = false
     @Published private(set) var isReadOnly = false
     @Published private(set) var isMaintainingLibrary = false
+    @Published private(set) var isStartupBlocked = false
+    private(set) var recoveredAtStartup = false
+    private var startupRecoveryTask: Task<Void, Never>?
     @Published private(set) var historyPage: LibraryLogPage?
     @Published private(set) var currentHistoryCursor: String?
     @Published private(set) var groupPage: LibraryGroupPage?
@@ -100,17 +103,21 @@ final class LibraryStore: ObservableObject {
             .contains(where: { $0.processIdentifier != getpid() && !$0.isTerminated }) {
             writable = false
         }
+        // Check under the acquired lease: a previous writer may have left its
+        // recovery journal just before releasing the library.
+        let pendingRestore = LibraryStorageService.hasPendingRestore(in: base)
+        isStartupBlocked = pendingRestore
         isReadOnly = !writable
         diagnostics = DiagnosticJournal(directory: base.appendingPathComponent("Diagnostics", isDirectory: true), configuration: .init(persistent: writable))
-        diagnostics.record(.appStarted)
+        if !pendingRestore { diagnostics.record(.appStarted) }
         if !writable { statusMessage = "Bibliothèque en lecture seule. Fermez l’autre instance de KataLog puis relancez l’app pour modifier ou collecter." }
         annotations = DroneAnnotationStore(url: base.appendingPathComponent("annotations.json"), canWrite: writable)
         views = LibraryViewStore(url: base.appendingPathComponent("views.json"), canWrite: writable)
         databaseURL = base.appendingPathComponent("library.sqlite")
         snapshotURL = base.appendingPathComponent("library.json")
         progressURL = base.appendingPathComponent("progress.json")
-        annotations.canMutate = { [weak self] in self?.isMaintainingLibrary == false }
-        views.canMutate = { [weak self] in self?.isMaintainingLibrary == false }
+        annotations.canMutate = { [weak self] in self?.isMaintainingLibrary == false && self?.isStartupBlocked == false }
+        views.canMutate = { [weak self] in self?.isMaintainingLibrary == false && self?.isStartupBlocked == false }
         annotationSubscription = annotations.$state.dropFirst().sink { [weak self] state in
             guard let self else { return }
             self.snapshot = state.applying(to: self.snapshot)
@@ -131,11 +138,48 @@ final class LibraryStore: ObservableObject {
                 self.loadHistory()
             }
         }
-        reload()
+        if isStartupBlocked { recoverStartup() } else { reload() }
+    }
+
+    /// No query, migration or collector write may interpret a partial swap as
+    /// an empty library. The existing writer lease is inherited by the helper.
+    private func recoverStartup() {
+        guard !isReadOnly else {
+            errorMessage = "Une restauration interrompue doit être récupérée par l’instance qui détient la bibliothèque. Fermez les autres instances puis relancez KataLog."
+            return
+        }
+        guard let engine = availableEngineURL else {
+            isReadOnly = true
+            errorMessage = "La restauration interrompue ne peut pas être récupérée : moteur d’analyse absent. La bibliothèque reste bloquée ; relancez KataLog après réparation."
+            return
+        }
+        isMaintainingLibrary = true
+        statusMessage = "Récupération de la restauration interrompue…"
+        startupRecoveryTask = Task { [weak self] in
+            guard let self else { return }
+            defer { isMaintainingLibrary = false; startupRecoveryTask = nil }
+            do {
+                let result = try await LibraryStorageService.recoverRestore(library: storageDirectory, engine: engine)
+                guard result["restoreVersion"]?.countValue == 1, result["recovered"] == .bool(true),
+                      !LibraryStorageService.hasPendingRestore(in: storageDirectory) else {
+                    throw AnalysisError.engine("La récupération n’a pas confirmé un état complet.")
+                }
+                annotations.reload(); views.reload()
+                try didRestoreLibrary()
+                recoveredAtStartup = true; isStartupBlocked = false
+                diagnostics.record(.appStarted)
+                statusMessage = "Bibliothèque récupérée après une restauration interrompue. Les fichiers de récupération sont conservés."
+                isMaintainingLibrary = false
+                reload()
+            } catch {
+                isReadOnly = true; statusMessage = nil
+                errorMessage = "La restauration interrompue n’a pas pu être récupérée : \(error.localizedDescription) La bibliothèque reste bloquée ; ses fichiers sont conservés. Relancez KataLog après réparation."
+            }
+        }
     }
 
     func reload() {
-        guard !isMaintainingLibrary, !isImporting else { return }
+        guard !isStartupBlocked, !isMaintainingLibrary, !isImporting else { return }
         invalidateNavigationCache()
         if usesPagedNavigation { loadHistory(); return }
         let token = UUID(); loadToken = token
@@ -245,6 +289,7 @@ final class LibraryStore: ObservableObject {
     }
 
     func loadFlight(_ log: FlightLog) {
+        guard !isStartupBlocked else { return }
         flightTask?.cancel()
         let token = UUID(); flightToken = token
         selectedFlight = annotations.state.applying(to: log, relatedLogs: snapshot.logs); isLoadingFlight = true; flightError = nil
@@ -311,6 +356,7 @@ final class LibraryStore: ObservableObject {
         diagnosticStore.prepareForTermination()
         if !diagnosticStopRecorded { diagnostics.record(.appStopped); diagnostics.flush(); diagnosticStopRecorded = true }
         cancelImport(); exportTask?.cancel(); queryTask?.cancel(); flightTask?.cancel(); reloadTask?.cancel()
+        startupRecoveryTask?.cancel()
         clients.cancelRead()
         progressTask?.cancel(); queryToken = UUID(); flightToken = UUID(); loadToken = UUID()
         isQuerying = false; isCancellingQuery = false; isLoading = false; isLoadingFlight = false
@@ -355,6 +401,7 @@ final class LibraryStore: ObservableObject {
     /// A single export captures one immutable annotated revision. The final file
     /// is only replaced after rendering and a final cancellation check.
     func export(to url: URL, html: Bool, selection: FleetSnapshot? = nil) async throws {
+        guard !isStartupBlocked else { throw AnalysisError.engine(errorMessage ?? "La restauration de la bibliothèque est en cours.") }
         if usesPagedNavigation && selection == nil {
             _ = try await exportReport(to: url, mode: .full, options: .init(format: html ? .html : .json))
             return
@@ -757,6 +804,7 @@ final class LibraryStore: ObservableObject {
     }
 
     func openFlightWindow(_ log: FlightLog) {
+        guard !isStartupBlocked else { return }
         FlightWindowCoordinator.shared.open(log: log, library: self)
     }
 
@@ -825,6 +873,10 @@ final class LibraryStore: ObservableObject {
     }
 
     var engineURL: URL? {
+        isStartupBlocked ? nil : availableEngineURL
+    }
+
+    private var availableEngineURL: URL? {
         if let engineOverride { return engineOverride }
         if let url = Bundle.main.url(forResource: "analyzer", withExtension: "py") { return url }
         #if SWIFT_PACKAGE
