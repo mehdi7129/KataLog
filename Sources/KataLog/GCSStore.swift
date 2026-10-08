@@ -104,7 +104,7 @@ final class GCSStore: ObservableObject {
         return cachedFileCount > 0 && allPreviewFilesPresent && !isScanningFleet && !hasIncompleteInventory ? 1 : 0
     }
     var isReadOnly: Bool { library?.isReadOnly == true }
-    var isMaintenanceBlocked: Bool { startupStorageDeferred || library?.isStartupBlocked == true || library?.isMaintainingLibrary == true }
+    var isMaintenanceBlocked: Bool { isReconcilingClients || startupStorageDeferred || library?.isStartupBlocked == true || library?.isMaintainingLibrary == true }
     /// Discovery is limited to the connected GCS. Explicit bulk collection also
     /// registers its new UUIDs; assigning a stock number is a separate operation.
     var collectableDrones: [GCSDrone] { drones.filter { GCSIdentity.isValid($0.uuid) && $0.isOnline && $0.armed != true } }
@@ -161,6 +161,8 @@ final class GCSStore: ObservableObject {
     private var connectedHost: String?
     private var lastSave = Date.distantPast
     private var startupStorageDeferred = false
+    private var isReconcilingClients = false
+    private var reconciledClientIDs: Set<String>?
 
     init(storageDirectory: URL? = nil, collector: URL? = nil,
          snapshot: (() -> FleetSnapshot)? = nil,
@@ -258,12 +260,13 @@ final class GCSStore: ObservableObject {
     func attach(library: LibraryStore) {
         guard self.library == nil else { return }
         self.library = library
-        library.hasExternalActivity = { [weak self] in self?.isBusy == true }
+        library.hasExternalActivity = { [weak self] in self?.isBusy == true || self?.isReconcilingClients == true }
         library.willMaintainLibrary = { [weak self] in try self?.flushPersistedStateForMaintenance() }
         library.willRestoreLibrary = { [weak self] in try self?.preparePersistedStorageForRestore() }
         library.didRestoreLibrary = { [weak self] in try self?.reloadPersistedStateAfterRestore() }
         library.resetCollectionState = { [weak self] in try self?.resetForApplication() }
         library.clientDidDelete = { [weak self] id in try await self?.removeClientAttribution(id) }
+        library.clientProfilesDidLoad = { [weak self] ids in try await self?.reconcileClientAttributions(validIDs: ids) }
         if !library.isStartupBlocked && (startupStorageDeferred || library.recoveredAtStartup) {
             do { try reloadPersistedStateAfterRestore() }
             catch { errorMessage = error.localizedDescription }
@@ -287,6 +290,7 @@ final class GCSStore: ObservableObject {
         }
         pendingAttachmentReconnect = reconnect && !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         reconnectAfterAttachmentIfReady()
+        library.clients.reloadIfNeeded(refresh: true)
     }
 
     private func reconnectAfterAttachmentIfReady() {
@@ -306,6 +310,32 @@ final class GCSStore: ObservableObject {
             queue[index].clientID = nil; dirtyTransferIDs.insert(queue[index].id)
         }
         if collectionClientID == id { collectionClientID = ""; configurationDirty = true }
+    }
+
+    private func reconcileClientAttributions(validIDs: Set<String>) async throws {
+        guard reconciledClientIDs != validIDs else { return }
+        guard !isReadOnly, !isBusy, !isMaintenanceBlocked else {
+            throw AnalysisError.engine("Arrêtez la collecte et attendez la fin de la maintenance avant de recharger les clients.")
+        }
+        if let queueStorageIssue { throw AnalysisError.engine(queueStorageIssue) }
+        isReconcilingClients = true
+        defer { isReconcilingClients = false }
+        try prepareQueueStorage()
+        if let repository = queueRepository {
+            try await Task.detached { try repository.reconcileClientAttributions(validIDs: validIDs) }.value
+        }
+        for index in queue.indices {
+            if let id = queue[index].clientID, !validIDs.contains(id) {
+                queue[index].clientID = nil; dirtyTransferIDs.insert(queue[index].id)
+            }
+        }
+        if let id = collectionClientID, !id.isEmpty, !validIDs.contains(id) {
+            collectionClientID = ""; configurationDirty = true
+        }
+        // No suspension between releasing our gate and this synchronous save.
+        isReconcilingClients = false
+        try saveState()
+        reconciledClientIDs = validIDs
     }
 
     /// Called before the maintenance flag is raised, so backups include the latest discovery settings.
@@ -342,6 +372,7 @@ final class GCSStore: ObservableObject {
     }
 
     private func loadRestoredCollectionState() throws {
+        reconciledClientIDs = nil
         drones = []; selectedUUID = nil; files = []; selectedFileIDs = []; knownAnalysisHashes = []
         queueRepository = nil; repositoryWritable = false
         let input = FileManager.default.fileExists(atPath: stateURL.path) ? stateURL : legacyStateURL

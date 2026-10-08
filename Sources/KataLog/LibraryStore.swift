@@ -67,6 +67,7 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var mapProximity: GeographicProximity?
     var resetCollectionState: () throws -> Void = {}
     var clientDidDelete: (String) async throws -> Void = { _ in }
+    var clientProfilesDidLoad: (Set<String>) async throws -> Void = { _ in }
     private var annotationSubscription: AnyCancellable?
     private let engineOverride: URL?
     private let snapshotURL: URL
@@ -361,7 +362,7 @@ final class LibraryStore: ObservableObject {
         progressTask?.cancel(); queryToken = UUID(); flightToken = UUID(); loadToken = UUID()
         isQuerying = false; isCancellingQuery = false; isLoading = false; isLoadingFlight = false
     }
-    var hasActiveWork: Bool { activeDetailLoads > 0 || isImporting || isExporting || isMaintainingLibrary || isQuerying || isLoading || isLoadingFlight || diagnosticStore.isLoading || diagnosticStore.isFetchingGCS || diagnosticStore.isExporting }
+    var hasActiveWork: Bool { hasExternalActivity() || activeDetailLoads > 0 || isImporting || isExporting || isMaintainingLibrary || isQuerying || isLoading || isLoadingFlight || diagnosticStore.isLoading || diagnosticStore.isFetchingGCS || diagnosticStore.isExporting }
 
     func revealSource(_ path: String) {
         guard FileManager.default.fileExists(atPath: path) else { errorMessage = "Le fichier source n’est plus présent : \(path)"; return }

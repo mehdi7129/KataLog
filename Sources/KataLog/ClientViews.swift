@@ -207,10 +207,11 @@ struct ClientManagementView: View {
         Task {
             do {
                 try await clients.remove(id: client.id)
-                if library.views.state.activeScope.clientID == client.id { try library.views.chooseClient("") }
-                if editingID == client.id { editingID = nil; name = "" }
                 error = nil
             } catch { self.error = error.localizedDescription }
+            if editingID == client.id, !clients.profiles.contains(where: { $0.id == client.id }) {
+                editingID = nil; name = ""
+            }
         }
     }
 }

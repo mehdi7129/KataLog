@@ -18,6 +18,27 @@ final class GCSQueueRepositoryTests: XCTestCase {
         return item
     }
 
+    func testClientReconciliationCoversHistoryIsIdempotentAndRefusesReaders() throws {
+        let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("queue.sqlite")
+        let repository = try GCSQueueRepository(url: url)
+        let jobs = (0..<700).map { index in
+            var item = job(index); item.clientID = index % 2 == 0 ? "deleted" : "retained"; return item
+        }
+        try repository.saveTransfers(jobs)
+        let reader = try GCSQueueRepository(url: url, readOnly: true)
+        XCTAssertThrowsError(try reader.reconcileClientAttributions(validIDs: ["retained"]))
+        XCTAssertEqual(try reader.transfer(id: jobs[0].id)?.clientID, "deleted")
+        for _ in 0..<2 { try repository.reconcileClientAttributions(validIDs: ["retained"]) }
+        for item in jobs {
+            XCTAssertEqual(try reader.transfer(id: item.id)?.clientID, item.clientID == "deleted" ? nil : "retained")
+        }
+        XCTAssertEqual(try reader.transferCount(), 700)
+        let manyClients = Set((0..<40_000).map { "valid-\($0)" }).union(["retained"])
+        try repository.reconcileClientAttributions(validIDs: manyClients)
+        XCTAssertEqual(try reader.transfer(id: jobs[1].id)?.clientID, "retained")
+    }
+
     func testUpsertsOnlyChangedTransfersAndPersistsPhaseAcrossReopening() throws {
         let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("queue.sqlite")
