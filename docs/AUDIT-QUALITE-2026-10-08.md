@@ -738,6 +738,67 @@ chaque diff doit montrer ce qui répare un bug et ce qui déplace du code à
 résultat identique. Garder le design bento, les seuils, les formats et les noms
 exposés aux utilisateurs. Mesurer les agrégats de carte avant d'ajouter des caches.
 
+## Développement du premier lot — 8 octobre 2026
+
+Le premier lot fait l’objet de six PR applicatives distinctes. Le petit correctif
+Q24 a été avancé en parallèle car il est indépendant. Les cases de suivi restent
+ouvertes : ces propositions ne sont pas encore fusionnées sur `main`.
+
+| Point | PR | Dépendance | Résultat proposé |
+| --- | --- | --- | --- |
+| Q01 | [#7](https://github.com/mehdi7129/KataLog/pull/7) | `main` | Publication atomique des changements de chaque import après validation de la source |
+| Q02 | [#12](https://github.com/mehdi7129/KataLog/pull/12) | #7 | Refus des sorties CLI/moteur qui remplaceraient une entrée ou des données de bibliothèque |
+| Q21 moteur | [#9](https://github.com/mehdi7129/KataLog/pull/9) | `main` | Récupération et rollback relançables, journal durable, originaux conservés |
+| Q21 démarrage | [#10](https://github.com/mehdi7129/KataLog/pull/10) | #9 | Récupération avant lecture/écriture de la bibliothèque ; rechargement des stores après succès |
+| Q22 | [#11](https://github.com/mehdi7129/KataLog/pull/11) | #10 | Restauration d’une archive valide avec conservation exacte de l’état actif corrompu |
+| Q24 | [#8](https://github.com/mehdi7129/KataLog/pull/8) | `main` | Diagnostic publié reconnu comme réussi malgré une annulation tardive |
+
+Ordre de fusion proposé : #7 puis #12 ; #9 puis #10 puis #11 ; #8 indépendante.
+Après fusion d’un parent, recaler la PR suivante sur `main` et valider son diff et
+sa CI avant intégration. Aucun changement de version, release ou installation
+n’accompagne ce lot.
+
+Les contre-tests de développement ont précisé les invariants Q21/Q22 : une
+connexion SQLite même en lecture seule peut modifier un SHM endommagé, et un hot
+journal `-journal` doit suivre sa base lors du remplacement. Les lectures
+préalables à une restauration se font donc sur une copie ; les octets actifs
+et ceux conservés dans la récupération restent intacts. Ces cas sont testés
+sur fixtures, dont un journal DELETE créé par SIGKILL, et ne constituent pas une
+qualification de panne matérielle.
+
+Validation du lot assemblé dans un worktree distinct (fixtures synthétiques,
+Python 3.13.15, NumPy 2.5.3, pyulog 1.2.4) :
+
+- **443 tests Python réussis sur 444 découverts**, zéro échec/erreur et un seul
+  skip attendu : corpus privé externe absent. Exécution sur `b8177de` ; le delta
+  suivant `6f27935` ne modifie que la construction des arguments côté Swift.
+- **366 tests Swift uniques validés**. Le premier gate complet sur `29acd97`
+  a donné 365 réussites et un timeout de 20 s dans un aperçu SwiftUI. Le seul
+  test concerné est repassé sans changement en 5,840 s ; le gate initial reste
+  donc enregistré comme échoué. Aucun skip, test de fenêtres natives exécuté.
+- Sur le code final `6f27935`, les **9 tests ciblés CLI et startup** repassent
+  après les derniers ajustements Python et la simplification d’une expression
+  Swift pour le compilateur du runner macOS 15.
+- **18 tests JavaScript de rapports réussis** ; garde de publication du lot :
+  **262 fichiers, aucun signalement**. Les données privées, le checkout local
+  de développement et l’app installée sont conservés.
+
+- **Packaging ad hoc réussi sur macOS 27.0.1 ARM64 : 6/6 catégories de
+  contrôle**, 15 modules Python embarqués vérifiés, 22 binaires natifs sans
+  dépendance externe, signature stricte, import/déduplication, sauvegarde,
+  restauration avec writer lease stable et collecte loopback synthétique.
+  Les deux collisions critiques (base et source ULog) sont aussi refusées par
+  le moteur réellement packagé ; l’empreinte du nouveau module correspond au
+  source final. Cette recette ne qualifie ni notarisation, ni installation,
+  ni flotte réelle ; les mises à jour de cette copie sont désactivées.
+
+Les PR #7 et #8 ont leurs quatre checks CI verts. Les corrections finales des
+PR #9–#12 relancent la matrice macOS 15/26 et packaging macOS 15/Xcode 27 ;
+consulter leurs checks au SHA courant avant fusion. Le premier passage Q02 a
+révélé une limite de type-check de l’ancien compilateur ; le tableau d’arguments
+explicite corrige l’expression et les tests CLI locaux passent, mais seul le
+nouveau passage CI qualifie ce compilateur.
+
 ## Reproductions minimales des trois P1
 
 Depuis la racine du commit audité, avec Python 3.13 et les dépendances runtime
