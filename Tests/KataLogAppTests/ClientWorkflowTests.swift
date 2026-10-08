@@ -21,6 +21,10 @@ final class ClientWorkflowTests: XCTestCase {
         XCTAssertFalse(library.isLoading || library.isQuerying || library.isMaintainingLibrary)
     }
     func testClientAttributionDuplicateBulkAssignmentAndBothResetsPreserveOriginals() async throws {
+        // Preserve the last operation even when XCTest attributes an escaped
+        // error to a different task's cancellation during teardown.
+        var phase = "fixture"
+        defer { print("CLIENT_WORKFLOW phase=\(phase) taskCancelled=\(Task.isCancelled)") }
         let root = try directory(), card = root.appendingPathComponent("Card"), base = root.appendingPathComponent("Library")
         try FileManager.default.createDirectory(at: card, withIntermediateDirectories: true)
         let source = card.appendingPathComponent("synthetic.ulg")
@@ -31,54 +35,72 @@ final class ClientWorkflowTests: XCTestCase {
         let original = try Data(contentsOf: source)
         let library = LibraryStore(storageDirectory: base, engine: project.appendingPathComponent("Sources/KataLog/Resources/analyzer.py"))
         defer { library.prepareForTermination() }
+        phase = "clients.create.first"
         let first = try await library.clients.create(name: "Client Alpha")
+        phase = "clients.create.second"
         let second = try await library.clients.create(name: "Client Beta")
+        phase = "import.first"
         let imported = try await library.importCollectedFolder(card, clientID: first.id)
         let id = try XCTUnwrap(imported.logs.first?.id)
         XCTAssertEqual(imported.logs.first?.clientID, first.id)
+        phase = "import.duplicate"
         let duplicate = try await library.importCollectedFolder(card, clientID: second.id)
         XCTAssertEqual(duplicate.logs.count, 1)
         XCTAssertEqual(duplicate.logs.first?.clientID, first.id, "A duplicate must not move to another client.")
         // An upgraded library has summaries but no complete spatial cache yet.
+        phase = "spatial.cache.clear"
         let legacy = Process(); legacy.executableURL = URL(fileURLWithPath: python)
         legacy.arguments = ["-B", "-c", "import sqlite3,sys;db=sqlite3.connect(sys.argv[1]);db.execute('DELETE FROM spatial_tracks');db.commit();db.close()", base.appendingPathComponent("library.sqlite").path]
         try legacy.run(); legacy.waitUntilExit(); XCTAssertEqual(legacy.terminationStatus, 0)
         let area = GeographicProximity(latitude: 1, longitude: 2, radiusMeters: 1_000)
+        phase = "map.online"
         library.loadMap(proximity: area); try await settle(library)
         XCTAssertNil(library.queryError)
         XCTAssertEqual(library.mapPage?.markers.map(\.id), [id])
         let offline = card.appendingPathComponent("synthetic.offline")
+        phase = "map.offline"
         try FileManager.default.moveItem(at: source, to: offline)
         defer { if FileManager.default.fileExists(atPath: offline.path) { try? FileManager.default.moveItem(at: offline, to: source) } }
         library.loadMap(proximity: area); try await settle(library)
         XCTAssertNil(library.queryError)
         XCTAssertEqual(library.mapPage?.markers.map(\.id), [id], "First search must persist complete tracks for later offline use.")
         try FileManager.default.moveItem(at: offline, to: source)
+        phase = "clients.assign"
         try await library.clients.assign(logIDs: [id], to: second.id)
+        phase = "settle.assigned"
         try await settle(library)
         XCTAssertEqual(library.snapshot.logs.first?.clientID, second.id)
+        phase = "settings"
         try library.views.chooseClient(second.id)
         try library.views.setTheme("light")
         try library.annotations.setStockNumber("123", forKey: "ulog:synthetic-controller")
+        phase = "gcs.attach"
         let gcs = GCSStore(storageDirectory: base); gcs.attach(library: library)
         defer { gcs.stopForTermination() }
         let collected = base.appendingPathComponent("Collected Logs/preserved.ulg")
         try FileManager.default.createDirectory(at: collected.deletingLastPathComponent(), withIntermediateDirectories: true)
         try original.write(to: collected)
         gcs.host = "synthetic-gcs.local"; gcs.chooseCollectionClient(second.id)
+        phase = "clients.create.temporary"
         let temporaryClient = try await library.clients.create(name: "Temporary client")
         let drone = "0102030405060708090A0B0C"
         gcs.setAllowed(uuid: drone, allowed: true)
         gcs.isQueuePaused = true
+        phase = "gcs.enqueue"
         _ = try await gcs.enqueue([.init(path: "/log/queued.ulg", size: 100)], uuid: drone,
             host: gcs.host, destination: gcs.downloadDirectory.path, clientID: temporaryClient.id)
         let queuedID = try XCTUnwrap(gcs.queue.first?.id)
+        phase = "clients.remove"
         try await library.clients.remove(id: temporaryClient.id)
+        phase = "settle.removed"
         try await settle(library)
         XCTAssertNil(gcs.queue.first?.clientID)
         let persisted = try GCSQueueRepository(url: base.appendingPathComponent("gcs-queue.sqlite"), readOnly: true)
         XCTAssertNil(try persisted.transfer(id: queuedID)?.clientID)
-        try await library.clearLibrary(); try await settle(library)
+        phase = "library.clear"
+        try await library.clearLibrary()
+        phase = "settle.cleared"
+        try await settle(library)
         XCTAssertTrue(library.snapshot.logs.isEmpty)
         XCTAssertEqual(library.views.state.theme, "light")
         XCTAssertEqual(library.views.state.activeScope.clientID, second.id)
@@ -86,7 +108,10 @@ final class ClientWorkflowTests: XCTestCase {
         XCTAssertEqual(library.clients.profiles.count, 2)
         XCTAssertEqual(try Data(contentsOf: source), original)
         XCTAssertEqual(try Data(contentsOf: collected), original)
-        try await library.resetApplication(); try await settle(library)
+        phase = "application.reset"
+        try await library.resetApplication()
+        phase = "settle.reset"
+        try await settle(library)
         XCTAssertTrue(library.snapshot.logs.isEmpty)
         XCTAssertNil(library.views.state.theme)
         XCTAssertNil(library.views.state.activeScope.clientID)
@@ -96,6 +121,7 @@ final class ClientWorkflowTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: source), original)
         XCTAssertEqual(try Data(contentsOf: collected), original)
         XCTAssertTrue(FileManager.default.fileExists(atPath: base.appendingPathComponent(".library-writer.lock").path))
+        phase = "completed"
     }
     func testFullReportPreservesClientWhileRemovingOtherFilters() {
         var scope = SelectionScope(); scope.clientID = "CLIENT-A"; scope.search = "battery"; scope.logIDs = ["one"]
