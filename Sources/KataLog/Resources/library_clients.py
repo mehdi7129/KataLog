@@ -79,7 +79,7 @@ def command(database, operation, request=None, read_only=False):
         repository.initialize(db)
         if operation == 'assign-client':
             scope, _, _, annotations, masks, _, _ = repository.parse_request(dict(request, kind='logs'))
-            repository.setup_annotations(db, annotations, masks)
+            repository.setup_query(db, scope, annotations, masks)
         db.execute('BEGIN IMMEDIATE')
         if operation in ('create-client', 'rename-client'):
             name = request.get('name')

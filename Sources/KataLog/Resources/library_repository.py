@@ -522,15 +522,18 @@ def parse_request(request):
     return scope, limit, kind, annotations, masks, group, scope_hash
 
 
-def setup_annotations(db, annotations, masks):
+def setup_query(db, scope, annotations, masks, event_levels=()):
+    """Prepare connection-local inputs once, before the caller's transaction."""
     db.create_function("kl_normalize", 1, normalized, deterministic=True)
     db.executescript("""
         DROP TABLE IF EXISTS temp.kl_family_overrides;
         DROP TABLE IF EXISTS temp.kl_stock_numbers;
         DROP TABLE IF EXISTS temp.kl_masks;
+        DROP TABLE IF EXISTS temp.kl_selection_values;
         CREATE TEMP TABLE kl_family_overrides(key TEXT PRIMARY KEY,family TEXT NOT NULL);
         CREATE TEMP TABLE kl_stock_numbers(key TEXT PRIMARY KEY,number TEXT NOT NULL);
         CREATE TEMP TABLE kl_masks(key TEXT PRIMARY KEY);
+        CREATE TEMP TABLE kl_selection_values(field TEXT,value TEXT,PRIMARY KEY(field,value)) WITHOUT ROWID;
     """)
     for key, value in annotations.get("familyOverrides", {}).items():
         if not isinstance(key, str) or not isinstance(value, str):
@@ -541,6 +544,12 @@ def setup_annotations(db, annotations, masks):
             raise ValueError("Numéro de drone invalide.")
         db.execute("INSERT INTO kl_stock_numbers VALUES(?,?)", (key, value))
     db.executemany("INSERT INTO kl_masks VALUES(?)", ((key,) for key in masks))
+    # List membership never consumes the statement's variable budget. The same
+    # inputs serve materialized scopes, repeated CTEs, reports and assignments.
+    db.executemany('INSERT INTO kl_selection_values VALUES(?,?)',
+                   ((field, value) for field in ('droneKeys', 'statuses', 'logIDs', 'families', 'levels')
+                    for value in scope[field]))
+    db.executemany("INSERT INTO kl_selection_values VALUES('eventLevels',?)", ((value,) for value in event_levels))
     db.commit()
 
 
@@ -570,6 +579,11 @@ CTE = """WITH links AS (
          ) """
 
 
+def selection_clause(expression, field, value_expression='value'):
+    # These expressions and field names are internal SQL constants, never inputs.
+    return expression + " IN (SELECT " + value_expression + " FROM kl_selection_values WHERE field='" + field + "')"
+
+
 def predicates(scope):
     logs, log_values, messages, message_values = [], [], [], []
     if scope.get('clientID') is not None:
@@ -582,11 +596,9 @@ def predicates(scope):
         logs.append('EXISTS(SELECT 1 FROM kl_proximity_matches p WHERE p.id=l.id)')
     for field, expression in (("droneKeys", IDENTITY), ("statuses", "l.status"), ('logIDs', 'l.id')):
         if scope[field]:
-            logs.append(expression + " IN (" + ",".join("?" for _ in scope[field]) + ")")
-            log_values.extend(scope[field])
+            logs.append(selection_clause(expression, field))
     if scope['droneKeys'] and all(key.startswith('ulog:') for key in scope['droneKeys']):
-        logs.append('l.drone_id IN (' + ','.join('?' for _ in scope['droneKeys']) + ')')
-        log_values.extend(key[5:] for key in scope['droneKeys'])
+        logs.append(selection_clause('l.drone_id', 'droneKeys', 'substr(value,6)'))
     date_clauses, date_values = [], []
     if scope["dateFrom"]:
         date_clauses.append("l.date_day>=?")
@@ -606,8 +618,7 @@ def predicates(scope):
         log_values.append(like_pattern(scope["logSearch"]))
     for field, expression in (("families", FAMILY), ("levels", "d.level")):
         if scope[field]:
-            messages.append(expression + " IN (" + ",".join("?" for _ in scope[field]) + ")")
-            message_values.extend(scope[field])
+            messages.append(selection_clause(expression, field))
     if scope["alertOnly"]:
         messages.append("d.is_alert=1")
     if not scope["includeMasked"]:
@@ -846,7 +857,8 @@ def query(db, request, read_only=False):
         library_proximity.prepare_readonly(db)
     else:
         initialize(db)
-    setup_annotations(db, annotations, masks)
+    event_levels = string_list(request.get('eventLevels', []), 'eventLevels')
+    setup_query(db, scope, annotations, masks, event_levels)
     db.row_factory = sqlite3.Row
     db.execute("BEGIN")
     try:
@@ -1114,11 +1126,9 @@ def query(db, request, read_only=False):
                 COALESCE(SUM(c.parser_version<>?),0) AS previousParserLogs
                 FROM selected LEFT JOIN kl_event_cache c ON c.log_id=selected.id''', params + [analyzer.PARSER_VERSION]).fetchone())
             event_clauses, event_values = [], []
-            levels = string_list(request.get('eventLevels', []), 'eventLevels')
-            if levels:
+            if event_levels:
                 level_column = 'external_level' if request.get('eventLevelSource') == 'external' else 'internal_level'
-                event_clauses.append('e.' + level_column + ' IN (' + ','.join('?' for _ in levels) + ')')
-                event_values.extend(levels)
+                event_clauses.append(selection_clause('e.' + level_column, 'eventLevels'))
             search = normalized(request.get('eventSearch', ''))
             if search:
                 event_clauses.append("e.search_text LIKE ? ESCAPE '\\'")
