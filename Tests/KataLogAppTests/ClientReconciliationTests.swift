@@ -208,6 +208,10 @@ final class ClientReconciliationTests: XCTestCase {
         XCTAssertTrue(library.hasExternalActivity())
         XCTAssertTrue(library.hasActiveWork)
         XCTAssertFalse(gcs.isBusy)
+        let beforeRefresh = ProcessInfo.processInfo.systemUptime
+        try await Task.sleep(for: .milliseconds(1_200))
+        XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - beforeRefresh, 2,
+                          "The UI actor must remain responsive while background cleanup waits for SQLite.")
         operation.cancel()
         XCTAssertEqual(sqlite3_exec(blocker, "ROLLBACK", nil, nil, nil), SQLITE_OK)
         try await operation.value
