@@ -32,6 +32,7 @@ from pyulog import ULog
 # Works both as a bundled CLI and when loaded by file path in test tools.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from flight_data import enrich
+from output_paths import backup_source_paths, validate_outputs
 
 SCHEMA_VERSION = 1
 PARSER_VERSION = "1.4.0"
@@ -899,7 +900,7 @@ def snapshot(db, stats=None):
             "importStats": stats, "logs": logs}
 
 
-def scan(folder, database, output=None, progress=None, skip_snapshot=False, archive_destination=None, client_id=None):
+def scan(folder, database, output=None, progress=None, skip_snapshot=False, archive_destination=None, client_id=None, additional_outputs=()):
     root = Path(folder).expanduser().resolve()
     exact_file = root if root.is_file() and root.suffix.lower() == '.ulg' else None
     if not root.is_dir() and exact_file is None:
@@ -915,6 +916,7 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
         for filename in sorted(files):
             if Path(filename).suffix.lower() == ".ulg":
                 discovered.append(Path(current) / filename)
+    validate_outputs((output, progress, *additional_outputs), database=database, inputs=[__file__, *discovered])
     stats = dict.fromkeys(("discovered", "imported", "unchanged", "duplicates", "failed"), 0)
     stats["discovered"] = len(discovered)
     archive_result = None
@@ -1099,6 +1101,7 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
 
 
 def detail(log_id, database, output=None, read_only=False, revision=None):
+    validate_outputs((output,), database=database, inputs=(__file__,))
     if not re.fullmatch(r"[a-f0-9]{64}", log_id):
         raise ValueError("Identifiant de contenu ULog invalide.")
     db = open_database(database, read_only=read_only)
@@ -1249,6 +1252,7 @@ def detail(log_id, database, output=None, read_only=False, revision=None):
 
 def refresh_analysis(database, output=None, progress=None):
     """Refresh stale summaries globally, preserving old analysis on failure."""
+    validate_outputs((output, progress), database=database, inputs=(__file__,))
     db = open_database(database)
     stats = {'total': 0, 'reanalyzed': 0, 'unavailable': 0, 'failed': 0}
     try:
@@ -1416,6 +1420,7 @@ def main(argv=None):
     scan_command.add_argument("--skip-snapshot", action="store_true")
     scan_command.add_argument('--archive-destination')
     scan_command.add_argument('--client-id')
+    scan_command.add_argument('--additional-output', action='append', default=[])
     snapshot_command = commands.add_parser("snapshot")
     snapshot_command.add_argument("--database", required=True)
     snapshot_command.add_argument("--output", required=True)
@@ -1530,6 +1535,21 @@ def main(argv=None):
             command.add_argument('--all-settings', action='store_true')
     args = parser.parse_args(argv)
     try:
+        if args.command not in ('scan', 'detail', 'refresh-analysis'):
+            outputs = [args.output, getattr(args, 'progress', None)]
+            inputs = [__file__, *[getattr(args, name, None) for name in ('request', 'file', 'archive', 'capture', 'recovery')]]
+            if args.command == 'restore' and (Path(args.output).exists() or Path(args.output).is_symlink()):
+                inputs.extend(backup_source_paths(args.archive))
+            if hasattr(args, 'capture'):
+                inputs.extend(Path(args.capture) / name for name in ('context.json', 'capture-manifest.json'))
+            if args.command == 'export-captured':
+                inputs.extend(Path(args.destination) / name for name in ('rapport.json', 'summary.json', 'manifest.json'))
+            if args.command == 'backup':
+                outputs.append(args.destination)
+            validate_outputs(outputs, database=getattr(args, 'database', None),
+                             library=getattr(args, 'library', None) or getattr(args, 'capture', None), folder=getattr(args, 'folder', None),
+                             inputs=inputs,
+                             copy_sources=args.command in ('backup', 'restore', 'recover-restore'))
         if args.command in ('clients', 'create-client', 'rename-client', 'delete-client', 'assign-client', 'retire-all-sources', 'reset-library'):
             import library_clients
             request = None
@@ -1652,7 +1672,7 @@ def main(argv=None):
             print(json.dumps({"logID": result["id"], "status": result["status"]}))
             return 0
         if args.command == "scan":
-            result = scan(args.folder, args.database, args.output, args.progress, skip_snapshot=args.skip_snapshot, archive_destination=args.archive_destination, client_id=args.client_id)
+            result = scan(args.folder, args.database, args.output, args.progress, skip_snapshot=args.skip_snapshot, archive_destination=args.archive_destination, client_id=args.client_id, additional_outputs=args.additional_output)
         else:
             db = open_database(args.database, read_only=args.read_only)
             try:
