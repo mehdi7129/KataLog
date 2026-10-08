@@ -109,10 +109,11 @@ struct EventBrowserView: View {
     private var query: EventBrowserStore.Query {
         EventBrowserStore.Query(library: library, logID: logID, levelSource: levelSource, level: level, search: search)
     }
-    private var filterKey: EventBrowserStore.Query.Key { query.key }
-    private var visibleResult: EventBrowserStore.Result? { store.result(for: filterKey) }
 
     var body: some View {
+        let query = self.query
+        let filterKey = query.key
+        let visibleResult = store.result(for: filterKey)
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
@@ -190,7 +191,7 @@ struct EventBrowserView: View {
                 .overlay(RoundedRectangle(cornerRadius: 18).stroke(palette.border, lineWidth: 1))
         }
         .foregroundStyle(palette.primary).buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true)).tint(palette.primary)
-        .task(id: filterKey) { selected = nil; reload() }
+        .task(id: filterKey) { selected = nil; store.load(query) }
         .onDisappear { store.cancel() }
         .sheet(item: $selected) { occurrence in
             EventDetailSheet(occurrence: occurrence)
