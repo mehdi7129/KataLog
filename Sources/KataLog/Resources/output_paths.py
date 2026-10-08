@@ -106,7 +106,8 @@ def validate_outputs(outputs, database=None, library=None, folder=None, inputs=(
             raise ValueError('Les chemins de sortie doivent être distincts.')
 
     protected = [Path(path) for path in inputs if path is not None]
-    protected.extend((Path(__file__), Path(__file__).with_name('analyzer.py')))
+    protected.extend((Path(__file__), Path(__file__).with_name('analyzer.py'),
+                      Path(__file__).with_name('analyzer_cli.py'), Path(__file__).with_name('analysis_revisions.py')))
     database = Path(database) if database is not None else None
     roots = {database.parent, database.resolve().parent} if database is not None else set()
     if library is not None:

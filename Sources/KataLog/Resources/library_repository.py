@@ -824,6 +824,287 @@ def registry_source_coverage(db, statement, params):
     return coverage
 
 
+# Page builders share the caller's connection and transaction; none commits.
+def _query_catalogue(db, scope, limit, revision, scope_hash, offset, kind, group):
+    entries_sql = "SELECT 'family' AS kind,family AS value FROM kl_definitions UNION SELECT 'family',family FROM kl_family_overrides UNION SELECT 'level',level FROM kl_definitions"
+    entry_params = []
+    if scope.get('clientID') is not None:
+        selected_sql, entry_params, _ = selection_statement(dict(scope, includeMasked=True))
+        entries_sql = selected_sql + "SELECT 'family' AS kind,family AS value FROM matching JOIN selected ON selected.id=matching.log_id UNION SELECT 'level',level FROM matching JOIN selected ON selected.id=matching.log_id"
+    total = db.execute('SELECT COUNT(*) FROM (' + entries_sql + ')', entry_params).fetchone()[0]
+    entries = db.execute('SELECT kind,value FROM (' + entries_sql + ') ORDER BY kind,value LIMIT ? OFFSET ?', entry_params + [limit, offset]).fetchall()
+    result = {'queryVersion': QUERY_VERSION, 'revision': revision, 'scopeHash': scope_hash,
+              'families': [], 'levels': [], 'total': total, 'nextCursor': None}
+    values = bounded_rows(entries, lambda row: {'kind': row[0], 'value': row[1]}, result)
+    for item in values:
+        result['families' if item['kind'] == 'family' else 'levels'].append(item['value'])
+    if offset + len(values) < total:
+        result['nextCursor'] = encode_cursor(revision, scope_hash, kind, group, offset + len(values))
+    return result
+
+
+def _query_group_keys(db, scope, limit, revision, scope_hash, offset, kind, group):
+    clause = ' FROM kl_definitions d WHERE group_id=? AND EXISTS(SELECT 1 FROM kl_messages m WHERE m.definition_id=d.id)'
+    total = db.execute('SELECT COUNT(DISTINCT class_key)' + clause, (group,)).fetchone()[0]
+    rows = db.execute('SELECT DISTINCT class_key' + clause + ' ORDER BY class_key LIMIT ? OFFSET ?', (group, limit, offset)).fetchall()
+    if scope.get('clientID') is not None:
+        selected_sql, selected_params, _ = selection_statement(dict(scope, includeMasked=True))
+        clause = ' FROM matching JOIN selected ON selected.id=matching.log_id WHERE group_id=?'
+        total = db.execute(selected_sql + 'SELECT COUNT(DISTINCT class_key)' + clause, selected_params + [group]).fetchone()[0]
+        rows = db.execute(selected_sql + 'SELECT DISTINCT class_key' + clause + ' ORDER BY class_key LIMIT ? OFFSET ?', selected_params + [group, limit, offset]).fetchall()
+    result = {'queryVersion': QUERY_VERSION, 'revision': revision, 'scopeHash': scope_hash, 'total': total, 'nextCursor': None}
+    result['classKeys'] = bounded_rows(rows, lambda row: row[0], result)
+    if offset + len(result['classKeys']) < total:
+        result['nextCursor'] = encode_cursor(revision, scope_hash, kind, group, offset + len(result['classKeys']))
+    return result
+
+
+def _query_drones(db, request, scope, annotations, fleet, observation_revision,
+                  statement, params, message_active, limit, revision, scope_hash, offset, kind, group):
+    unrestricted_registry = not (scope.get('clientID') is not None or scope.get('_proximityFiltered') or scope['droneKeys'] or scope['logIDs'] or scope['statuses'] or scope['dateFrom'] or scope['dateTo'] or not scope['includeUnknownDates'] or scope['logSearch'] or message_active)
+    if unrestricted_registry:
+        # Aggregate recorded counters per controller/key before name
+        # and stock joins. Fifty thousand logs do not require fifty
+        # thousand lookups of each of the 500 local annotations.
+        rows = db.execute(CTE + ''', aggregates AS MATERIALIZED (
+                    SELECT ''' + IDENTITY + ''' AS annotation_key,l.drone_id,MIN(l.drone_name) AS fallback_name,
+                        MAX(links.uuid_count) AS uuid_count,MAX(l.date) AS last_date,COUNT(*) AS log_count,
+                        COALESCE(SUM(CASE WHEN l.status<>'error' THEN l.duration ELSE 0 END),0) AS recorded_seconds,
+                        COALESCE(SUM(l.status<>'error' AND (l.cached_alerts>0 OR l.failsafe<>0)),0) AS alert_count
+                    FROM kl_logs l INDEXED BY kl_logs_scope_meta LEFT JOIN links ON links.drone_id=l.drone_id
+                    GROUP BY annotation_key,l.drone_id
+                ), enriched AS NOT MATERIALIZED (
+                    SELECT a.*,COALESCE(names.drone_name,a.fallback_name) AS canonical_name,
+                        COALESCE(sn.number,CASE WHEN a.annotation_key LIKE 'gcs:%' AND a.uuid_count=1 THEN legacy.number END) AS stock_number
+                    FROM aggregates a LEFT JOIN names ON names.drone_id=a.drone_id
+                    LEFT JOIN kl_stock_numbers sn ON sn.key=a.annotation_key
+                    LEFT JOIN kl_stock_numbers legacy ON legacy.key='ulog:'||a.drone_id
+                ) SELECT annotation_key AS id,MIN(drone_id) AS droneID,MIN(canonical_name) AS name,
+                    MIN(stock_number) AS stockNumber,MAX(last_date) AS lastDate,SUM(log_count) AS logCount,
+                    SUM(recorded_seconds) AS recordedSeconds,SUM(alert_count) AS alertLogCount
+                    FROM enriched GROUP BY annotation_key ORDER BY annotation_key''').fetchall()
+    else:
+        rows = db.execute(statement + '''SELECT annotation_key AS id,MIN(drone_id) AS droneID,
+                MIN(canonical_name) AS name,MIN(stock_number) AS stockNumber,
+                MAX(date) AS lastDate,COUNT(*) AS logCount,
+                COALESCE(SUM(CASE WHEN status<>'error' THEN duration ELSE 0 END),0) AS recordedSeconds,
+                COALESCE(SUM(status<>'error' AND (cached_alerts>0 OR failsafe<>0)),0) AS alertLogCount
+                FROM selected GROUP BY annotation_key ORDER BY annotation_key''', params).fetchall()
+    drones = [dict(row) for row in rows]
+    keys = {item['id'] for item in drones}
+    controller_keys = {'ulog:' + row[0] for row in db.execute('SELECT DISTINCT drone_id FROM kl_logs')}
+    for key, number in annotations.get('stockNumbers', {}).items():
+        if scope.get('clientID') is None and key not in keys and key not in controller_keys and (key.startswith('ulog:') and len(key)>5 or re.fullmatch(r'gcs:[A-F0-9]{24}', key)):
+            drones.append({'id': key, 'droneID': key[5:] if key.startswith('ulog:') else '',
+                'name': 'Drone sans log', 'stockNumber': number, 'logCount': 0, 'lastDate': '',
+                'recordedSeconds': 0, 'alertLogCount': 0})
+            keys.add(key)
+    for key, observation in fleet.items():
+        if scope.get('clientID') is None and observation['authorized'] and key not in keys:
+            drones.append({'id': key, 'droneID': '', 'name': observation['name'] or 'Drone sans log',
+                'stockNumber': annotations.get('stockNumbers', {}).get(key), 'logCount': 0, 'lastDate': '',
+                'recordedSeconds': 0, 'alertLogCount': 0})
+            keys.add(key)
+    drones.sort(key=lambda item: item['id'])
+    source_coverage = registry_source_coverage(db, statement, params)
+    for item in drones:
+        item['gcsUUID'] = item['id'][4:] if item['id'].startswith('gcs:') else None
+        item.update(source_coverage.get(item['id'], {'sourceStatus': 'unknown' if item['logCount'] else 'none', 'sourceCheckedAt': None}))
+        observation = fleet.get(item['id'], {})
+        item['lastGCSDate'] = observation.get('lastGCSDate')
+        item['lastGCSSource'] = observation.get('lastGCSSource')
+    registry_search = normalized(request.get('registrySearch'))
+    if registry_search:
+        drones = [item for item in drones if registry_search in normalized(' '.join(str(item.get(key) or '') for key in ('id', 'droneID', 'name', 'stockNumber', 'gcsUUID')))]
+    result = {'queryVersion': QUERY_VERSION, 'revision': revision, 'scopeHash': scope_hash,
+              'total': len(drones), 'nextCursor': None, 'registryObservationRevision': observation_revision}
+    result['drones'] = bounded_rows(drones[offset:offset+limit], dict, result)
+    if offset + len(result['drones']) < len(drones):
+        result['nextCursor'] = encode_cursor(revision, scope_hash, kind, group, offset + len(result['drones']))
+    return result
+
+
+def _query_logs(db, request, scope, masks, statement, params, message_active,
+                unfiltered, compact_totals, limit, offset, result):
+    import analyzer
+    totals = result["totals"]
+    counts = "cached_messages AS message_count,cached_alerts AS alert_count" if unfiltered else "selected.message_count,selected.alert_count"
+    compact_page = not unfiltered and compact_totals is not None
+    page_select = ('SELECT selected.*,l.summary_projection,l.flight_seconds,l.signal_messages_json,' + counts + ' FROM kl_logs l INDEXED BY kl_logs_date CROSS JOIN selected ON selected.id=l.id' if compact_page else 'SELECT selected.*, ' + counts + ' FROM selected' if unfiltered else 'SELECT selected.*,l.summary_projection,l.flight_seconds,l.signal_messages_json,' + counts + ' FROM selected CROSS JOIN kl_logs l ON l.id=selected.id')
+    direction = 'ASC' if request.get('sortOrder') == 'oldest' else 'DESC'
+    order_source = 'l' if compact_page else 'selected'
+    rows = db.execute(statement + page_select + " ORDER BY " + order_source + ".date " + direction + "," + order_source + ".id " + direction + " LIMIT ? OFFSET ?", params + [limit, offset]).fetchall()
+    def map_log(row):
+        value = json.loads(row["summary_projection"])
+        from library_clients import attach
+        attach(db, value)
+        value['flightSeconds'] = row['flight_seconds']
+        message_count, alert_count = row['message_count'], row['alert_count']
+        if message_count is None:
+            message_count, alert_count = db.execute('SELECT COUNT(*),COALESCE(SUM(d.is_alert),0) FROM kl_query_definitions d CROSS JOIN kl_messages m INDEXED BY kl_messages_definition ON m.definition_id=d.id WHERE m.log_id=?', (row['id'],)).fetchone()
+        value["droneName"] = row["canonical_name"]
+        value["stockNumber"] = row["stock_number"]
+        value["summaryMessageCount"] = message_count
+        value["summaryAlertMessageCount"] = alert_count
+        value["summaryHasAlerts"] = bool(alert_count or (not message_active and row["failsafe"]))
+        signals = SignalAccumulator()
+        cached_messages = json.loads(row['signal_messages_json'])
+        if unfiltered:
+            signals.merge(cached_messages)
+        else:
+            # A repeated definition is accumulated once with its exact
+            # occurrence count; masked/filtered messages never leak back
+            # through the canonical summary's severity.
+            for item in db.execute(statement + 'SELECT level,is_alert,raw_text,title,COUNT(*) AS count FROM matching WHERE log_id=? GROUP BY level,is_alert,raw_text,title', params + [row['id']]):
+                signals.observe_message({'level': item['level'], 'isAlert': bool(item['is_alert']),
+                                         'text': item['raw_text'], 'title': item['title']}, item['count'])
+        canonical_parser = db.execute('SELECT parser_version FROM logs WHERE id=?', (row['id'],)).fetchone()[0]
+        event_cache = db.execute('SELECT * FROM kl_event_cache WHERE log_id=?', (row['id'],)).fetchone()
+        current = canonical_parser == analyzer.PARSER_VERSION
+        if message_active:
+            # These predicates address text-message definitions. Events
+            # and failsafe flags cannot satisfy their family/text/level.
+            events_complete = current
+        elif event_cache:
+            signals.merge(json.loads(event_cache['signal_events_json']))
+            events_complete = current and event_cache['state'] == 'available' and event_cache['parser_version'] == analyzer.PARSER_VERSION
+        else:
+            events_complete = current and 'topics' in value and 'event' not in value['topics']
+        include_failsafe = not message_active and not (masks and not scope['includeMasked'] and cached_messages.get('failsafeMessage'))
+        value['selectionIncludesFailsafe'] = include_failsafe
+        value['selectionIncludesEvents'] = not message_active
+        value['signalAssessment'] = signals.result(value, events_complete, include_failsafe)
+        value['annotationWarning'] = None
+        if row['gcs_status'] == 'rejected':
+            value['annotationWarning'] = 'Identité GCS rejetée dans ce log : aucune liaison déduite des autres enregistrements.'
+        elif row['uuid_count'] and row['uuid_count'] > 1:
+            value['annotationWarning'] = 'Plusieurs identités GCS sont observées pour ce contrôleur ULog. Les logs sans preuve directe restent séparés.'
+        elif row['uuid_count'] == 1 and row['canonical_stock'] and row['legacy_stock'] and row['canonical_stock'] != row['legacy_stock']:
+            value['annotationWarning'] = f"Numéros locaux en conflit : GCS {row['canonical_stock']}, ULog {row['legacy_stock']}. Le numéro GCS est affiché ; les deux annotations sont conservées jusqu’à modification."
+        if row["annotation_key"].startswith("gcs:") and value.get("metadata", {}).get("gcsUUID") is None:
+            value["annotationGCSUUID"] = row["annotation_key"][4:]
+        source_paths = [item[0] for item in db.execute("SELECT path FROM sources WHERE log_id=? ORDER BY path", (row["id"],))]
+        known_files = {item['path']: item for item in db.execute("SELECT * FROM files WHERE path IN (SELECT path FROM sources WHERE log_id=?)", (row["id"],))}
+        analyzer.attach_source_availability(value, source_paths, known_files)
+        if request.get("includeMessages", False):
+            message_bytes = 0
+            for item in db.execute(statement + "SELECT matching.* FROM matching WHERE log_id=? ORDER BY timestamp,sequence", params + [row["id"]]):
+                record = message_record(item)
+                message_bytes += len(json.dumps(record, ensure_ascii=False, allow_nan=False).encode('utf-8')) + 1
+                if message_bytes > MAX_QUERY_BYTES - 8192:
+                    raise ValueError('Les messages de ce log dépassent le budget de page ; ouvrez les occurrences paginées ou un export détaillé.')
+                value['messages'].append(record)
+        return value
+    from library_sources import active_folders
+    folders = active_folders(db)
+    # Source paths and import metadata have variable size. Include the
+    # complete envelope before selecting how many logs fit this page.
+    result["snapshot"] = {"schemaVersion": 1, "generatedAt": now(), "sourceFolders": folders,
+                          "importStats": latest_import_stats(db), "logs": []}
+    values = bounded_rows(rows, map_log, result)
+    result["snapshot"]["logs"] = values
+    total = totals["logs"]
+    return values, total
+
+
+def _query_groups(db, statement, params, unfiltered, limit, offset, result):
+    totals = result["totals"]
+    sql = statement + """SELECT group_id AS id,MIN(title) AS title,MIN(family) AS family,MIN(level) AS level,
+                MAX(priority) AS priority,COUNT(*) AS messageCount,COUNT(DISTINCT log_id) AS logCount,
+                COUNT(DISTINCT selected.drone_id) AS droneCount,MIN(selected.date) AS firstDate,MAX(selected.date) AS lastDate
+                FROM matching JOIN selected ON selected.id=matching.log_id GROUP BY group_id
+                ORDER BY priority DESC,logCount DESC,id ASC LIMIT ? OFFSET ?"""
+    if unfiltered:
+        rows = db.execute("""SELECT s.group_id AS id,g.title,s.family,g.level,g.priority,
+                    s.message_count AS messageCount,s.log_count AS logCount,s.drone_count AS droneCount,
+                    s.first_date AS firstDate,s.last_date AS lastDate
+                    FROM kl_group_stats s JOIN kl_groups g ON g.id=s.group_id
+                    ORDER BY g.priority DESC,s.log_count DESC,s.group_id ASC LIMIT ? OFFSET ?""", (limit, offset)).fetchall()
+    else:
+        rows = db.execute(sql, params + [limit, offset]).fetchall()
+    def map_group(row):
+        value = dict(row)
+        key_clause = ' FROM (SELECT DISTINCT class_key FROM kl_definitions d WHERE group_id=? AND EXISTS(SELECT 1 FROM kl_messages m WHERE m.definition_id=d.id))'
+        count, size = db.execute('SELECT COUNT(*),COALESCE(SUM(LENGTH(CAST(class_key AS BLOB))),0)' + key_clause, (row['id'],)).fetchone()
+        value['classKeyCount'] = count
+        value['classKeysComplete'] = count <= 512 and size <= 128 * 1024
+        value['classKeys'] = [item[0] for item in db.execute('SELECT class_key' + key_clause + ' ORDER BY class_key', (row['id'],))] if value['classKeysComplete'] else []
+        return value
+    values = bounded_rows(rows, map_group, result)
+    result.update(groups=values, total=totals["groupCount"])
+    total = totals["groupCount"]
+    return values, total
+
+
+def _query_events(db, request, statement, params, limit, offset, result):
+    import analyzer
+    coverage = dict(db.execute(statement + '''SELECT COUNT(*) AS selectedLogs,
+                COALESCE(SUM(c.log_id IS NOT NULL),0) AS cachedLogs,
+                COALESCE(SUM(c.log_id IS NULL),0) AS unavailableLogs,
+                COALESCE(SUM(c.state='legacy'),0) AS legacyCacheLogs,
+                COALESCE(SUM(c.state='invalid'),0) AS invalidCacheLogs,
+                COALESCE(SUM(c.event_count>0),0) AS eventLogs,
+                COALESCE(SUM(c.translated_count>0),0) AS translatedLogs,
+                COALESCE(SUM(c.parser_version<>?),0) AS previousParserLogs
+                FROM selected LEFT JOIN kl_event_cache c ON c.log_id=selected.id''', params + [analyzer.PARSER_VERSION]).fetchone())
+    event_clauses, event_values = [], []
+    levels = string_list(request.get('eventLevels', []), 'eventLevels')
+    if levels:
+        level_column = 'external_level' if request.get('eventLevelSource') == 'external' else 'internal_level'
+        event_clauses.append('e.' + level_column + ' IN (' + ','.join('?' for _ in levels) + ')')
+        event_values.extend(levels)
+    search = normalized(request.get('eventSearch', ''))
+    if search:
+        event_clauses.append("e.search_text LIKE ? ESCAPE '\\'")
+        event_values.append(like_pattern(search))
+    where = ' WHERE ' + ' AND '.join(event_clauses) if event_clauses else ''
+    total = db.execute(statement + 'SELECT COUNT(*) FROM selected JOIN kl_events e ON e.log_id=selected.id' + where, params + event_values).fetchone()[0]
+    rows = db.execute(statement + 'SELECT e.*,selected.drone_id,selected.canonical_name,selected.stock_number,selected.date FROM kl_logs l INDEXED BY kl_logs_date CROSS JOIN selected ON selected.id=l.id CROSS JOIN kl_events e ON e.log_id=l.id' + where + ' ORDER BY l.date DESC,l.id DESC,(e.time_seconds IS NULL),e.time_seconds,e.sequence LIMIT ? OFFSET ?', params + event_values + [limit, offset]).fetchall()
+    def map_event(row):
+        return {'logID': row['log_id'], 'droneID': row['drone_id'],
+                'droneName': 'Drone ' + row['stock_number'] if row['stock_number'] else row['canonical_name'],
+                'date': row['date'], 'sourcePaths': [item[0] for item in db.execute('SELECT path FROM sources WHERE log_id=? ORDER BY path', (row['log_id'],))],
+                'event': json.loads(row['event_json'])}
+    values = bounded_rows(rows, map_event, result)
+    result.update(occurrences=values, total=total, coverage=coverage)
+    return values, total
+
+
+def _query_messages(db, request, group, statement, params, unfiltered, limit, offset, result):
+    totals = result["totals"]
+    next_position = None
+    condition, extra = (" WHERE matching.group_id=?", [group]) if group else ("", [])
+    if unfiltered:
+        count = db.execute('SELECT message_count FROM kl_group_stats WHERE group_id=?', (group,)).fetchone() if group else None
+        total = (count[0] if count else 0) if group else totals['messages']
+    elif not group:
+        total = totals['messages']
+    else:
+        total = db.execute(statement + "SELECT COUNT(*) FROM matching JOIN selected ON selected.id=matching.log_id" + condition, params + extra).fetchone()[0]
+    clauses, position_values, page_offset = (['matching.group_id=?'], [group], offset) if group else ([], [], offset)
+    if request.get('cursor'):
+        token = json.loads(base64.urlsafe_b64decode(request['cursor'] + '=' * (-len(request['cursor']) % 4)))
+        position = token.get('position')
+        if position is not None:
+            if not isinstance(position, list) or len(position) != 4 or not isinstance(position[0], str) or not isinstance(position[1], str) or not isinstance(position[2], (int, float)) or isinstance(position[2], bool) or not math.isfinite(position[2]) or type(position[3]) is not int or position[3] < 0:
+                raise ValueError('Position de curseur d’occurrence invalide.')
+            clauses.append('(l.date,l.id)<=(?,?) AND (l.date<? OR l.id<? OR (matching.timestamp>? OR (matching.timestamp=? AND matching.sequence>?)))')
+            position_values.extend((position[0], position[1], position[0], position[1], position[2], position[2], position[3]))
+            page_offset = 0
+    where = ' WHERE ' + ' AND '.join(clauses) if clauses else ''
+    rows = db.execute(statement + 'SELECT matching.*,selected.drone_id,selected.canonical_name,selected.stock_number,selected.date FROM kl_logs l INDEXED BY kl_logs_date CROSS JOIN selected ON selected.id=l.id CROSS JOIN matching ON matching.log_id=l.id' + where + ' ORDER BY l.date DESC,l.id DESC,matching.timestamp,matching.sequence LIMIT ? OFFSET ?', params + position_values + [limit, page_offset]).fetchall()
+    def map_occurrence(row):
+        paths = [item[0] for item in db.execute("SELECT path FROM sources WHERE log_id=? ORDER BY path", (row["log_id"],))]
+        return {"logID": row["log_id"], "droneID": row["drone_id"], "droneName": "Drone " + row["stock_number"] if row["stock_number"] else row["canonical_name"],
+                "date": row["date"], "sourcePaths": paths, "message": message_record(row)}
+    values = bounded_rows(rows, map_occurrence, result)
+    if values:
+        last = rows[len(values)-1]
+        next_position = [last['date'], last['log_id'], last['timestamp'], last['sequence']]
+    result.update(occurrences=values, total=total)
+    return values, total, next_position
+
+
 def query(db, request, read_only=False):
     db.execute('PRAGMA cache_size=-131072')
     # Large user-defined catalogues/filters spill to temporary storage instead
@@ -864,98 +1145,13 @@ def query(db, request, read_only=False):
             from library_map_overview import query_page
             return query_page(db, request, scope, limit, revision, scope_hash, offset, proximity_unavailable)
         if kind == 'catalogue':
-            entries_sql = "SELECT 'family' AS kind,family AS value FROM kl_definitions UNION SELECT 'family',family FROM kl_family_overrides UNION SELECT 'level',level FROM kl_definitions"
-            entry_params = []
-            if scope.get('clientID') is not None:
-                selected_sql, entry_params, _ = selection_statement(dict(scope, includeMasked=True))
-                entries_sql = selected_sql + "SELECT 'family' AS kind,family AS value FROM matching JOIN selected ON selected.id=matching.log_id UNION SELECT 'level',level FROM matching JOIN selected ON selected.id=matching.log_id"
-            total = db.execute('SELECT COUNT(*) FROM (' + entries_sql + ')', entry_params).fetchone()[0]
-            entries = db.execute('SELECT kind,value FROM (' + entries_sql + ') ORDER BY kind,value LIMIT ? OFFSET ?', entry_params + [limit, offset]).fetchall()
-            result = {'queryVersion': QUERY_VERSION, 'revision': revision, 'scopeHash': scope_hash,
-                      'families': [], 'levels': [], 'total': total, 'nextCursor': None}
-            values = bounded_rows(entries, lambda row: {'kind': row[0], 'value': row[1]}, result)
-            for item in values:
-                result['families' if item['kind'] == 'family' else 'levels'].append(item['value'])
-            if offset + len(values) < total:
-                result['nextCursor'] = encode_cursor(revision, scope_hash, kind, group, offset + len(values))
-            return result
+            return _query_catalogue(db, scope, limit, revision, scope_hash, offset, kind, group)
         if kind == 'group-keys':
-            clause = ' FROM kl_definitions d WHERE group_id=? AND EXISTS(SELECT 1 FROM kl_messages m WHERE m.definition_id=d.id)'
-            total = db.execute('SELECT COUNT(DISTINCT class_key)' + clause, (group,)).fetchone()[0]
-            rows = db.execute('SELECT DISTINCT class_key' + clause + ' ORDER BY class_key LIMIT ? OFFSET ?', (group, limit, offset)).fetchall()
-            if scope.get('clientID') is not None:
-                selected_sql, selected_params, _ = selection_statement(dict(scope, includeMasked=True))
-                clause = ' FROM matching JOIN selected ON selected.id=matching.log_id WHERE group_id=?'
-                total = db.execute(selected_sql + 'SELECT COUNT(DISTINCT class_key)' + clause, selected_params + [group]).fetchone()[0]
-                rows = db.execute(selected_sql + 'SELECT DISTINCT class_key' + clause + ' ORDER BY class_key LIMIT ? OFFSET ?', selected_params + [group, limit, offset]).fetchall()
-            result = {'queryVersion': QUERY_VERSION, 'revision': revision, 'scopeHash': scope_hash, 'total': total, 'nextCursor': None}
-            result['classKeys'] = bounded_rows(rows, lambda row: row[0], result)
-            if offset + len(result['classKeys']) < total:
-                result['nextCursor'] = encode_cursor(revision, scope_hash, kind, group, offset + len(result['classKeys']))
-            return result
+            return _query_group_keys(db, scope, limit, revision, scope_hash, offset, kind, group)
         statement, params, message_active = selection_statement(scope, metadata_only=kind == 'drones')
         if kind == 'drones':
-            unrestricted_registry = not (scope.get('clientID') is not None or scope.get('_proximityFiltered') or scope['droneKeys'] or scope['logIDs'] or scope['statuses'] or scope['dateFrom'] or scope['dateTo'] or not scope['includeUnknownDates'] or scope['logSearch'] or message_active)
-            if unrestricted_registry:
-                # Aggregate recorded counters per controller/key before name
-                # and stock joins. Fifty thousand logs do not require fifty
-                # thousand lookups of each of the 500 local annotations.
-                rows = db.execute(CTE + ''', aggregates AS MATERIALIZED (
-                    SELECT ''' + IDENTITY + ''' AS annotation_key,l.drone_id,MIN(l.drone_name) AS fallback_name,
-                        MAX(links.uuid_count) AS uuid_count,MAX(l.date) AS last_date,COUNT(*) AS log_count,
-                        COALESCE(SUM(CASE WHEN l.status<>'error' THEN l.duration ELSE 0 END),0) AS recorded_seconds,
-                        COALESCE(SUM(l.status<>'error' AND (l.cached_alerts>0 OR l.failsafe<>0)),0) AS alert_count
-                    FROM kl_logs l INDEXED BY kl_logs_scope_meta LEFT JOIN links ON links.drone_id=l.drone_id
-                    GROUP BY annotation_key,l.drone_id
-                ), enriched AS NOT MATERIALIZED (
-                    SELECT a.*,COALESCE(names.drone_name,a.fallback_name) AS canonical_name,
-                        COALESCE(sn.number,CASE WHEN a.annotation_key LIKE 'gcs:%' AND a.uuid_count=1 THEN legacy.number END) AS stock_number
-                    FROM aggregates a LEFT JOIN names ON names.drone_id=a.drone_id
-                    LEFT JOIN kl_stock_numbers sn ON sn.key=a.annotation_key
-                    LEFT JOIN kl_stock_numbers legacy ON legacy.key='ulog:'||a.drone_id
-                ) SELECT annotation_key AS id,MIN(drone_id) AS droneID,MIN(canonical_name) AS name,
-                    MIN(stock_number) AS stockNumber,MAX(last_date) AS lastDate,SUM(log_count) AS logCount,
-                    SUM(recorded_seconds) AS recordedSeconds,SUM(alert_count) AS alertLogCount
-                    FROM enriched GROUP BY annotation_key ORDER BY annotation_key''').fetchall()
-            else:
-                rows = db.execute(statement + '''SELECT annotation_key AS id,MIN(drone_id) AS droneID,
-                MIN(canonical_name) AS name,MIN(stock_number) AS stockNumber,
-                MAX(date) AS lastDate,COUNT(*) AS logCount,
-                COALESCE(SUM(CASE WHEN status<>'error' THEN duration ELSE 0 END),0) AS recordedSeconds,
-                COALESCE(SUM(status<>'error' AND (cached_alerts>0 OR failsafe<>0)),0) AS alertLogCount
-                FROM selected GROUP BY annotation_key ORDER BY annotation_key''', params).fetchall()
-            drones = [dict(row) for row in rows]
-            keys = {item['id'] for item in drones}
-            controller_keys = {'ulog:' + row[0] for row in db.execute('SELECT DISTINCT drone_id FROM kl_logs')}
-            for key, number in annotations.get('stockNumbers', {}).items():
-                if scope.get('clientID') is None and key not in keys and key not in controller_keys and (key.startswith('ulog:') and len(key)>5 or re.fullmatch(r'gcs:[A-F0-9]{24}', key)):
-                    drones.append({'id': key, 'droneID': key[5:] if key.startswith('ulog:') else '',
-                        'name': 'Drone sans log', 'stockNumber': number, 'logCount': 0, 'lastDate': '',
-                        'recordedSeconds': 0, 'alertLogCount': 0})
-                    keys.add(key)
-            for key, observation in fleet.items():
-                if scope.get('clientID') is None and observation['authorized'] and key not in keys:
-                    drones.append({'id': key, 'droneID': '', 'name': observation['name'] or 'Drone sans log',
-                        'stockNumber': annotations.get('stockNumbers', {}).get(key), 'logCount': 0, 'lastDate': '',
-                        'recordedSeconds': 0, 'alertLogCount': 0})
-                    keys.add(key)
-            drones.sort(key=lambda item: item['id'])
-            source_coverage = registry_source_coverage(db, statement, params)
-            for item in drones:
-                item['gcsUUID'] = item['id'][4:] if item['id'].startswith('gcs:') else None
-                item.update(source_coverage.get(item['id'], {'sourceStatus': 'unknown' if item['logCount'] else 'none', 'sourceCheckedAt': None}))
-                observation = fleet.get(item['id'], {})
-                item['lastGCSDate'] = observation.get('lastGCSDate')
-                item['lastGCSSource'] = observation.get('lastGCSSource')
-            registry_search = normalized(request.get('registrySearch'))
-            if registry_search:
-                drones = [item for item in drones if registry_search in normalized(' '.join(str(item.get(key) or '') for key in ('id', 'droneID', 'name', 'stockNumber', 'gcsUUID')))]
-            result = {'queryVersion': QUERY_VERSION, 'revision': revision, 'scopeHash': scope_hash,
-                      'total': len(drones), 'nextCursor': None, 'registryObservationRevision': observation_revision}
-            result['drones'] = bounded_rows(drones[offset:offset+limit], dict, result)
-            if offset + len(result['drones']) < len(drones):
-                result['nextCursor'] = encode_cursor(revision, scope_hash, kind, group, offset + len(result['drones']))
-            return result
+            return _query_drones(db, request, scope, annotations, fleet, observation_revision,
+                                 statement, params, message_active, limit, revision, scope_hash, offset, kind, group)
         unfiltered = not (scope.get('clientID') is not None or scope.get('_proximityFiltered') or scope['droneKeys'] or scope['statuses'] or scope['logIDs'] or scope['dateFrom'] or scope['dateTo'] or not scope['includeUnknownDates'] or scope['logSearch'] or message_active or annotations.get('familyOverrides') or (masks and not scope['includeMasked']))
         if unfiltered:
             totals = dict(db.execute("""SELECT COUNT(*) AS logs,COALESCE(SUM(status<>'error'),0) AS validLogs,
@@ -1001,168 +1197,14 @@ def query(db, request, read_only=False):
         if message_active:
             totals['failsafeLogs'] = 0
         if kind in ("logs", 'map'):
-            counts = "cached_messages AS message_count,cached_alerts AS alert_count" if unfiltered else "selected.message_count,selected.alert_count"
-            compact_page = not unfiltered and compact_totals is not None
-            page_select = ('SELECT selected.*,l.summary_projection,l.flight_seconds,l.signal_messages_json,' + counts + ' FROM kl_logs l INDEXED BY kl_logs_date CROSS JOIN selected ON selected.id=l.id' if compact_page else 'SELECT selected.*, ' + counts + ' FROM selected' if unfiltered else 'SELECT selected.*,l.summary_projection,l.flight_seconds,l.signal_messages_json,' + counts + ' FROM selected CROSS JOIN kl_logs l ON l.id=selected.id')
-            direction = 'ASC' if request.get('sortOrder') == 'oldest' else 'DESC'
-            order_source = 'l' if compact_page else 'selected'
-            rows = db.execute(statement + page_select + " ORDER BY " + order_source + ".date " + direction + "," + order_source + ".id " + direction + " LIMIT ? OFFSET ?", params + [limit, offset]).fetchall()
-            def map_log(row):
-                value = json.loads(row["summary_projection"])
-                from library_clients import attach
-                attach(db, value)
-                value['flightSeconds'] = row['flight_seconds']
-                message_count, alert_count = row['message_count'], row['alert_count']
-                if message_count is None:
-                    message_count, alert_count = db.execute('SELECT COUNT(*),COALESCE(SUM(d.is_alert),0) FROM kl_query_definitions d CROSS JOIN kl_messages m INDEXED BY kl_messages_definition ON m.definition_id=d.id WHERE m.log_id=?', (row['id'],)).fetchone()
-                value["droneName"] = row["canonical_name"]
-                value["stockNumber"] = row["stock_number"]
-                value["summaryMessageCount"] = message_count
-                value["summaryAlertMessageCount"] = alert_count
-                value["summaryHasAlerts"] = bool(alert_count or (not message_active and row["failsafe"]))
-                signals = SignalAccumulator()
-                cached_messages = json.loads(row['signal_messages_json'])
-                if unfiltered:
-                    signals.merge(cached_messages)
-                else:
-                    # A repeated definition is accumulated once with its exact
-                    # occurrence count; masked/filtered messages never leak back
-                    # through the canonical summary's severity.
-                    for item in db.execute(statement + 'SELECT level,is_alert,raw_text,title,COUNT(*) AS count FROM matching WHERE log_id=? GROUP BY level,is_alert,raw_text,title', params + [row['id']]):
-                        signals.observe_message({'level': item['level'], 'isAlert': bool(item['is_alert']),
-                                                 'text': item['raw_text'], 'title': item['title']}, item['count'])
-                canonical_parser = db.execute('SELECT parser_version FROM logs WHERE id=?', (row['id'],)).fetchone()[0]
-                event_cache = db.execute('SELECT * FROM kl_event_cache WHERE log_id=?', (row['id'],)).fetchone()
-                current = canonical_parser == analyzer.PARSER_VERSION
-                if message_active:
-                    # These predicates address text-message definitions. Events
-                    # and failsafe flags cannot satisfy their family/text/level.
-                    events_complete = current
-                elif event_cache:
-                    signals.merge(json.loads(event_cache['signal_events_json']))
-                    events_complete = current and event_cache['state'] == 'available' and event_cache['parser_version'] == analyzer.PARSER_VERSION
-                else:
-                    events_complete = current and 'topics' in value and 'event' not in value['topics']
-                include_failsafe = not message_active and not (masks and not scope['includeMasked'] and cached_messages.get('failsafeMessage'))
-                value['selectionIncludesFailsafe'] = include_failsafe
-                value['selectionIncludesEvents'] = not message_active
-                value['signalAssessment'] = signals.result(value, events_complete, include_failsafe)
-                value['annotationWarning'] = None
-                if row['gcs_status'] == 'rejected':
-                    value['annotationWarning'] = 'Identité GCS rejetée dans ce log : aucune liaison déduite des autres enregistrements.'
-                elif row['uuid_count'] and row['uuid_count'] > 1:
-                    value['annotationWarning'] = 'Plusieurs identités GCS sont observées pour ce contrôleur ULog. Les logs sans preuve directe restent séparés.'
-                elif row['uuid_count'] == 1 and row['canonical_stock'] and row['legacy_stock'] and row['canonical_stock'] != row['legacy_stock']:
-                    value['annotationWarning'] = f"Numéros locaux en conflit : GCS {row['canonical_stock']}, ULog {row['legacy_stock']}. Le numéro GCS est affiché ; les deux annotations sont conservées jusqu’à modification."
-                if row["annotation_key"].startswith("gcs:") and value.get("metadata", {}).get("gcsUUID") is None:
-                    value["annotationGCSUUID"] = row["annotation_key"][4:]
-                source_paths = [item[0] for item in db.execute("SELECT path FROM sources WHERE log_id=? ORDER BY path", (row["id"],))]
-                known_files = {item['path']: item for item in db.execute("SELECT * FROM files WHERE path IN (SELECT path FROM sources WHERE log_id=?)", (row["id"],))}
-                analyzer.attach_source_availability(value, source_paths, known_files)
-                if request.get("includeMessages", False):
-                    message_bytes = 0
-                    for item in db.execute(statement + "SELECT matching.* FROM matching WHERE log_id=? ORDER BY timestamp,sequence", params + [row["id"]]):
-                        record = message_record(item)
-                        message_bytes += len(json.dumps(record, ensure_ascii=False, allow_nan=False).encode('utf-8')) + 1
-                        if message_bytes > MAX_QUERY_BYTES - 8192:
-                            raise ValueError('Les messages de ce log dépassent le budget de page ; ouvrez les occurrences paginées ou un export détaillé.')
-                        value['messages'].append(record)
-                return value
-            from library_sources import active_folders
-            folders = active_folders(db)
-            # Source paths and import metadata have variable size. Include the
-            # complete envelope before selecting how many logs fit this page.
-            result["snapshot"] = {"schemaVersion": 1, "generatedAt": now(), "sourceFolders": folders,
-                                  "importStats": latest_import_stats(db), "logs": []}
-            values = bounded_rows(rows, map_log, result)
-            result["snapshot"]["logs"] = values
-            total = totals["logs"]
+            values, total = _query_logs(db, request, scope, masks, statement, params, message_active,
+                                       unfiltered, compact_totals if not unfiltered else None, limit, offset, result)
         elif kind == "groups":
-            sql = statement + """SELECT group_id AS id,MIN(title) AS title,MIN(family) AS family,MIN(level) AS level,
-                MAX(priority) AS priority,COUNT(*) AS messageCount,COUNT(DISTINCT log_id) AS logCount,
-                COUNT(DISTINCT selected.drone_id) AS droneCount,MIN(selected.date) AS firstDate,MAX(selected.date) AS lastDate
-                FROM matching JOIN selected ON selected.id=matching.log_id GROUP BY group_id
-                ORDER BY priority DESC,logCount DESC,id ASC LIMIT ? OFFSET ?"""
-            if unfiltered:
-                rows = db.execute("""SELECT s.group_id AS id,g.title,s.family,g.level,g.priority,
-                    s.message_count AS messageCount,s.log_count AS logCount,s.drone_count AS droneCount,
-                    s.first_date AS firstDate,s.last_date AS lastDate
-                    FROM kl_group_stats s JOIN kl_groups g ON g.id=s.group_id
-                    ORDER BY g.priority DESC,s.log_count DESC,s.group_id ASC LIMIT ? OFFSET ?""", (limit, offset)).fetchall()
-            else:
-                rows = db.execute(sql, params + [limit, offset]).fetchall()
-            def map_group(row):
-                value = dict(row)
-                key_clause = ' FROM (SELECT DISTINCT class_key FROM kl_definitions d WHERE group_id=? AND EXISTS(SELECT 1 FROM kl_messages m WHERE m.definition_id=d.id))'
-                count, size = db.execute('SELECT COUNT(*),COALESCE(SUM(LENGTH(CAST(class_key AS BLOB))),0)' + key_clause, (row['id'],)).fetchone()
-                value['classKeyCount'] = count
-                value['classKeysComplete'] = count <= 512 and size <= 128 * 1024
-                value['classKeys'] = [item[0] for item in db.execute('SELECT class_key' + key_clause + ' ORDER BY class_key', (row['id'],))] if value['classKeysComplete'] else []
-                return value
-            values = bounded_rows(rows, map_group, result)
-            result.update(groups=values, total=totals["groupCount"])
-            total = totals["groupCount"]
+            values, total = _query_groups(db, statement, params, unfiltered, limit, offset, result)
         elif kind == 'events':
-            import analyzer
-            coverage = dict(db.execute(statement + '''SELECT COUNT(*) AS selectedLogs,
-                COALESCE(SUM(c.log_id IS NOT NULL),0) AS cachedLogs,
-                COALESCE(SUM(c.log_id IS NULL),0) AS unavailableLogs,
-                COALESCE(SUM(c.state='legacy'),0) AS legacyCacheLogs,
-                COALESCE(SUM(c.state='invalid'),0) AS invalidCacheLogs,
-                COALESCE(SUM(c.event_count>0),0) AS eventLogs,
-                COALESCE(SUM(c.translated_count>0),0) AS translatedLogs,
-                COALESCE(SUM(c.parser_version<>?),0) AS previousParserLogs
-                FROM selected LEFT JOIN kl_event_cache c ON c.log_id=selected.id''', params + [analyzer.PARSER_VERSION]).fetchone())
-            event_clauses, event_values = [], []
-            levels = string_list(request.get('eventLevels', []), 'eventLevels')
-            if levels:
-                level_column = 'external_level' if request.get('eventLevelSource') == 'external' else 'internal_level'
-                event_clauses.append('e.' + level_column + ' IN (' + ','.join('?' for _ in levels) + ')')
-                event_values.extend(levels)
-            search = normalized(request.get('eventSearch', ''))
-            if search:
-                event_clauses.append("e.search_text LIKE ? ESCAPE '\\'")
-                event_values.append(like_pattern(search))
-            where = ' WHERE ' + ' AND '.join(event_clauses) if event_clauses else ''
-            total = db.execute(statement + 'SELECT COUNT(*) FROM selected JOIN kl_events e ON e.log_id=selected.id' + where, params + event_values).fetchone()[0]
-            rows = db.execute(statement + 'SELECT e.*,selected.drone_id,selected.canonical_name,selected.stock_number,selected.date FROM kl_logs l INDEXED BY kl_logs_date CROSS JOIN selected ON selected.id=l.id CROSS JOIN kl_events e ON e.log_id=l.id' + where + ' ORDER BY l.date DESC,l.id DESC,(e.time_seconds IS NULL),e.time_seconds,e.sequence LIMIT ? OFFSET ?', params + event_values + [limit, offset]).fetchall()
-            def map_event(row):
-                return {'logID': row['log_id'], 'droneID': row['drone_id'],
-                        'droneName': 'Drone ' + row['stock_number'] if row['stock_number'] else row['canonical_name'],
-                        'date': row['date'], 'sourcePaths': [item[0] for item in db.execute('SELECT path FROM sources WHERE log_id=? ORDER BY path', (row['log_id'],))],
-                        'event': json.loads(row['event_json'])}
-            values = bounded_rows(rows, map_event, result)
-            result.update(occurrences=values, total=total, coverage=coverage)
+            values, total = _query_events(db, request, statement, params, limit, offset, result)
         else:
-            condition, extra = (" WHERE matching.group_id=?", [group]) if group else ("", [])
-            if unfiltered:
-                count = db.execute('SELECT message_count FROM kl_group_stats WHERE group_id=?', (group,)).fetchone() if group else None
-                total = (count[0] if count else 0) if group else totals['messages']
-            elif not group:
-                total = totals['messages']
-            else:
-                total = db.execute(statement + "SELECT COUNT(*) FROM matching JOIN selected ON selected.id=matching.log_id" + condition, params + extra).fetchone()[0]
-            clauses, position_values, page_offset = (['matching.group_id=?'], [group], offset) if group else ([], [], offset)
-            if request.get('cursor'):
-                token = json.loads(base64.urlsafe_b64decode(request['cursor'] + '=' * (-len(request['cursor']) % 4)))
-                position = token.get('position')
-                if position is not None:
-                    if not isinstance(position, list) or len(position) != 4 or not isinstance(position[0], str) or not isinstance(position[1], str) or not isinstance(position[2], (int, float)) or isinstance(position[2], bool) or not math.isfinite(position[2]) or type(position[3]) is not int or position[3] < 0:
-                        raise ValueError('Position de curseur d’occurrence invalide.')
-                    clauses.append('(l.date,l.id)<=(?,?) AND (l.date<? OR l.id<? OR (matching.timestamp>? OR (matching.timestamp=? AND matching.sequence>?)))')
-                    position_values.extend((position[0], position[1], position[0], position[1], position[2], position[2], position[3]))
-                    page_offset = 0
-            where = ' WHERE ' + ' AND '.join(clauses) if clauses else ''
-            rows = db.execute(statement + 'SELECT matching.*,selected.drone_id,selected.canonical_name,selected.stock_number,selected.date FROM kl_logs l INDEXED BY kl_logs_date CROSS JOIN selected ON selected.id=l.id CROSS JOIN matching ON matching.log_id=l.id' + where + ' ORDER BY l.date DESC,l.id DESC,matching.timestamp,matching.sequence LIMIT ? OFFSET ?', params + position_values + [limit, page_offset]).fetchall()
-            def map_occurrence(row):
-                paths = [item[0] for item in db.execute("SELECT path FROM sources WHERE log_id=? ORDER BY path", (row["log_id"],))]
-                return {"logID": row["log_id"], "droneID": row["drone_id"], "droneName": "Drone " + row["stock_number"] if row["stock_number"] else row["canonical_name"],
-                        "date": row["date"], "sourcePaths": paths, "message": message_record(row)}
-            values = bounded_rows(rows, map_occurrence, result)
-            if values:
-                last = rows[len(values)-1]
-                next_position = [last['date'], last['log_id'], last['timestamp'], last['sequence']]
-            result.update(occurrences=values, total=total)
+            values, total, next_position = _query_messages(db, request, group, statement, params, unfiltered, limit, offset, result)
         if offset + len(values) < total:
             result["nextCursor"] = encode_cursor(revision, scope_hash, kind, group, offset + len(values), next_position)
         if len(json.dumps(result, ensure_ascii=False, allow_nan=False).encode("utf-8")) > MAX_QUERY_BYTES:

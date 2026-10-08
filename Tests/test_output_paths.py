@@ -156,6 +156,18 @@ class OutputPathTests(unittest.TestCase):
             analyzer.scan(self.source, new_database, additional_outputs=(new_database,))
         self.assertFalse(new_database.exists())
 
+    def test_extracted_engine_modules_are_protected_by_the_shared_guard(self):
+        resources = self.root / 'engine-resources'
+        resources.mkdir()
+        with patch.object(output_paths, '__file__', str(resources / 'output_paths.py')):
+            for name in ('analyzer_cli.py', 'analysis_revisions.py'):
+                with self.subTest(module=name):
+                    module = resources / name
+                    module.write_bytes(b'# synthetic extracted engine module')
+                    with self.assertRaisesRegex(ValueError, 'sortie'):
+                        output_paths.validate_outputs((module,))
+                    self.assertEqual(module.read_bytes(), b'# synthetic extracted engine module')
+
     def test_engine_entry_file_is_protected_even_with_a_custom_filename(self):
         engine = self.root / 'custom-engine.py'
         engine.write_text('# synthetic engine entry')
