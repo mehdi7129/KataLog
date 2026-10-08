@@ -12,12 +12,14 @@ import unicodedata
 import zipfile
 
 from library_storage import CONFIG_NAMES, DB_NAME, MAX_MANIFEST_BYTES
+from local_files import require_local_source
 
 CONTROL_NAMES = CONFIG_NAMES | frozenset(('.library-writer.lock', '.restore-journal.json', '.archive-journal.json'))
 
 
 def backup_source_paths(path):
     """Reserve incoming provenance; restore still fully validates the archive."""
+    require_local_source(path)
     with zipfile.ZipFile(path) as archive:
         if archive.getinfo('manifest.json').file_size > MAX_MANIFEST_BYTES:
             raise ValueError('Manifeste de sauvegarde trop volumineux.')
@@ -63,10 +65,12 @@ def source_paths(database, outputs, inspect_aliases, use_copy=False):
             for suffix in ('', '-wal', '-shm', '-journal'):
                 source = Path(str(database) + suffix)
                 if source.exists():
+                    require_local_source(source)
                     shutil.copyfile(source, Path(str(copied) + suffix))
             database = copied
         db = None
         try:
+            require_local_source(database)
             db = sqlite3.connect(database.resolve().as_uri() + '?mode=ro', uri=True)
             if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sources'").fetchone():
                 if inspect_aliases:
