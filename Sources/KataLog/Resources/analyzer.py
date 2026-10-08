@@ -89,6 +89,12 @@ def atomic_json(path, value):
 
 
 def open_database(path, read_only=False):
+    # A partial file swap is neither a fresh library nor a coherent reader.
+    # Check both the library path and a database symlink's resolved location.
+    for root in {Path(path).parent.resolve(), Path(path).resolve().parent}:
+        journal = root / '.restore-journal.json'
+        if journal.exists() or journal.is_symlink():
+            raise ValueError('Une restauration interrompue nécessite une récupération avant d’ouvrir la bibliothèque.')
     if read_only:
         db = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True, timeout=30)
         db.row_factory = sqlite3.Row
