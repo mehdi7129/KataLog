@@ -195,10 +195,11 @@ public struct LibraryMessagePage: Codable, Sendable, LibraryPageContract {
 }
 
 public enum LibraryQueryService {
-    public static func page<T: Decodable & Sendable>(_ type: T.Type, request: LibraryQueryRequest, database: URL, engine: URL, readOnly: Bool = false) async throws -> T {
+    public static func page<T: Decodable & Sendable>(_ type: T.Type, request: LibraryQueryRequest, database: URL, engine: URL, readOnly: Bool = false, proximityCache: URL? = nil) async throws -> T {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
         var command = ["query", "--database", database.path]
         if readOnly { command.append("--read-only") }
+        if let proximityCache { command += ["--proximity-cache", proximityCache.path] }
         let data = try await AnalysisService.run(command, engine: engine, request: encoder.encode(request))
         let page = try JSONDecoder().decode(type, from: data)
         if let contract = page as? any LibraryPageContract, contract.queryVersion != 1 { throw AnalysisError.schema(contract.queryVersion) }

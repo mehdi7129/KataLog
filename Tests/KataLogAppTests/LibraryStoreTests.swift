@@ -24,6 +24,10 @@ kind=request.get('kind','logs') if command=='query' else command
 block_kind='map' if kind=='map-overview' else kind
 if command=='query':
     with (root/'query-calls').open('a') as stream: stream.write(kind+'\n')
+    if '--proximity-cache' in sys.argv:
+        cache=pathlib.Path(sys.argv[sys.argv.index('--proximity-cache')+1])
+        cache.write_text('synthetic cache')
+        (root/'last-map-cache').write_text(str(cache))
 if command=='clients':
     with (root/'client-calls').open('a') as stream: stream.write('clients\n')
 if (root/('block-'+block_kind)).exists():
@@ -162,6 +166,25 @@ pathlib.Path(sys.argv[sys.argv.index('--output')+1]).write_text(json.dumps(resul
         XCTAssertEqual(store.mapPage?.revision, 7)
         XCTAssertEqual(callCount(root, "map-overview"), 1)
         XCTAssertEqual(callCount(root, "logs"), 0)
+    }
+
+    func testMapSelectionCacheIsRemovedAfterCompletionAndCancellation() async throws {
+        let (root, store) = try blockedQueryFixture(kind: "map")
+        let area = GeographicProximity(latitude: 45, longitude: 4, radiusMeters: 100)
+        store.loadMap(proximity: area)
+        _ = try await activePID(root, kind: "map")
+        let cancelledCache = URL(fileURLWithPath: try String(contentsOf: root.appendingPathComponent("last-map-cache"), encoding: .utf8))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cancelledCache.path))
+        await store.cancelQuery()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cancelledCache.deletingLastPathComponent().path))
+        try FileManager.default.removeItem(at: root.appendingPathComponent("block-map"))
+        store.loadMap(proximity: area)
+        try await waitUntil { !store.isQuerying }
+        XCTAssertNil(store.queryError)
+        let completedCache = URL(fileURLWithPath: try String(contentsOf: root.appendingPathComponent("last-map-cache"), encoding: .utf8))
+        XCTAssertNotEqual(completedCache, cancelledCache)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: completedCache.deletingLastPathComponent().path))
+        XCTAssertEqual(store.mapPage?.revision, 7)
     }
 
     private func callCount(_ root: URL, _ kind: String? = nil) -> Int {

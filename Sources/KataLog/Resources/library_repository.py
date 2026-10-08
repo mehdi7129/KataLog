@@ -835,7 +835,13 @@ def registry_source_coverage(db, statement, params):
     return coverage
 
 
-def query(db, request, read_only=False):
+def query(db, request, read_only=False, proximity_cache=None):
+    if proximity_cache is not None:
+        from output_paths import validate_outputs
+        database_path = db.execute('PRAGMA database_list').fetchone()[2]
+        if not database_path:
+            raise ValueError('Le cache de pagination exige une bibliothèque sur disque.')
+        validate_outputs([proximity_cache], database=database_path)
     db.execute('PRAGMA cache_size=-131072')
     # Large user-defined catalogues/filters spill to temporary storage instead
     # of making helper memory proportional to all stored message definitions.
@@ -869,9 +875,14 @@ def query(db, request, read_only=False):
         next_position = None
         proximity_unavailable = None
         if request.get('proximity') is not None:
-            from library_proximity import prepare_scope, validate
+            from library_proximity import CACHE_VERSION, prepare_scope, validate
+            database_path = db.execute('PRAGMA database_list').fetchone()[2]
+            metadata = Path(database_path).stat() if database_path else None
+            identity = [database_path, metadata.st_dev, metadata.st_ino] if metadata else [database_path]
+            cache_key = json.dumps([CACHE_VERSION, identity, revision, scope_hash, kind], separators=(',', ':'))
             scope, proximity_unavailable = prepare_scope(db, scope, validate(request['proximity']), read_only,
-                                                        overview=kind == 'map-overview')
+                                                        overview=kind == 'map-overview', cache_key=cache_key,
+                                                        cache_path=proximity_cache)
         if kind == 'map-overview':
             from library_map_overview import query_page
             return query_page(db, request, scope, limit, revision, scope_hash, offset, proximity_unavailable)
