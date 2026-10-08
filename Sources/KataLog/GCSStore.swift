@@ -25,11 +25,11 @@ final class GCSStore: ObservableObject {
     @Published var statusMessage: String?
     @Published var errorMessage: String?
     @Published private(set) var drones: [GCSDrone] = []
-    @Published private(set) var allowedUUIDs: Set<String>
+    @Published private(set) var allowedUUIDs: Set<String> { didSet { refreshQueueCounts() } }
     @Published private(set) var selectedUUID: String?
     @Published private(set) var files: [GCSLogFile] = []
     @Published var selectedFileIDs: Set<String> = []
-    @Published private(set) var queue: [GCSTransfer]
+    @Published private(set) var queue: [GCSTransfer] { didSet { queueRevision &+= 1 } }
     @Published private(set) var downloadDirectory: URL
     @Published var autoImport: Bool {
         didSet {
@@ -49,6 +49,33 @@ final class GCSStore: ObservableObject {
     private let queueDatabaseURL: URL
     private var queueRepository: GCSQueueRepository?
     private var repositoryWritable = false
+    private var hasCompleteInMemoryQueue = true
+    private var queueRevision: UInt64 = 0
+    private struct CountsSelection: Equatable {
+        let batchID: String
+        let authorizedUUIDs: Set<String>
+    }
+    private struct CountsSnapshot {
+        let selection: CountsSelection
+        let queueRevision: UInt64
+        let progress: GCSBatchProgress
+        let retryable: Int
+        let total: Int
+    }
+    @Published private var countsSnapshot: CountsSnapshot?
+    @Published private(set) var countsError: String?
+    private var countsSelection: CountsSelection { CountsSelection(batchID: currentBatchID, authorizedUUIDs: allowedUUIDs) }
+    private var selectedCounts: CountsSnapshot? { countsSnapshot?.selection == countsSelection ? countsSnapshot : nil }
+    var hasQueueCounts: Bool { selectedCounts != nil }
+    var countsAreCurrent: Bool { selectedCounts?.queueRevision == queueRevision && countsError == nil }
+    var countsReadMessage: String? {
+        guard !countsAreCurrent else { return nil }
+        if countsError != nil {
+            return hasQueueCounts ? "Totaux indisponibles · derniers comptes vérifiés affichés." : "Totaux indisponibles · la file complète ne peut pas être lue."
+        }
+        return "Actualisation des totaux de collecte…"
+    }
+
     private var queueStorageIssue: String?
     private var dirtyTransferIDs: Set<String> = []
     private var queueSourceIndex: [GCSTransferSource: Int] = [:]
@@ -84,21 +111,35 @@ final class GCSStore: ObservableObject {
     private var activeInventoryUUID: String?
     let maxConcurrentDownloads = GCSQueuePolicy.maxConcurrentDownloads
     var activeTransferCount: Int { transferTasks.count }
-    var retryableCount: Int {
-        if let queueRepository, let count = try? queueRepository.retryableCount(authorizedUUIDs: allowedUUIDs) { return count }
-        return queue.filter { ["failed", "interrupted", "stopped"].contains($0.state) && allowedUUIDs.contains($0.droneUUID) }.count
-    }
+    var retryableCount: Int { selectedCounts?.retryable ?? 0 }
     var isStopping: Bool { queue.contains { (transferTasks[$0.id] != nil || activeAnalysisID == $0.id) && $0.state == "stopped" } }
-    var diagnosticJobCount: Int? {
-        if let queueRepository { return try? queueRepository.transferCount(overlay: dirtyTransfers) }
-        return queueStorageIssue == nil ? queue.count : nil
-    }
-    var batchProgress: GCSBatchProgress {
-        if let queueRepository, let progress = try? queueRepository.batchProgress(id: currentBatchID, overlay: dirtyTransfers) { return progress }
-        return GCSBatchProgress(transfers: queue.filter { $0.batchID == currentBatchID })
+    var diagnosticJobCount: Int? { countsAreCurrent ? selectedCounts?.total : nil }
+    var batchProgress: GCSBatchProgress { selectedCounts?.progress ?? GCSBatchProgress(transfers: []) }
+
+    // Called by model updates, never by SwiftUI getters. A failed read preserves
+    // only the last explicit snapshot for this batch and authorized fleet.
+    func refreshQueueCounts() {
+        do {
+            guard !startupStorageDeferred else { throw AnalysisError.unavailable("Restauration en cours.") }
+            if let queueStorageIssue { throw AnalysisError.unavailable(queueStorageIssue) }
+            let progress: GCSBatchProgress, retryable: Int, total: Int
+            if let queueRepository {
+                let counts = try queueRepository.counts(batchID: currentBatchID, authorizedUUIDs: allowedUUIDs, overlay: dirtyTransfers)
+                progress = counts.progress; retryable = counts.retryable; total = counts.total
+            } else {
+                guard hasCompleteInMemoryQueue else { throw AnalysisError.unavailable("La file complète ne peut pas être lue.") }
+                progress = GCSBatchProgress(transfers: queue.filter { $0.batchID == currentBatchID })
+                retryable = queue.filter { ["failed", "interrupted", "stopped"].contains($0.state) && allowedUUIDs.contains($0.droneUUID) }.count
+                total = queue.count
+            }
+            countsSnapshot = CountsSnapshot(selection: countsSelection, queueRevision: queueRevision,
+                                            progress: progress, retryable: retryable, total: total)
+            countsError = nil
+        } catch { countsError = error.localizedDescription }
     }
     var collectionFraction: Double { overallFraction(for: batchProgress) }
     func overallFraction(for progress: GCSBatchProgress) -> Double {
+        guard countsAreCurrent else { return 0 }
         if progress.totalCount > 0 { return progress.fraction }
         let allPreviewFilesPresent = destinationPreviewFileCount.map { $0 > 0 && cachedFileCount == $0 } ?? true
         return cachedFileCount > 0 && allPreviewFilesPresent && !isScanningFleet && !hasIncompleteInventory ? 1 : 0
@@ -113,6 +154,7 @@ final class GCSStore: ObservableObject {
     var hasIncompleteInventory: Bool { !expectedInventoryUUIDs.isSubset(of: completedInventoryUUIDs) || !inventoryFailures.isEmpty }
     var inventoryCoverageLabel: String { "\(completedInventoryUUIDs.intersection(expectedInventoryUUIDs).count) / \(expectedInventoryUUIDs.count) drones recensés" }
     var batchStatusMessage: String {
+        if let countsReadMessage { return countsReadMessage }
         let progress = batchProgress
         if isScanningFleet { return "Lecture des inventaires de la flotte · \(inventoryCoverageLabel)" }
         if isBusy && progress.totalCount == 0 && selectedUUID != nil && files.isEmpty {
@@ -203,7 +245,7 @@ final class GCSStore: ObservableObject {
             do {
                 let repository = try GCSQueueRepository(url: queueDatabaseURL, readOnly: true)
                 if try repository.hasMigratedLegacy { state.queue = try repository.retainedTransfers() }
-                queueRepository = repository
+                queueRepository = repository; hasCompleteInMemoryQueue = false
             } catch { loadError = error.localizedDescription; queueStorageIssue = loadError }
         } else if state.queueStorageVersion != nil {
             loadError = "La file SQLite enregistrée est absente. Restaurez une sauvegarde avant de relancer la collecte."
@@ -227,6 +269,7 @@ final class GCSStore: ObservableObject {
         autoImport = state.autoImport; reconnect = state.reconnect
         errorMessage = loadError
         rebuildQueueIndexes()
+        refreshQueueCounts()
         termination = NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification).sink { [weak self] _ in
             self?.stopForTermination()
         }
@@ -281,6 +324,7 @@ final class GCSStore: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
                 guard !Task.isCancelled, let self else { return }
+                self.refreshQueueCounts()
                 self.objectWillChange.send() // Availability and retry countdown expire without new packets.
                 if (!self.dirtyTransferIDs.isEmpty || self.configurationDirty) && !self.isReadOnly && !self.isMaintenanceBlocked { self.persist() }
                 self.fleetObservations.flush()
@@ -352,6 +396,8 @@ final class GCSStore: ObservableObject {
         discoveryTask?.cancel(); discoveryTask = nil
         isConnected = false; isConnecting = false; connectedHost = nil; reconnect = false
         queueRepository = nil; repositoryWritable = false
+        countsSnapshot = nil; hasCompleteInMemoryQueue = false
+        refreshQueueCounts()
     }
 
     /// Restore changes files beneath this store. Reopen handles without reconnecting or starting work.
@@ -361,6 +407,7 @@ final class GCSStore: ObservableObject {
         queueStorageIssue = "La file de collecte restaurée n’a pas encore été vérifiée."
         queue = []; rebuildQueueIndexes(); legacyTransfers = []; dirtyTransferIDs = []; configurationDirty = false
         isQueuePaused = true
+        defer { refreshQueueCounts() }
         do { try loadRestoredCollectionState(); startupStorageDeferred = false }
         catch {
             queueRepository = nil; repositoryWritable = false
@@ -375,6 +422,7 @@ final class GCSStore: ObservableObject {
         reconciledClientIDs = nil
         drones = []; selectedUUID = nil; files = []; selectedFileIDs = []; knownAnalysisHashes = []
         queueRepository = nil; repositoryWritable = false
+        countsSnapshot = nil; hasCompleteInMemoryQueue = true
         let input = FileManager.default.fileExists(atPath: stateURL.path) ? stateURL : legacyStateURL
         var state = GCSCollectionState(downloadDirectory: stateURL.deletingLastPathComponent().appendingPathComponent("Collected Logs").path)
         if FileManager.default.fileExists(atPath: input.path) {
@@ -385,7 +433,7 @@ final class GCSStore: ObservableObject {
         if FileManager.default.fileExists(atPath: queueDatabaseURL.path) {
             let repository = try GCSQueueRepository(url: queueDatabaseURL, readOnly: true)
             if try repository.hasMigratedLegacy { state.queue = try repository.retainedTransfers() }
-            queueRepository = repository
+            queueRepository = repository; hasCompleteInMemoryQueue = false
         } else if state.queueStorageVersion != nil {
             throw AnalysisError.unavailable("La sauvegarde restaurée ne contient pas la file SQLite attendue.")
         }
@@ -746,7 +794,10 @@ final class GCSStore: ObservableObject {
             }
             dirtyTransferIDs.insert(job.id); added += 1
         }
-        if added > 0 { queue = updated; library?.diagnostics.record(.collectionStarted, correlation: currentBatchID, metrics: [.items: Int64(added)]) }
+        if added > 0 {
+            queue = updated
+            library?.diagnostics.record(.collectionStarted, correlation: currentBatchID, metrics: [.items: Int64(added)])
+        }
         return added
     }
     func enqueueSelected() {
@@ -848,6 +899,7 @@ final class GCSStore: ObservableObject {
         persist()
     }
     func retryFailed() {
+        defer { refreshQueueCounts() }
         guard permitMutation() else { return }
         guard !isBusy, !isScanningFleet else { return }
         do {
@@ -955,6 +1007,7 @@ final class GCSStore: ObservableObject {
                     queue[index].phase = "verified"; queue[index].phaseBytes = job.size; queue[index].phaseTotal = job.size
                 default: break
                 }
+                refreshQueueCounts()
             }
             try Task.checkCancellation()
             guard downloaded else { throw AnalysisError.engine("Aucun fichier complet reçu.") }
@@ -1036,10 +1089,11 @@ final class GCSStore: ObservableObject {
     }
 
     private func finishTransfer(job: GCSTransfer, analyzed: Bool) {
+        refreshQueueCounts()
         library?.diagnostics.record(.transferCompleted, correlation: (job.batchID ?? currentBatchID) + job.id,
                                     metrics: [.bytes: job.size, .totalBytes: job.size])
         let completed = batchProgress
-        if completed.totalCount > 0 && completed.completedCount == completed.totalCount {
+        if countsAreCurrent && completed.totalCount > 0 && completed.completedCount == completed.totalCount {
             library?.diagnostics.record(.collectionCompleted, correlation: currentBatchID, metrics: [.items: Int64(completed.totalCount)])
         }
         if selectedUUID == job.droneUUID, let index = files.firstIndex(where: { $0.path == job.remotePath }) { files[index].isDownloaded = true }
@@ -1079,6 +1133,7 @@ final class GCSStore: ObservableObject {
             destinationPreviewFileCount = previousPreviewCount
             expectedInventoryUUIDs = previousExpected; completedInventoryUUIDs = previousCompleted
             inventoryFailures = previousFailures; inventoryErrors = previousErrors
+            refreshQueueCounts()
             throw error
         }
         library?.diagnostics.record(.destinationChanged)
@@ -1115,6 +1170,7 @@ final class GCSStore: ObservableObject {
         catch { errorMessage = error.localizedDescription; return false }
     }
     private func saveState(authorizing proposed: Set<String>? = nil) throws {
+        defer { refreshQueueCounts() }
         guard permitMutation() else { throw AnalysisError.unavailable(errorMessage ?? "La bibliothèque est en lecture seule.") }
         try prepareQueueStorage()
         let dirty = dirtyTransfers
@@ -1163,7 +1219,7 @@ final class GCSStore: ObservableObject {
         queueRepository = nil
         let repository = try GCSQueueRepository(url: queueDatabaseURL)
         try repository.migrateLegacy(legacyTransfers)
-        queueRepository = repository; repositoryWritable = true
+        queueRepository = repository; repositoryWritable = true; hasCompleteInMemoryQueue = false
     }
     private func permitMutation() -> Bool {
         if isReadOnly { errorMessage = "Cette bibliothèque est ouverte par une autre instance. La collecte est en lecture seule."; return false }

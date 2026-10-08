@@ -144,11 +144,13 @@ struct GCSCollectionView: View {
                 if store.isScanningFleet {
                     ProgressView().controlSize(.small)
                 }
-                Text("\(Int(fraction * 100))")
+                Text(store.countsAreCurrent ? "\(Int(fraction * 100))" : "—")
                     .font(.system(size: 40, weight: .semibold, design: .rounded))
                     .tracking(-1.5).monospacedDigit()
-                Text("%").font(.system(size: 20, weight: .medium)).foregroundStyle(palette.secondary)
-                    .padding(.leading, -10)
+                if store.countsAreCurrent {
+                    Text("%").font(.system(size: 20, weight: .medium)).foregroundStyle(palette.secondary)
+                        .padding(.leading, -10)
+                }
             }
             .foregroundStyle(palette.primary)
 
@@ -162,13 +164,13 @@ struct GCSCollectionView: View {
             .frame(height: 14)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Progression du transfert")
-            .accessibilityValue(progress.totalCount > 0 ? "\(Int(fraction * 100)) pour cent, \(progress.completedCount) fichiers vérifiés sur \(progress.totalCount)" : "\(Int(fraction * 100)) pour cent, \(store.cachedFileCount) logs déjà présents et vérifiés")
+            .accessibilityValue(store.countsReadMessage ?? (progress.totalCount > 0 ? "\(Int(fraction * 100)) pour cent, \(progress.completedCount) fichiers vérifiés sur \(progress.totalCount)" : "\(Int(fraction * 100)) pour cent, \(store.cachedFileCount) logs déjà présents et vérifiés"))
             .accessibilityIdentifier("gcs.batchProgress")
             .help("La progression suit Drone → GCS, puis GCS → Mac, en tenant compte de la taille des fichiers. 100 % signifie que tous les fichiers de cette collecte sont vérifiés. Les octets affichés comptent uniquement la copie reçue sur ce Mac.")
 
             HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(progress.totalCount == 0 ? (store.cachedFileCount > 0 ? "\(store.cachedFileCount) logs déjà présents" : "Aucun fichier en collecte") : "\(progress.completedCount) / \(progress.totalCount) fichiers vérifiés")
+                    Text(!store.hasQueueCounts ? "Comptes indisponibles" : progress.totalCount == 0 ? (store.cachedFileCount > 0 ? "\(store.cachedFileCount) logs déjà présents" : "Aucun fichier en collecte") : "\(progress.completedCount) / \(progress.totalCount) fichiers vérifiés")
                         .font(.system(size: 13, weight: .semibold)).foregroundStyle(palette.primary)
                     if progress.totalCount > 0 {
                         Text("\(bytes(progress.completedBytes)) / \(bytes(progress.totalBytes)) reçus sur ce Mac · \(store.cachedFileCount) logs déjà présents")
@@ -189,7 +191,7 @@ struct GCSCollectionView: View {
             rule
             HStack(spacing: 15) {
                 statusDot("\(store.activeTransferCount) drones en transfert", color: store.activeTransferCount > 0 ? palette.mint : palette.secondary)
-                Text("\(progress.pendingCount) en attente")
+                Text(store.hasQueueCounts ? "\(progress.pendingCount) en attente" : "Total en attente indisponible")
                 Spacer(minLength: 4)
                 Text("\(store.maxConcurrentDownloads) drones maximum simultanément")
             }

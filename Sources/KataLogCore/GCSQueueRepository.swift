@@ -1,6 +1,12 @@
 import Foundation
 import SQLite3
 
+public struct GCSQueueCounts: Sendable {
+    public let progress: GCSBatchProgress
+    public let retryable: Int
+    public let total: Int
+}
+
 public struct GCSQueueHistoryPage: Sendable {
     public let transfers: [GCSTransfer]
     public let nextCursor: Int64?
@@ -128,7 +134,7 @@ public final class GCSQueueRepository: @unchecked Sendable {
         return try rows(statement)
     }
 
-    public func retryableCount(authorizedUUIDs: Set<String>) throws -> Int {
+    public func retryableCount(authorizedUUIDs: Set<String>, overlay: [GCSTransfer] = []) throws -> Int {
         lock.lock(); defer { lock.unlock() }
         guard !authorizedUUIDs.isEmpty else { return 0 }
         let ids = authorizedUUIDs.sorted()
@@ -137,7 +143,29 @@ public final class GCSQueueRepository: @unchecked Sendable {
         defer { sqlite3_finalize(statement) }
         for (index, id) in ids.enumerated() { bind(id, at: Int32(index + 1), to: statement) }
         guard sqlite3_step(statement) == SQLITE_ROW else { throw AnalysisError.engine("Impossible de compter les fichiers à relancer.") }
-        return Int(sqlite3_column_int64(statement, 0))
+        var count = Int(sqlite3_column_int64(statement, 0))
+        func retryable(_ item: GCSTransfer) -> Bool {
+            authorizedUUIDs.contains(item.droneUUID) && ["failed", "interrupted", "stopped"].contains(item.state)
+        }
+        let latest = overlay.reduce(into: [String: GCSTransfer]()) { $0[$1.id] = $1 }
+        for item in latest.values {
+            if let previous = try transfer(id: item.id), retryable(previous) { count -= 1 }
+            if retryable(item) { count += 1 }
+        }
+        return count
+    }
+
+    /// Read all UI aggregates from one SQLite snapshot plus the same unsaved changes.
+    public func counts(batchID: String, authorizedUUIDs: Set<String>, overlay: [GCSTransfer] = []) throws -> GCSQueueCounts {
+        lock.lock(); defer { lock.unlock() }
+        try execute("BEGIN")
+        do {
+            let result = try GCSQueueCounts(progress: batchProgress(id: batchID, overlay: overlay),
+                                            retryable: retryableCount(authorizedUUIDs: authorizedUUIDs, overlay: overlay),
+                                            total: transferCount(overlay: overlay))
+            try execute("COMMIT")
+            return result
+        } catch { try? execute("ROLLBACK"); throw error }
     }
 
     public func historyPage(before cursor: Int64? = nil, limit: Int = 100) throws -> GCSQueueHistoryPage {
