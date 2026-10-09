@@ -1,4 +1,5 @@
 import AppKit
+import MapKit
 import SwiftUI
 import XCTest
 @testable import KataLog
@@ -20,7 +21,7 @@ final class WorkspacePreviewTests: XCTestCase {
     }
 
     private func fixture(count: Int = 120, blockQueries: Bool = false, flightSeconds: Double? = nil, withMapPoints: Bool = false,
-                         navigationPaging: Bool = false, pagedNavigation: Bool = true) async throws -> Fixture {
+                         navigationPaging: Bool = false, pagedNavigation: Bool = true, queryDelay: Double = 0) async throws -> Fixture {
         let environment = ProcessInfo.processInfo.environment
         guard let python = environment["KATALOG_TEST_PYTHON"] ?? environment["KATALOG_PYTHON"],
               FileManager.default.isExecutableFile(atPath: python) else {
@@ -87,16 +88,17 @@ final class WorkspacePreviewTests: XCTestCase {
             runpy.run_path(\(String(reflecting: resources.appendingPathComponent("analyzer.py").path)),run_name='__main__')
             """.write(to: engine, atomically: true, encoding: .utf8)
         }
-        if navigationPaging {
+        if navigationPaging || queryDelay > 0 {
             engine = root.appendingPathComponent("paged-query.py")
             try """
             import sys,time,signal,runpy,json
             from pathlib import Path
             root=Path(\(String(reflecting: root.path)))
             if sys.argv[1]=='query':
+                time.sleep(\(queryDelay))
                 request_path=Path(sys.argv[sys.argv.index('--request')+1])
                 request=json.loads(request_path.read_text())
-                if request['kind']=='logs':
+                if \(navigationPaging ? "True" : "False") and request['kind']=='logs':
                     request['limit']=2
                     request_path.write_text(json.dumps(request))
                     if request.get('cursor') and (root/'block-cursor').exists():
@@ -268,7 +270,8 @@ final class WorkspacePreviewTests: XCTestCase {
     }
 
     private func render<V: View>(_ content: V, name: String, width: CGFloat, height: CGFloat, scheme: ColorScheme,
-                                settleDelay: Duration = .milliseconds(450)) async throws -> NSSize {
+                                settleDelay: Duration = .milliseconds(450),
+                                beforeCapture: @MainActor (NSView) async throws -> Void = { _ in }) async throws -> NSSize {
         _ = NSApplication.shared
         let controller = NSHostingController(rootView: content.environment(\.colorScheme, scheme).preferredColorScheme(scheme).background(Color(nsColor: .windowBackgroundColor)))
         let host = controller.view
@@ -280,6 +283,7 @@ final class WorkspacePreviewTests: XCTestCase {
         window.setContentSize(NSSize(width: width, height: height))
         host.layoutSubtreeIfNeeded()
         try await Task.sleep(for: settleDelay)
+        try await beforeCapture(host)
         host.frame = NSRect(x: 0, y: 0, width: width, height: height)
         host.layoutSubtreeIfNeeded()
         // Probe the requested size, not the unconstrained ideal size (a larger ideal is allowed).
@@ -309,18 +313,71 @@ final class WorkspacePreviewTests: XCTestCase {
     }
 
     private func renderWorkspace(_ fixture: Fixture, page: Workspace06View.Page, name: String,
-                                 width: CGFloat, height: CGFloat, scheme: ColorScheme) async throws -> NSSize {
-        let sortOverride: String? = page == .overview ? "recent" : nil
-        if fixture.library.historySortOverride != sortOverride {
-            fixture.library.historySortOverride = sortOverride
-            fixture.library.loadHistory()
-        }
+                                 width: CGFloat, height: CGFloat, scheme: ColorScheme,
+                                 verify: @MainActor (LibraryNavigationStore) throws -> Void = { _ in }) async throws -> NSSize {
         // Workspace appearance is persistent and takes precedence over the host.
-        // Set the selected mode explicitly so a light capture cannot render dark.
         try fixture.library.views.setTheme(scheme == .dark ? "dark" : "light")
         try await settle(fixture.library)
-        return try await render(Workspace06View(library: fixture.library, gcs: fixture.gcs, initialPage: page),
-                                name: name, width: width, height: height, scheme: scheme)
+        // Keep the exact session the window displays; the library facade refers
+        // to a different, already-loaded default session.
+        let navigation = fixture.library.makeNavigationSession()
+        return try await render(Workspace06View(library: fixture.library, gcs: fixture.gcs, initialPage: page,
+                                                navigation: navigation),
+                                name: name, width: width, height: height, scheme: scheme, settleDelay: .zero) { host in
+            @MainActor func resultsReady() -> Bool {
+                guard navigation.historyResultsCurrent, !navigation.hasActiveWork else { return false }
+                switch page {
+                case .map: return navigation.mapPage != nil
+                case .drones: return navigation.droneResultsCurrent
+                case .alerts: return navigation.groupResultsCurrent
+                default: return true
+                }
+            }
+            // onAppear starts this window's read. Wait for its result, including
+            // auxiliary reads scheduled after history publishes, before capture.
+            let deadline = Date().addingTimeInterval(20)
+            while !resultsReady(), navigation.queryError == nil, Date() < deadline {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            XCTAssertTrue(resultsReady(), "The displayed \(page) page did not finish loading before capture.")
+            XCTAssertFalse(navigation.hasActiveWork, "Capture must wait for the displayed navigation session.")
+            XCTAssertNil(navigation.queryError)
+            XCTAssertTrue(navigation.historyResultsCurrent)
+            _ = try XCTUnwrap(navigation.historyPage, "The displayed workspace must have loaded its own totals.")
+            try verify(navigation)
+            host.layoutSubtreeIfNeeded()
+            // MapKit receives the published model on a later UI turn. Confirm
+            // every loaded location reached the actual native map as well.
+            if page == .map, let mapPage = navigation.mapPage, !mapPage.markers.isEmpty {
+                @MainActor func findMap(_ view: NSView) -> MKMapView? {
+                    if let map = view as? MKMapView { return map }
+                    for child in view.subviews { if let map = findMap(child) { return map } }
+                    return nil
+                }
+                @MainActor func locations() -> [any MKAnnotation] {
+                    (findMap(host)?.annotations ?? []).filter { !($0 is MKClusterAnnotation) && !($0 is MKUserLocation) }
+                }
+                while locations().count != mapPage.markers.count, Date() < deadline {
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+                XCTAssertNotNil(findMap(host))
+                XCTAssertEqual(locations().count, mapPage.markers.count)
+                let expected = Dictionary(grouping: mapPage.markers) { "\($0.latitude),\($0.longitude)" }.mapValues(\.count)
+                let displayed = Dictionary(grouping: locations()) { "\($0.coordinate.latitude),\($0.coordinate.longitude)" }.mapValues(\.count)
+                XCTAssertEqual(displayed, expected, "The native map must receive every location, including coincident markers.")
+            }
+            // Let SwiftUI apply the final result before laying out the bitmap.
+            try await Task.sleep(for: .milliseconds(20))
+            if let output = ProcessInfo.processInfo.environment["KATALOG_UI_ARTIFACTS"] {
+                let folder = URL(fileURLWithPath: output)
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                let proof: [String: Any] = ["page": page.rawValue, "historyLogs": navigation.historyPage?.totals.logs ?? -1,
+                    "measuredFlightSeconds": navigation.historyPage?.totals.measuredFlightSeconds ?? -1,
+                    "mapMarkers": navigation.mapPage?.markers.count ?? 0, "ready": resultsReady()]
+                try JSONSerialization.data(withJSONObject: proof, options: [.prettyPrinted, .sortedKeys])
+                    .write(to: folder.appendingPathComponent(name + "-readiness.json"))
+            }
+        }
     }
 
     func testWorkspacePagesRenderInBothThemesAtMinimumWindow() async throws {
@@ -398,18 +455,28 @@ final class WorkspacePreviewTests: XCTestCase {
     }
 
     func testLargeFlightTotalAndCompleteMapFitBothThemes() async throws {
-        let f = try await fixture(count: 180, flightSeconds: 1512.9 * 60, withMapPoints: true)
+        let f = try await fixture(count: 180, flightSeconds: 1512.9 * 60, withMapPoints: true, queryDelay: 0.3)
         XCTAssertEqual(try XCTUnwrap(f.library.historyPage?.totals.measuredFlightSeconds), 1512.9 * 60, accuracy: 0.01)
         for scheme in [ColorScheme.dark, .light] {
             for width in [900.0, 1440.0] {
-                let size = try await renderWorkspace(f, page: .overview, name: "flight-total-\(scheme)-\(Int(width))", width: width, height: 900, scheme: scheme)
+                let size = try await renderWorkspace(f, page: .overview, name: "flight-total-\(scheme)-\(Int(width))", width: width, height: 900, scheme: scheme) { navigation in
+                    XCTAssertEqual(navigation.historyPage?.totals.logs, 180)
+                    XCTAssertEqual(try XCTUnwrap(navigation.historyPage?.totals.measuredFlightSeconds), 1512.9 * 60, accuracy: 0.01)
+                }
                 XCTAssertLessThanOrEqual(size.width, width + 0.5)
             }
         }
-        f.library.loadAuxiliary(kind: "map"); try await settle(f.library)
-        XCTAssertEqual(f.library.mapPage?.markers.count, 180)
+        let expectedLogIDs = Set(f.library.snapshot.logs.map(\.id))
+        XCTAssertEqual(expectedLogIDs.count, 180)
         for scheme in [ColorScheme.dark, .light] {
-            let size = try await renderWorkspace(f, page: .map, name: "complete-map-\(scheme)", width: 1440, height: 980, scheme: scheme)
+            let size = try await renderWorkspace(f, page: .map, name: "complete-map-\(scheme)", width: 1440, height: 980, scheme: scheme) { navigation in
+                let map = try XCTUnwrap(navigation.mapPage)
+                XCTAssertEqual(map.totalLogs, 180)
+                XCTAssertEqual(map.locatedLogs, 180)
+                XCTAssertEqual(map.markers.count, 180)
+                XCTAssertEqual(Set(map.markers.map(\.id)), expectedLogIDs)
+                XCTAssertNil(map.nextCursor)
+            }
             XCTAssertLessThanOrEqual(size.width, 1440.5)
             XCTAssertFalse(FileManager.default.fileExists(atPath: f.noNetworkMarker.path))
         }
