@@ -7,7 +7,7 @@ import KataLogCore
 @MainActor
 final class GCSCountStateTests: XCTestCase {
     private let uuid = "0102030405060708090A0B0C"
-    private func fixture(count: Int = 500, state: String = "failed") throws -> (GCSStore, URL) {
+    private func fixture(count: Int = 500, state: String = "failed") async throws -> (GCSStore, URL) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("katalog-counts-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
@@ -25,7 +25,7 @@ final class GCSCountStateTests: XCTestCase {
         }
         _ = try repository.saveTransfers(jobs)
         let store = GCSStore(storageDirectory: root)
-        try store.flushPersistedStateForMaintenance()
+        try await store.flushPersistedStateForMaintenance()
         return (store, root)
     }
     private func sql(_ sql: String, root: URL) throws {
@@ -36,13 +36,15 @@ final class GCSCountStateTests: XCTestCase {
             throw AnalysisError.engine(String(cString: sqlite3_errmsg(database)))
         }
     }
-    func testUnavailableRepositoryKeepsFullCountsAndRetryRecoversWholeHistory() throws {
-        let (store, root) = try fixture()
+    func testUnavailableRepositoryKeepsFullCountsAndRetryRecoversWholeHistory() async throws {
+        let (store, root) = try await fixture()
         XCTAssertEqual(store.queue.count, 200)
         XCTAssertEqual(store.retryableCount, 500)
         XCTAssertEqual(store.batchProgress.totalCount, 500)
         try sql("ALTER TABLE transfers RENAME TO unavailable_transfers", root: root)
-        store.retryFailed()
+        await store.retryFailed()
+        try? await store.waitForPersistence()
+        await store.waitForQueueCounts()
         XCTAssertNotNil(store.errorMessage)
         XCTAssertEqual(store.retryableCount, 500, "The retained 200 rows are not the full history.")
         XCTAssertEqual(store.batchProgress.totalCount, 500)
@@ -51,7 +53,9 @@ final class GCSCountStateTests: XCTestCase {
         XCTAssertFalse(store.countsAreCurrent)
         XCTAssertNil(store.diagnosticJobCount)
         try sql("ALTER TABLE unavailable_transfers RENAME TO transfers", root: root)
-        store.retryFailed()
+        await store.retryFailed()
+        try? await store.waitForPersistence()
+        await store.waitForQueueCounts()
         XCTAssertEqual(store.queue.filter(\.isPending).count, 500)
         XCTAssertEqual(store.retryableCount, 0)
         XCTAssertEqual(store.batchProgress.totalCount, 500)
@@ -61,7 +65,7 @@ final class GCSCountStateTests: XCTestCase {
         XCTAssertEqual(store.diagnosticJobCount, 500)
     }
     func testUnavailableReadCannotReuseCompleteProgressAfterNewOverlay() async throws {
-        let (store, root) = try fixture(count: 1, state: "complete")
+        let (store, root) = try await fixture(count: 1, state: "complete")
         XCTAssertEqual(store.collectionFraction, 1)
         try sql("ALTER TABLE transfers RENAME TO unavailable_transfers", root: root)
         let added = try await store.enqueue([GCSLogFile(path: "/fixture/0.ulg", size: 100)], uuid: uuid,
@@ -69,7 +73,7 @@ final class GCSCountStateTests: XCTestCase {
         XCTAssertEqual(added, 1)
         XCTAssertFalse(store.countsAreCurrent, "A new overlay invalidates completion immediately, before refresh.")
         XCTAssertLessThan(store.collectionFraction, 1)
-        store.refreshQueueCounts()
+        await store.waitForQueueCounts()
         XCTAssertEqual(store.queue.first?.state, "queued")
         XCTAssertEqual(store.batchProgress.completedCount, 1, "Keep the explicit last snapshot, labelled unavailable.")
         XCTAssertFalse(store.countsAreCurrent)
@@ -77,15 +81,15 @@ final class GCSCountStateTests: XCTestCase {
         XCTAssertLessThan(store.collectionFraction, 1)
         XCTAssertFalse(store.batchStatusMessage.contains("terminée"))
         try sql("ALTER TABLE unavailable_transfers RENAME TO transfers", root: root)
-        store.refreshQueueCounts()
+        await store.waitForQueueCounts()
         XCTAssertTrue(store.countsAreCurrent)
         XCTAssertEqual(store.batchProgress.completedCount, 0)
         XCTAssertEqual(store.batchProgress.pendingCount, 1)
         XCTAssertEqual(store.diagnosticJobCount, 1)
     }
 
-    func testUnavailableReadDoesNotReuseAnotherAuthorizedFleetSnapshot() throws {
-        let (store, root) = try fixture()
+    func testUnavailableReadDoesNotReuseAnotherAuthorizedFleetSnapshot() async throws {
+        let (store, root) = try await fixture()
         try sql("ALTER TABLE transfers RENAME TO unavailable_transfers", root: root)
         store.setAllowed(uuid: uuid, allowed: false)
         XCTAssertTrue(store.allowedUUIDs.isEmpty)
@@ -93,38 +97,38 @@ final class GCSCountStateTests: XCTestCase {
         XCTAssertFalse(store.countsAreCurrent)
         XCTAssertNotNil(store.countsReadMessage)
         try sql("ALTER TABLE unavailable_transfers RENAME TO transfers", root: root)
-        store.refreshQueueCounts()
+        await store.waitForQueueCounts()
         XCTAssertTrue(store.countsAreCurrent)
         XCTAssertEqual(store.retryableCount, 0)
         XCTAssertEqual(store.batchProgress.totalCount, 500)
     }
 
-    func testBatchChangeAndRestoreDoNotReuseOldCounts() throws {
-        let (store, root) = try fixture(count: 500, state: "complete")
+    func testBatchChangeAndRestoreDoNotReuseOldCounts() async throws {
+        let (store, root) = try await fixture(count: 500, state: "complete")
         let destination = root.appendingPathComponent("new-destination")
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
-        try store.setDownloadDirectory(destination)
+        try await store.setDownloadDirectory(destination)
         XCTAssertTrue(store.countsAreCurrent)
         XCTAssertEqual(store.batchProgress.totalCount, 0)
         XCTAssertEqual(store.collectionFraction, 0)
         try sql("ALTER TABLE transfers RENAME TO unavailable_transfers", root: root)
-        store.refreshQueueCounts()
+        await store.waitForQueueCounts()
         XCTAssertEqual(store.batchProgress.totalCount, 0, "Old batch totals must not reappear when the new batch cannot be read.")
         XCTAssertFalse(store.countsAreCurrent)
-        XCTAssertThrowsError(try store.reloadPersistedStateAfterRestore())
+        do { try await store.reloadPersistedStateAfterRestore(); XCTFail("Expected storage operation to fail") } catch { }
         XCTAssertFalse(store.hasQueueCounts, "Even the same batch ID cannot reuse a snapshot from before a failed restore.")
         XCTAssertNotNil(store.countsError)
     }
 
     func testRestoredCountsRefreshAfterMaintenanceGateReleases() async throws {
-        let (store, root) = try fixture()
+        let (store, root) = try await fixture()
         let library = LibraryStore(storageDirectory: root)
         store.attach(library: library)
         defer { store.stopForTermination(); library.prepareForTermination() }
         XCTAssertTrue(store.countsAreCurrent)
         try await library.performMaintenance {
-            try store.preparePersistedStorageForRestore()
-            try store.reloadPersistedStateAfterRestore()
+            try await store.preparePersistedStorageForRestore()
+            try await store.reloadPersistedStateAfterRestore()
             XCTAssertFalse(store.countsAreCurrent)
             XCTAssertFalse(store.hasQueueCounts, "Restoration must discard the previous snapshot even when its selection is unchanged.")
             XCTAssertNil(store.diagnosticJobCount)

@@ -18,13 +18,23 @@ final class KataLogApplicationDelegate: NSObject, NSApplicationDelegate {
             guard alert.runModal() == .alertSecondButtonReturn else { return .terminateCancel }
         }
         terminating = true
-        library?.prepareForTermination(); gcs?.stopCollection(); gcs?.disconnect()
         EngineOperations.beginTermination()
+        library?.prepareForTermination(); gcs?.stopCollection(); gcs?.disconnect()
         Task { [weak self] in
             while EngineOperations.activeProcessCount > 0 || self?.library?.hasActiveWork == true || self?.gcs?.isBusy == true {
                 try? await Task.sleep(for: .milliseconds(50))
             }
-            sender.reply(toApplicationShouldTerminate: true)
+            do {
+                try await self?.gcs?.finishTermination()
+                sender.reply(toApplicationShouldTerminate: true)
+            } catch {
+                if EngineOperations.cancelTermination() { self?.gcs?.cancelTermination() }
+                self?.terminating = false
+                let message = "La collecte n’a pas pu être enregistrée avant fermeture : \(error.localizedDescription)"
+                self?.gcs?.errorMessage = message
+                self?.library?.errorMessage = message
+                sender.reply(toApplicationShouldTerminate: false)
+            }
         }
         return .terminateLater
     }

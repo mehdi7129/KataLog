@@ -8,7 +8,7 @@ extension GCSStoreTests {
         let (store, root) = try fixture(mode: "normal")
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         try await waitUntil { store.canCollectAll }
-        store.selectDrone(first)
+        await store.selectDrone(first)
         try await waitUntil { !store.isBusy && store.files.count == 2 }
         let visible = try XCTUnwrap(store.files.first { $0.filename == "a.ulg" })
         let hidden = try XCTUnwrap(store.files.first { $0.filename == "b.ulg" })
@@ -32,7 +32,7 @@ extension GCSStoreTests {
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         try Data(repeating: 0x41, count: 64).write(to: root.appendingPathComponent(first + "a.ulg.cache"))
         try await waitUntil { store.canCollectAll }
-        store.selectDrone(first)
+        await store.selectDrone(first)
         try await waitUntil { !store.isBusy && store.files.count == 2 }
         let cached = try XCTUnwrap(store.files.first { $0.filename == "a.ulg" })
         let pending = try XCTUnwrap(store.files.first { $0.filename == "b.ulg" })

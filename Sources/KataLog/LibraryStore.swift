@@ -34,9 +34,9 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var queryToken = UUID()
     private var viewSubscription: AnyCancellable?
     var hasExternalActivity: () -> Bool = { false }
-    var willMaintainLibrary: () throws -> Void = {}
-    var willRestoreLibrary: () throws -> Void = {}
-    var didRestoreLibrary: () throws -> Void = {}
+    var willMaintainLibrary: () async throws -> Void = {}
+    var willRestoreLibrary: () async throws -> Void = {}
+    var didRestoreLibrary: () async throws -> Void = {}
     private var writerLease: LibraryWriterLease?
     let storageDirectory: URL
     let diagnostics: DiagnosticJournal
@@ -65,8 +65,8 @@ final class LibraryStore: ObservableObject {
     let views: LibraryViewStore
     lazy var clients = ClientStore(library: self)
     @Published private(set) var mapProximity: GeographicProximity?
-    var resetCollectionState: () throws -> Void = {}
-    var validateCollectionReset: () throws -> Void = {}
+    var resetCollectionState: () async throws -> Void = {}
+    var validateCollectionReset: () async throws -> Void = {}
     private(set) var resetGeneration = 0
     var clientDidDelete: (String) async throws -> Void = { _ in }
     var clientProfilesDidLoad: (Set<String>) async throws -> Void = { _ in }
@@ -168,7 +168,7 @@ final class LibraryStore: ObservableObject {
                     throw AnalysisError.engine("La récupération n’a pas confirmé un état complet.")
                 }
                 annotations.reload(); views.reload()
-                try didRestoreLibrary()
+                try await didRestoreLibrary()
                 recoveredAtStartup = true; isStartupBlocked = false
                 diagnostics.record(.appStarted)
                 statusMessage = "Bibliothèque récupérée après une restauration interrompue. Les fichiers de récupération sont conservés."
@@ -770,9 +770,9 @@ final class LibraryStore: ObservableObject {
               !isLoading, (!isQuerying || allowOwnedQuery), !isLoadingFlight, activeDetailLoads == 0, !hasExternalActivity() else {
             throw AnalysisError.engine("Terminez ou arrêtez les opérations en cours avant de modifier ou sauvegarder la bibliothèque.")
         }
-        try willMaintainLibrary()
         isMaintainingLibrary = true
         defer { isMaintainingLibrary = false; invalidateNavigationCache() }
+        try await willMaintainLibrary()
         await clients.cancelReadAndWait()
         try Task.checkCancellation()
         return try await operation()
@@ -794,17 +794,17 @@ final class LibraryStore: ObservableObject {
         let result = try await performMaintenance {
             statusMessage = "Restauration vérifiée…"
             FlightWindowCoordinator.shared.closeAll(library: self)
-            try willRestoreLibrary()
+            try await willRestoreLibrary()
             do {
                 let result = try await LibraryStorageService.restore(archive: archive, library: storageDirectory, engine: engine)
                 annotations.reload(); views.reload()
                 indexPrepared = false
                 closeFlight()
-                do { try didRestoreLibrary() }
+                do { try await didRestoreLibrary() }
                 catch { postRestoreIssue = error.localizedDescription }
                 return result
             } catch {
-                try? didRestoreLibrary()
+                try? await didRestoreLibrary()
                 throw error
             }
         }
@@ -838,7 +838,7 @@ final class LibraryStore: ObservableObject {
         var cleanupIssues: [String] = []
         try await performMaintenance {
             try Self.validateConfigurationFiles(in: storageDirectory, names: indices + (allSettings ? settings : []))
-            if allSettings { try validateCollectionReset() }
+            if allSettings { try await validateCollectionReset() }
             FlightWindowCoordinator.shared.closeAll(library: self)
             closeFlight()
             let data = try await AnalysisService.run(["reset-library", "--database", databaseURL.path,
@@ -850,7 +850,7 @@ final class LibraryStore: ObservableObject {
             resetGeneration += 1
             if allSettings {
                 clients.clearAfterApplicationReset()
-                do { try resetCollectionState() }
+                do { try await resetCollectionState() }
                 catch { cleanupIssues.append("Collecte : \(error.localizedDescription)") }
                 do { try Self.removeConfigurationFiles(in: storageDirectory, names: settings) }
                 catch { cleanupIssues.append("Réglages : \(error.localizedDescription)") }
@@ -884,7 +884,7 @@ final class LibraryStore: ObservableObject {
     }
 
     /// Only known regular configuration files can be removed. Never recurse into a directory.
-    static func removeConfigurationFiles(in directory: URL, names: [String]) throws {
+    nonisolated static func removeConfigurationFiles(in directory: URL, names: [String]) throws {
         for name in names {
             try validateConfigurationFiles(in: directory, names: [name])
             let file = directory.appendingPathComponent(name)
@@ -893,7 +893,7 @@ final class LibraryStore: ObservableObject {
     }
 
     /// Refuse known obstacles before a database mutation; cleanup validates again.
-    static func validateConfigurationFiles(in directory: URL, names: [String]) throws {
+    nonisolated static func validateConfigurationFiles(in directory: URL, names: [String]) throws {
         for name in names {
             guard !name.contains("/"), !name.lowercased().hasSuffix(".ulg") else {
                 throw AnalysisError.engine("Nom de configuration inattendu.")

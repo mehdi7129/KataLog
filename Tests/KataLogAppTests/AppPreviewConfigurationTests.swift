@@ -105,7 +105,7 @@ final class AppPreviewConfigurationTests: XCTestCase {
         let added = try await store.enqueue([GCSLogFile(path: "/fs/microsd/log/synthetic/review.ulg", size: 128)],
                                             uuid: reviewUUID, host: store.host, destination: store.downloadDirectory.path)
         XCTAssertEqual(added, 1)
-        try store.flushPersistedStateForMaintenance()
+        try await store.flushPersistedStateForMaintenance()
         for name in ["gcs-settings.json", "gcs-queue.sqlite", "fleet.json"] {
             XCTAssertTrue(FileManager.default.fileExists(atPath: review.appendingPathComponent(name).path), name)
         }
@@ -190,6 +190,8 @@ time.sleep(30)
         while !FileManager.default.fileExists(atPath: settings.path) && Date() < persistenceDeadline { try await Task.sleep(for: .milliseconds(25)) }
         XCTAssertTrue(FileManager.default.fileExists(atPath: settings.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("gcs-queue.sqlite").path))
+        try await store.waitForPersistence()
+        await store.waitForDestinationCheck()
         XCTAssertNil(store.downloadDirectoryIssue)
         XCTAssertNil(store.errorMessage)
         XCTAssertFalse(store.isConnected)

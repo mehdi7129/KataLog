@@ -5,6 +5,9 @@ public struct GCSQueueCounts: Sendable {
     public let progress: GCSBatchProgress
     public let retryable: Int
     public let total: Int
+    public init(progress: GCSBatchProgress, retryable: Int, total: Int) {
+        self.progress = progress; self.retryable = retryable; self.total = total
+    }
 }
 
 public struct GCSQueueHistoryPage: Sendable {

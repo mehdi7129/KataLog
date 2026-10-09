@@ -246,7 +246,7 @@ else:
         try await waitUntil { store.canCollectAll }
         XCTAssertTrue(store.allowedUUIDs.isEmpty, "Discovery alone must not register a device.")
         XCTAssertEqual(store.newCollectableDroneCount, 2)
-        store.collectAll()
+        await store.collectAll()
         XCTAssertEqual(store.allowedUUIDs, [first, second], "Admission must be committed synchronously before collecting.")
         let settings = try JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: root.appendingPathComponent("gcs-settings.json")))
         XCTAssertEqual(settings.allowedUUIDs, [first, second])
@@ -257,7 +257,7 @@ else:
         try await waitUntil { !store.isBusy && store.batchProgress.completedCount == 4 }
         let requests = try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8)
         XCTAssertEqual(requests.split(separator: "\n").count, 4)
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && store.cachedFileCount == 4 }
         XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8), requests)
         XCTAssertEqual(store.newCollectableDroneCount, 0)
@@ -277,7 +277,7 @@ else:
         _ = NSApplication.shared
         for registered in [false, true] {
             if registered {
-                store.collectAll()
+                await store.collectAll()
                 try await waitUntil { !store.isBusy && store.completedInventoryUUIDs.count == 2 }
             }
             for scheme in [ColorScheme.dark, .light] {
@@ -370,7 +370,7 @@ else:
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         let library = LibraryStore(storageDirectory: root)
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { store.queue.filter { $0.phase == "http" && $0.phaseBytes == 8 }.count == 2 }
         _ = NSApplication.shared
         for scheme in [ColorScheme.dark, .light] {
@@ -412,7 +412,7 @@ else:
         store.autoImport = false; store.host = "localhost"; store.setAllowed(uuid: first, allowed: true); store.connect()
         try await waitUntil { store.canCollectAll }
         XCTAssertEqual(store.newCollectableDroneCount, 1)
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && store.completedInventoryUUIDs.count == 2 }
         XCTAssertEqual(store.allowedUUIDs, [first, second])
         XCTAssertTrue(store.queue.isEmpty)
@@ -430,7 +430,7 @@ else:
             store.autoImport = false; store.host = "localhost"; store.connect()
             try await waitUntil { store.canCollectAll }
             let expected: Set<String> = mode == "duplicate" ? [first, second] : [second]
-            store.collectAll()
+            await store.collectAll()
             // Admission and inventory are the proof here. Keep transfers paused
             // so fixture download delays cannot obscure membership assertions.
             store.pauseQueue()
@@ -448,7 +448,7 @@ else:
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         store.autoImport = false; store.host = "localhost"; store.connect()
         try await waitUntil { store.errorMessage != nil }
-        store.collectAll()
+        await store.collectAll()
         XCTAssertFalse(store.canCollectAll)
         XCTAssertTrue(store.allowedUUIDs.isEmpty)
         XCTAssertTrue(store.queue.isEmpty)
@@ -463,7 +463,7 @@ else:
         let original = try Data(contentsOf: settings)
         try FileManager.default.moveItem(at: settings, to: root.appendingPathComponent("saved-settings.json"))
         try FileManager.default.createDirectory(at: settings, withIntermediateDirectories: false)
-        store.collectAll()
+        await store.collectAll()
         XCTAssertTrue(store.errorMessage?.contains("Collecte non démarrée") == true)
         XCTAssertTrue(store.allowedUUIDs.isEmpty)
         XCTAssertTrue(store.queue.isEmpty)
@@ -481,7 +481,7 @@ else:
         try future.write(to: file)
         store.autoImport = false; store.host = "localhost"; store.connect()
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         XCTAssertTrue(store.errorMessage?.contains("Collecte non démarrée") == true)
         XCTAssertTrue(store.allowedUUIDs.isEmpty)
         XCTAssertTrue(store.queue.isEmpty)
@@ -525,7 +525,7 @@ else:
             } catch { print("GCS retry failure diagnostics unavailable: \(error.localizedDescription)") }
         }
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { store.activeTransferCount == 2 }
         XCTAssertEqual(Set(store.queue.filter(\.isActive).map(\.droneUUID)).count, 2)
         try await waitUntil { store.queue.count == 4 && store.queue.allSatisfy(\.isSuccessful) && !store.isBusy }
@@ -535,7 +535,7 @@ else:
         XCTAssertEqual(store.batchProgress.fraction, 1)
         let attempts = try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8)
         XCTAssertEqual(attempts.split(separator: "\n").count, 5)
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && store.cachedFileCount == 4 }
         if store.isBusy || store.cachedFileCount != 4 { recordFailureState("cache") }
         XCTAssertEqual(store.batchProgress.totalCount, 0)
@@ -546,7 +546,7 @@ else:
         let (store, root) = try fixture(mode: "phases")
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { store.queue.filter { $0.phase == "drone" && $0.phaseBytes == 64 }.count == 2 }
         let droneFraction = store.batchProgress.fraction
         XCTAssertGreaterThan(droneFraction, 0, "Global progress must move while logs transfer from the drones to the GCS.")
@@ -568,7 +568,7 @@ else:
         let (store, root) = try fixture(mode: "paged")
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && store.batchProgress.completedCount == 4 }
         XCTAssertFalse(store.hasIncompleteInventory)
         let settings = try JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: root.appendingPathComponent("gcs-settings.json")))
@@ -584,7 +584,7 @@ else:
             let (store, root) = try fixture(mode: mode)
             defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
             try await waitUntil { store.canCollectAll }
-            store.collectAll()
+            await store.collectAll()
             try await waitUntil { !store.isBusy && store.inventoryErrors.count == 2 }
             XCTAssertTrue(store.queue.isEmpty)
             XCTAssertTrue(store.completedInventoryUUIDs.isEmpty)
@@ -622,7 +622,7 @@ else:
         XCTAssertTrue(reader.isReadOnly)
         let original = try Data(contentsOf: root.appendingPathComponent("gcs-collection.json"))
         store.attach(library: reader)
-        store.connect(); store.collectAll(); store.retryFailed()
+        store.connect(); await store.collectAll(); await store.retryFailed()
         store.setAllowed(uuid: second, allowed: true)
         store.autoImport = true
         try await Task.sleep(for: .milliseconds(100))
@@ -637,7 +637,7 @@ else:
         withExtendedLifetime(writer) {}
     }
 
-    func testMissingSQLiteAfterMigrationBlocksCollectionAndPreservesSettings() throws {
+    func testMissingSQLiteAfterMigrationBlocksCollectionAndPreservesSettings() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("katalog-missing-queue-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -653,7 +653,7 @@ else:
         XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("gcs-settings.json")), original)
     }
 
-    func testMaintenanceFlushPersistsCurrentSettingsBeforeSnapshotWithoutStartingDiscovery() throws {
+    func testMaintenanceFlushPersistsCurrentSettingsBeforeSnapshotWithoutStartingDiscovery() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("katalog-gcs-maintenance-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -661,7 +661,7 @@ else:
         let store = GCSStore(storageDirectory: root)
         store.attach(library: library)
         store.host = "saved-for-backup.local"
-        try library.willMaintainLibrary()
+        try await library.willMaintainLibrary()
         let saved = try JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: root.appendingPathComponent("gcs-settings.json")))
         XCTAssertEqual(saved.host, "saved-for-backup.local")
         XCTAssertTrue(saved.queue.isEmpty)
@@ -675,7 +675,7 @@ else:
         let (store, root) = try fixture(mode: "normal")
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         try await waitUntil { store.isConnected }
-        try store.preparePersistedStorageForRestore()
+        try await store.preparePersistedStorageForRestore()
         let destination = root.appendingPathComponent("restored-destination")
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         var active = GCSTransfer(droneUUID: first, remotePath: "/fs/microsd/log/restore/a.ulg", size: 64,
@@ -693,7 +693,7 @@ else:
         settings.host = "restored.local"; settings.reconnect = true; settings.autoImport = false
         settings.queueStorageVersion = 1; settings.allowedUUIDs = [first]; settings.currentBatchID = "restored-batch"
         try JSONEncoder().encode(settings).write(to: root.appendingPathComponent("gcs-settings.json"))
-        try store.reloadPersistedStateAfterRestore()
+        try await store.reloadPersistedStateAfterRestore()
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertEqual(store.host, "restored.local")
         XCTAssertEqual(store.downloadDirectory.path, destination.path)
@@ -728,11 +728,11 @@ else:
             if mode == "future-version" { state.schemaVersion = 99 }
             let contents = mode == "malformed-settings" ? Data("{broken".utf8) : try JSONEncoder().encode(state)
             try contents.write(to: settingsURL)
-            XCTAssertThrowsError(try store.reloadPersistedStateAfterRestore())
+            do { try await store.reloadPersistedStateAfterRestore(); XCTFail("Expected storage operation to fail") } catch { }
             XCTAssertTrue(store.queue.isEmpty)
             XCTAssertTrue(store.isQueuePaused)
             XCTAssertTrue(store.errorMessage?.contains("restaurée ne peut pas être lue") == true)
-            store.resumeQueue(); store.retryFailed(); store.connect(); store.collectAll()
+            store.resumeQueue(); await store.retryFailed(); store.connect(); await store.collectAll()
             try await Task.sleep(for: .milliseconds(100))
             XCTAssertTrue(store.isQueuePaused)
             XCTAssertFalse(store.isConnected); XCTAssertFalse(store.isConnecting)
@@ -747,10 +747,10 @@ else:
         let (store, root) = try fixture(mode: "normal")
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && store.queue.count == 4 && store.queue.allSatisfy(\.isSuccessful) }
         try "inventory-error".write(to: root.appendingPathComponent("mode"), atomically: true, encoding: .utf8)
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && store.inventoryErrors.count == 1 }
         XCTAssertEqual(store.batchProgress.totalCount, 0)
         XCTAssertEqual(store.cachedFileCount, 2)
@@ -762,7 +762,7 @@ else:
         XCTAssertTrue(restored.hasIncompleteInventory)
         XCTAssertTrue(restored.batchStatusMessage.hasPrefix("Collecte partielle"))
         try "normal".write(to: root.appendingPathComponent("mode"), atomically: true, encoding: .utf8)
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && !store.hasIncompleteInventory && store.cachedFileCount == 4 }
         XCTAssertTrue(store.batchStatusMessage.hasPrefix("À jour"))
     }
@@ -771,7 +771,7 @@ else:
         let (store, root) = try fixture(mode: "inventory-error")
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && store.queue.count == 2 && store.queue.allSatisfy(\.isSuccessful) }
         XCTAssertEqual(store.batchProgress.completedCount, 2)
         XCTAssertEqual(store.expectedInventoryUUIDs.count, 2)
@@ -789,17 +789,17 @@ else:
         let (store, root) = try fixture(mode: "offline", initialState: state)
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         try await waitUntil { store.canCollectAll }
-        store.retryFailed()
+        await store.retryFailed()
         XCTAssertTrue(store.queue.first?.isPending == true)
         XCTAssertTrue(store.canCollectAll)
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && store.queue.filter(\.isSuccessful).count == 2 }
         XCTAssertEqual(store.queue.first?.id, waiting.id)
         XCTAssertTrue(store.queue.first?.isPending == true)
         XCTAssertEqual(store.queue.first?.attemptCount, 0)
         let before = try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8)
         XCTAssertEqual(before.split(separator: "\n").count, 2)
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && store.cachedFileCount >= 2 }
         XCTAssertEqual(store.cachedFileCount, 2, "Repeated inventories in one pending batch must not double-count cached files.")
         XCTAssertEqual(store.queue.count, 3)
@@ -810,10 +810,10 @@ else:
         let (store, root) = try fixture(mode: "stop")
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { store.queue.filter { $0.remoteBusyUntil != nil }.count == 2 }
         store.stopCollection()
-        store.retryFailed() // Same MainActor turn: cancelled workers have not drained yet.
+        await store.retryFailed() // Same MainActor turn: cancelled workers have not drained yet.
         XCTAssertTrue(store.queue.allSatisfy { $0.state == "stopped" })
         try await waitUntil(timeout: 3) { !store.isBusy }
         XCTAssertEqual(store.activeTransferCount, 0)
@@ -831,9 +831,10 @@ else:
         let (store, root) = try fixture(mode: "permanent")
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { store.queue.count == 4 && store.queue.allSatisfy { $0.state == "failed" } && !store.isBusy }
         XCTAssertTrue(store.queue.allSatisfy { $0.attemptCount == 1 })
+        await store.waitForQueueCounts()
         XCTAssertEqual(store.batchProgress.failedCount, 4)
     }
 
@@ -842,9 +843,9 @@ else:
         let originalDestination = store.downloadDirectory
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && store.batchProgress.completedCount == 4 }
-        store.selectDrone(first)
+        await store.selectDrone(first)
         try await waitUntil { !store.isBusy && store.files.count == 2 }
         store.selectAllFiles()
         XCTAssertEqual(store.collectionFraction, 1)
@@ -852,7 +853,7 @@ else:
         let oldSettings = try JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: root.appendingPathComponent("gcs-settings.json")))
         let fresh = root.appendingPathComponent("Empty destination")
         try FileManager.default.createDirectory(at: fresh, withIntermediateDirectories: false)
-        try store.setDownloadDirectory(fresh)
+        try await store.setDownloadDirectory(fresh)
         XCTAssertEqual(store.collectionFraction, 0)
         XCTAssertEqual(store.batchProgress.totalCount, 0)
         XCTAssertEqual(store.cachedFileCount, 0)
@@ -870,24 +871,24 @@ else:
         XCTAssertEqual(store.collectionFraction, 0)
         XCTAssertTrue(store.batchStatusMessage.contains("2 logs à collecter"))
         XCTAssertFalse(store.batchStatusMessage.contains("Aucun log disponible"))
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && store.batchProgress.completedCount == 4 }
         XCTAssertEqual(store.queue.filter { $0.destination == fresh.path }.count, 4)
         XCTAssertEqual(store.queue.filter { $0.destination == originalDestination.path }.count, 4)
         let trace = try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8)
         XCTAssertEqual(trace.split(separator: "\n").count, 8)
-        try store.setDownloadDirectory(originalDestination)
+        try await store.setDownloadDirectory(originalDestination)
         XCTAssertEqual(store.collectionFraction, 0, "Old completion is invalid until the selected destination is checked again.")
         try await waitUntil { !store.isBusy && store.files.count == 2 }
         XCTAssertTrue(store.files.allSatisfy(\.isDownloaded))
         XCTAssertEqual(store.collectionFraction, 1)
         XCTAssertEqual(store.cachedFileCount, 2)
         XCTAssertTrue(store.batchStatusMessage.contains("Drone \(first.prefix(8))… à jour"))
-        store.selectDrone(second)
+        await store.selectDrone(second)
         try await waitUntil { !store.isBusy && store.files.count == 2 }
         XCTAssertTrue(store.batchStatusMessage.contains(String(first.prefix(8))), "The preview must still identify the drone whose destination cache was verified.")
         XCTAssertFalse(store.batchStatusMessage.contains(String(second.prefix(8))))
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && store.cachedFileCount == 4 }
         XCTAssertEqual(store.collectionFraction, 1)
         XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8), trace,
@@ -899,15 +900,15 @@ else:
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         let originalDestination = store.downloadDirectory
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && store.batchProgress.completedCount == 4 }
-        store.selectDrone(first)
+        await store.selectDrone(first)
         try await waitUntil { !store.isBusy && store.files.count == 2 }
         let partial = root.appendingPathComponent("Partial destination")
         try FileManager.default.createDirectory(at: partial, withIntermediateDirectories: false)
         let cachedName = first + "a.ulg.cache"
         try FileManager.default.copyItem(at: originalDestination.appendingPathComponent(cachedName), to: partial.appendingPathComponent(cachedName))
-        try store.setDownloadDirectory(partial)
+        try await store.setDownloadDirectory(partial)
         try await waitUntil { !store.isBusy && store.files.count == 2 }
         XCTAssertEqual(store.cachedFileCount, 1)
         XCTAssertEqual(store.destinationPreviewFileCount, 2)
@@ -926,11 +927,11 @@ else:
         let originalDestination = store.downloadDirectory
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && store.batchProgress.completedCount == 4 }
         let stateURL = root.appendingPathComponent("gcs-settings.json")
         let saved = try Data(contentsOf: stateURL)
-        try store.setDownloadDirectory(originalDestination)
+        try await store.setDownloadDirectory(originalDestination)
         XCTAssertEqual(try Data(contentsOf: stateURL), saved)
         XCTAssertEqual(store.collectionFraction, 1)
         let other = root.appendingPathComponent("Other")
@@ -938,7 +939,7 @@ else:
         // Force the atomic settings write to fail without changing the queue DB.
         try FileManager.default.removeItem(at: stateURL)
         try FileManager.default.createDirectory(at: stateURL, withIntermediateDirectories: false)
-        XCTAssertThrowsError(try store.setDownloadDirectory(other))
+        do { try await store.setDownloadDirectory(other); XCTFail("Expected storage operation to fail") } catch { }
         XCTAssertEqual(store.downloadDirectory.path, originalDestination.path)
         XCTAssertEqual(store.collectionFraction, 1)
         XCTAssertEqual(store.batchProgress.completedCount, 4)
@@ -953,10 +954,10 @@ else:
         try FileManager.default.createDirectory(at: other, withIntermediateDirectories: false)
         _ = try await store.enqueue([GCSLogFile(path: "/fs/microsd/log/a.ulg", size: 64)], uuid: first,
                                     host: store.host, destination: root.path)
-        XCTAssertThrowsError(try store.setDownloadDirectory(other))
+        do { try await store.setDownloadDirectory(other); XCTFail("Expected storage operation to fail") } catch { }
         XCTAssertEqual(store.downloadDirectory.path, root.path)
         store.stopCollection()
-        try store.setDownloadDirectory(other)
+        try await store.setDownloadDirectory(other)
         XCTAssertEqual(store.downloadDirectory.path, other.path)
         XCTAssertEqual(store.batchProgress.totalCount, 0)
         XCTAssertEqual(store.queue.first?.state, "stopped")
@@ -968,12 +969,12 @@ else:
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         let custom = root.appendingPathComponent("Dossier choisi", isDirectory: true)
         try FileManager.default.createDirectory(at: custom, withIntermediateDirectories: false)
-        try store.setDownloadDirectory(custom)
+        try await store.setDownloadDirectory(custom)
         let restored = GCSStore(storageDirectory: root)
         XCTAssertEqual(restored.downloadDirectory.path, custom.path)
         XCTAssertNil(restored.downloadDirectoryIssue)
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && store.queue.count == 4 && store.queue.allSatisfy(\.isSuccessful) }
         XCTAssertTrue(store.queue.allSatisfy { $0.destination == custom.path })
         let lines = try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8).split(separator: "\n")
@@ -986,7 +987,7 @@ else:
         let unavailable = GCSStore(storageDirectory: root)
         XCTAssertEqual(unavailable.downloadDirectory.path, custom.path)
         XCTAssertNotNil(unavailable.downloadDirectoryIssue)
-        unavailable.collectAll()
+        await unavailable.collectAll()
         XCTAssertTrue(unavailable.queue.allSatisfy(\.isSuccessful))
         XCTAssertFalse(FileManager.default.fileExists(atPath: custom.path), "A missing saved directory must never be recreated.")
         XCTAssertTrue(unavailable.errorMessage?.contains(custom.path) == true)
@@ -1005,7 +1006,7 @@ else:
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         store.connect()
         try await waitUntil { store.canCollectAll }
-        store.retryFailed()
+        await store.retryFailed()
         try await waitUntil { store.queue.first?.state == "failed" }
         XCTAssertEqual(store.queue[0].destination, missing.path)
         XCTAssertEqual(store.queue[0].attemptCount, 0)
@@ -1014,7 +1015,7 @@ else:
         XCTAssertFalse(FileManager.default.fileExists(atPath: missing.path))
     }
 
-    func testDirectoryAccessFailureRejectsNewChoiceWithoutReplacingSavedChoice() throws {
+    func testDirectoryAccessFailureRejectsNewChoiceWithoutReplacingSavedChoice() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("katalog-directory-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
         let rejected = root.appendingPathComponent("denied", isDirectory: true)
@@ -1022,7 +1023,7 @@ else:
             url.path == rejected.path ? "Accès refusé : \(url.path)" : nil
         })
         let previous = store.downloadDirectory
-        XCTAssertThrowsError(try store.setDownloadDirectory(rejected))
+        do { try await store.setDownloadDirectory(rejected); XCTFail("Expected storage operation to fail") } catch { }
         XCTAssertEqual(store.downloadDirectory, previous)
         let restored = GCSStore(storageDirectory: root)
         XCTAssertEqual(restored.downloadDirectory.path, previous.path)
@@ -1045,7 +1046,7 @@ else:
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         store.connect()
         try await waitUntil { store.canCollectAll }
-        store.retryFailed()
+        await store.retryFailed()
         try await waitUntil { store.queue.first?.isSuccessful == true && !store.isBusy }
         XCTAssertEqual(store.queue[0].host, "198.51.100.10")
         XCTAssertEqual(store.queue[0].originalHost, "192.0.2.10")
@@ -1080,7 +1081,7 @@ else:
         importRoot = root
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         try await waitUntil { store.canCollectAll }
-        store.collectAll() // Initially autoImport=false: populate only the durable download cache.
+        await store.collectAll() // Initially autoImport=false: populate only the durable download cache.
         try await waitUntil { store.queue.count == 4 && store.queue.allSatisfy(\.isSuccessful) && !store.isBusy }
         files = store.queue
         let before = try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8)
@@ -1090,7 +1091,7 @@ else:
             try log(hash: XCTUnwrap(files[2].sha256), parserVersion: "1.0.0")
         ] // files[3] has never been imported.
         store.autoImport = true
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && store.batchProgress.completedCount == 3 }
         XCTAssertEqual(store.cachedFileCount, 4)
         XCTAssertEqual(store.batchProgress.totalCount, 3)
@@ -1100,7 +1101,7 @@ else:
         XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8), before,
                        "Cached logs must be verified/imported locally without new FTP requests.")
         let importCount = imports
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && store.cachedFileCount == 4 }
         XCTAssertEqual(store.batchProgress.totalCount, 0)
         XCTAssertEqual(imports, importCount)
@@ -1116,11 +1117,11 @@ else:
         })
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { store.queue.count == 4 && store.queue.allSatisfy(\.isSuccessful) && !store.isBusy }
         downloaded = store.queue
         let before = try Data(contentsOf: root.appendingPathComponent("trace.jsonl"))
-        store.autoImport = true; store.collectAll()
+        store.autoImport = true; await store.collectAll()
         try await waitUntil { !store.isBusy && store.batchProgress.failedCount == 4 }
         XCTAssertTrue(store.queue.allSatisfy { $0.state == "failed" && $0.attemptCount == 1 && $0.localPath != nil })
         XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("trace.jsonl")), before)
@@ -1139,7 +1140,7 @@ else:
         defer { release = true; store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         store.autoImport = true
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { store.bufferedAnalysisCount == store.maxBufferedImports && store.activeTransferCount == 0 }
         XCTAssertEqual(imports, 1, "A slow analyzer cannot occupy the transfer slot or run concurrently.")
         XCTAssertEqual(store.queue.filter { $0.localPath != nil }.count, 4)
@@ -1175,7 +1176,7 @@ else:
         defer { observation.cancel() }
         store.autoImport = true
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { store.bufferedAnalysisCount == 4 && store.activeTransferCount == 0 }
         XCTAssertEqual(imports, 1)
         XCTAssertEqual(peakDownloads, 2)
@@ -1196,7 +1197,7 @@ else:
         defer { release = true; store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         store.autoImport = true
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { store.activeAnalysisCount == 1 }
         store.pauseQueue()
         try await waitUntil { store.activeTransferCount == 0 }
@@ -1230,11 +1231,11 @@ else:
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         store.autoImport = true
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { firstImportStarted && store.bufferedAnalysisCount == 4 && store.activeTransferCount == 0 }
         let originalIDs = Set(store.queue.map(\.id))
         store.stopCollection()
-        store.retryFailed() // Cancellation must drain before an explicit retry can mutate jobs.
+        await store.retryFailed() // Cancellation must drain before an explicit retry can mutate jobs.
         XCTAssertTrue(store.isStopping)
         XCTAssertTrue(store.isBusy)
         XCTAssertTrue(store.queue.allSatisfy { $0.state == "stopped" })
@@ -1255,7 +1256,7 @@ else:
         restored.connect()
         try await waitUntil { restored.canCollectAll }
         XCTAssertEqual(try traceCount(root), 4, "Reconnection alone must not restart stopped work.")
-        restored.retryFailed()
+        await restored.retryFailed()
         try await waitUntil { !restored.isBusy && restored.batchProgress.completedCount == 8 }
         XCTAssertEqual(clients.count, 8)
         XCTAssertTrue(clients.allSatisfy { $0 == "CLIENT-A" }, "Imports must use the client captured with each job.")
@@ -1273,14 +1274,14 @@ else:
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
         store.autoImport = true
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && store.queue.count == 8 }
         XCTAssertEqual(imports, 8)
         XCTAssertEqual(store.batchProgress.failedCount, 1)
         XCTAssertEqual(store.batchProgress.completedCount, 7)
         XCTAssertTrue(store.queue.filter { $0.state == "failed" }.allSatisfy { $0.localPath != nil && $0.sha256 != nil })
         let requests = try traceCount(root)
-        store.retryFailed()
+        await store.retryFailed()
         try await waitUntil { !store.isBusy && store.queue.allSatisfy { $0.state == "complete" } }
         XCTAssertEqual(imports, 9)
         XCTAssertEqual(try traceCount(root), requests)
@@ -1317,7 +1318,7 @@ else:
         store.autoImport = true
         try await waitUntil { store.canCollectAll }
         let started = ProcessInfo.processInfo.systemUptime
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { store.queue.count == 8 && !store.isBusy && store.batchProgress.completedCount == 8 }
         let elapsed = lastAnalysisEnded - started
         XCTAssertEqual(imports, 8)
@@ -1361,7 +1362,7 @@ else:
         defer { store.stopForTermination(); library.prepareForTermination(); try? FileManager.default.removeItem(at: root) }
         store.autoImport = true
         try await waitUntil { store.canCollectAll }
-        store.collectAll()
+        await store.collectAll()
         try await waitUntil { !store.isBusy && store.queue.count == 4 && store.queue.allSatisfy(\.isSuccessful) }
         XCTAssertEqual(imports, 4)
         XCTAssertNotNil(store.countsError)
