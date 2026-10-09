@@ -174,7 +174,7 @@ final class ResetReconciliationTests: XCTestCase {
         var preserved: URL?
         library.resetCollectionState = {
             preserved = try self.obstacle(library.storageDirectory.appendingPathComponent("gcs-collection.json"))
-            try reset()
+            try await reset()
         }
         do { try await library.resetApplication(); XCTFail("Expected partial collection reset") } catch {}
         XCTAssertEqual(library.resetGeneration, 1)
