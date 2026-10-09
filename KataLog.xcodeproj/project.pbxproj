@@ -35,6 +35,7 @@
 		3ED9370C71C3E4285F21B031 /* EngineRuntimeResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD541BCB131D49CF40F668A0 /* EngineRuntimeResolver.swift */; };
 		41A31E3FDCBD1DE2663547EF /* FlightDetailLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B53DEF550FF23464ADCB89B /* FlightDetailLoader.swift */; };
 		4223A85F86AB072D4D8A8869 /* library_archives.py in Resources */ = {isa = PBXBuildFile; fileRef = 3247BD603F080AB50D31FEA9 /* library_archives.py */; };
+		428E8716FF45B6544123848A /* GCSStorageIO.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F9FCAC2168E5A7B6D85F2C3 /* GCSStorageIO.swift */; };
 		4765C3F67E0138495E6EBF07 /* SourcesImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7075CAFA2CC4FEBAA301301C /* SourcesImportView.swift */; };
 		4886455A754F4290297CBE4A /* EngineOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FD04F510482B3719AD7CD79 /* EngineOperations.swift */; };
 		4B86F6CCC67DEDF0E5E9AA45 /* ParameterComparison.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7EE405B99CA1977F2472FB4 /* ParameterComparison.swift */; };
@@ -119,6 +120,7 @@
 		0CF1B557B87CF0542B7B021C /* AnalysisRevisionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisRevisionService.swift; sourceTree = "<group>"; };
 		1263800F19D2CD42409464DF /* GCSProcessService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GCSProcessService.swift; sourceTree = "<group>"; };
 		15D7E9BEE4F099F75643C742 /* KataLog.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = KataLog.icns; sourceTree = "<group>"; };
+		1F9FCAC2168E5A7B6D85F2C3 /* GCSStorageIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GCSStorageIO.swift; sourceTree = "<group>"; };
 		20238E6271E5BA2A3EF67943 /* library_proximity.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = library_proximity.py; sourceTree = "<group>"; };
 		250C21DF8E49488C594D7485 /* FlightAnalysisView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightAnalysisView.swift; sourceTree = "<group>"; };
 		2879274F7AD19AC7F2F22D47 /* AlertExplanationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertExplanationView.swift; sourceTree = "<group>"; };
@@ -245,6 +247,7 @@
 				9BCD1CFB308445BA1215D96E /* FlightWindowCoordinator.swift */,
 				BA713F204AA86A1025CDA21F /* GCSCollectionView.swift */,
 				B4C54501883F0A480DCA8EBB /* GCSFleetObservationStore.swift */,
+				1F9FCAC2168E5A7B6D85F2C3 /* GCSStorageIO.swift */,
 				44288B5CAF3F1AFD2A1B24A7 /* GCSStore.swift */,
 				D2C120A7ADD1771A31CA7DFE /* ImportOptions06.swift */,
 				C5EB0EE7CFDB8B5DE1DDBE53 /* LibraryHelpViews.swift */,
@@ -550,6 +553,7 @@
 				F071212FAB4F00BC2D60A0D7 /* FlightWindowCoordinator.swift in Sources */,
 				E74F447128F666DE6B29CB5D /* GCSCollectionView.swift in Sources */,
 				028F506545A2CC000DC10FF8 /* GCSFleetObservationStore.swift in Sources */,
+				428E8716FF45B6544123848A /* GCSStorageIO.swift in Sources */,
 				AFC4E1BC00350A4426AD22E7 /* GCSStore.swift in Sources */,
 				0B2871C810BAEDD6AD60B155 /* ImportOptions06.swift in Sources */,
 				3898E772B1A14F8BC289D101 /* LibraryHelpViews.swift in Sources */,

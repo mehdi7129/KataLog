@@ -1011,6 +1011,11 @@ final class GCSStore: ObservableObject {
         defer { refreshQueueCounts() }
         guard permitMutation() else { return }
         guard !isBusy, !isScanningFleet else { return }
+        // A save admitted before this command may replace the retained array.
+        // Drain it before capturing the revision, so this harmless replacement
+        // does not silently discard an explicit retry.
+        await persistenceTask?.value
+        guard permitMutation(), !isBusy, !isScanningFleet else { return }
         do {
             let existing = Set(queue.map(\.id)), revision = queueRevision, selection = countsSelection
             let repository = queueRepository, authorized = allowedUUIDs

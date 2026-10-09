@@ -390,6 +390,7 @@ else:
             view.layoutSubtreeIfNeeded()
             let fitting = controller.sizeThatFits(in: CGSize(width: 660, height: 1_800))
             XCTAssertLessThanOrEqual(fitting.width, 660.5)
+            await store.waitForQueueCounts()
             XCTAssertGreaterThan(store.collectionFraction, 0)
             XCTAssertLessThan(store.collectionFraction, 1)
             if let output = ProcessInfo.processInfo.environment["KATALOG_UI_ARTIFACTS"] {
@@ -757,6 +758,7 @@ else:
         XCTAssertTrue(store.hasIncompleteInventory)
         XCTAssertEqual(store.completedInventoryUUIDs, [first])
         XCTAssertTrue(store.batchStatusMessage.hasPrefix("Collecte partielle"))
+        try await store.waitForPersistence()
         let restored = GCSStore(storageDirectory: root)
         XCTAssertEqual(restored.inventoryErrors.count, 1)
         XCTAssertTrue(restored.hasIncompleteInventory)
