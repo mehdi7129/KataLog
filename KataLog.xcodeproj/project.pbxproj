@@ -21,6 +21,8 @@
 		1138F55D7398D96D8093D951 /* analyzer.py in Resources */ = {isa = PBXBuildFile; fileRef = EC603D8E7A8E0DD113C174BB /* analyzer.py */; };
 		14219B5E54D24A178496A931 /* LibraryNavigationCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 446E8DF7AE87B41A4CA8284C /* LibraryNavigationCache.swift */; };
 		146196DA785F5EB18F223DFD /* ClientStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0483B4293824DE95AAADD9E3 /* ClientStore.swift */; };
+		151A3C04FC59BFF392F10036 /* AlertProfileChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CDDF3689947E1FEA82A6AF0 /* AlertProfileChart.swift */; };
+		1785D80523917AECF541B8B0 /* LibraryCommandCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62B4C605EF5907F193E7E4D9 /* LibraryCommandCapabilities.swift */; };
 		1E5EA08A906E690DDCE90454 /* LibraryStorageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53B41688D88BD65000BB0B41 /* LibraryStorageStore.swift */; };
 		1F79A47BEF8649BAF132A57F /* AlertExplanationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2879274F7AD19AC7F2F22D47 /* AlertExplanationView.swift */; };
 		22CD8121ACA4BABBC4AAC6AB /* library_clients.py in Resources */ = {isa = PBXBuildFile; fileRef = D6D2C407176A5F4FC16D0D9F /* library_clients.py */; };
@@ -68,6 +70,7 @@
 		9E8B88AC99D42CB8A7CF9A23 /* ReportInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = A212A8CC9F08D187462D8ACB /* ReportInteraction.swift */; };
 		9FE53A4AB01CA1A65997F1F3 /* FlightAnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 250C21DF8E49488C594D7485 /* FlightAnalysisView.swift */; };
 		A8733E5DE8EE1895DF681CF7 /* library_repository.py in Resources */ = {isa = PBXBuildFile; fileRef = F3E6103FEB3E5830E8AFE8BB /* library_repository.py */; };
+		ACF822B9667F85A61B64722B /* LibraryStore+Maintenance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A02B03EEE99591A5CF438442 /* LibraryStore+Maintenance.swift */; };
 		AD703E61D8DD32144C991593 /* RecordedMetadataView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2E283DB8D687AB07D82F948 /* RecordedMetadataView.swift */; };
 		AD99079BA035AFD388F3DD67 /* signal_assessment.py in Resources */ = {isa = PBXBuildFile; fileRef = 293BF69519EAB96FA6E8F777 /* signal_assessment.py */; };
 		AFC4E1BC00350A4426AD22E7 /* GCSStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44288B5CAF3F1AFD2A1B24A7 /* GCSStore.swift */; };
@@ -75,6 +78,7 @@
 		B733E9AEBC091B4723F3A709 /* LibraryWriterLease.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46D1BE9A940609E99FB3ECAA /* LibraryWriterLease.swift */; };
 		B74F8DD4BE4540C99EFAD435 /* DiagnosticStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 774ECB82F30B1BD18515741C /* DiagnosticStore.swift */; };
 		B7FB782F83E6735C68F14563 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 8313E156EF1AEF1010BAD510 /* Sparkle */; };
+		BB7B2F15C26A2AFABC3C1500 /* LibraryStore+Import.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80024FC6CB6B1A605D5B7425 /* LibraryStore+Import.swift */; };
 		BC04B7ED21CDBEB3B1D0C293 /* DiagnosticJournal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64C389996F4E1F97EA8457ED /* DiagnosticJournal.swift */; };
 		BCEDFB76A3E1C64E537F005D /* TelemetryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CBB1A0BBFB7632EBE80C42A /* TelemetryService.swift */; };
 		C1396172B3A5C1F2B5E7BD1C /* DiagnosticReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F78C0E50EA6B58794247C08E /* DiagnosticReport.swift */; };
@@ -90,6 +94,7 @@
 		D3A4FC0103B350AEC902C4B6 /* LibraryQuery.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16084A02D7AC8C706706D48 /* LibraryQuery.swift */; };
 		D3F7966C77D1C5980BE95B9E /* GCSServiceDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D490EED808F6F284E88FEA6 /* GCSServiceDiagnostics.swift */; };
 		D3F7E1E2E6A7AD254836BFC0 /* DroneAnnotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5BE6BDA87F822ED233D32F /* DroneAnnotations.swift */; };
+		DA0532A483D90F259101FB00 /* LibraryStore+Reports.swift in Sources */ = {isa = PBXBuildFile; fileRef = 680726B650EB3C3772AE85C3 /* LibraryStore+Reports.swift */; };
 		E0171A9EE311264A85A19C0E /* ReportStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = B026F80BFABB5D3B2AE6107F /* ReportStyle.swift */; };
 		E05CC86685E9C9432B51D1A9 /* ProcessLifetime.swift in Sources */ = {isa = PBXBuildFile; fileRef = B80F2C01F1D2B5D5CB596859 /* ProcessLifetime.swift */; };
 		E0C026A3A1A1B6D54E6AC3A3 /* EventBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 381DCE4D44FBD73F1B09DC01 /* EventBrowserView.swift */; };
@@ -147,8 +152,10 @@
 		54FB48920B4EBE713B760440 /* CoreLibraryUX.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreLibraryUX.swift; sourceTree = "<group>"; };
 		580DA0C78AE7B2EF804C501C /* FlightDetailSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightDetailSession.swift; sourceTree = "<group>"; };
 		5D490EED808F6F284E88FEA6 /* GCSServiceDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GCSServiceDiagnostics.swift; sourceTree = "<group>"; };
+		62B4C605EF5907F193E7E4D9 /* LibraryCommandCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCommandCapabilities.swift; sourceTree = "<group>"; };
 		64C389996F4E1F97EA8457ED /* DiagnosticJournal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticJournal.swift; sourceTree = "<group>"; };
 		67CA2340F1A10C83ADAB2077 /* KataLog.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KataLog.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		680726B650EB3C3772AE85C3 /* LibraryStore+Reports.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LibraryStore+Reports.swift"; sourceTree = "<group>"; };
 		6C74BC6513FA9237CC8CF2AA /* EventDictionaryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventDictionaryService.swift; sourceTree = "<group>"; };
 		6FD04F510482B3719AD7CD79 /* EngineOperations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineOperations.swift; sourceTree = "<group>"; };
 		7075CAFA2CC4FEBAA301301C /* SourcesImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcesImportView.swift; sourceTree = "<group>"; };
@@ -156,16 +163,19 @@
 		774ECB82F30B1BD18515741C /* DiagnosticStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticStore.swift; sourceTree = "<group>"; };
 		7857E2633A19111A82DF1360 /* UpdateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateStore.swift; sourceTree = "<group>"; };
 		7E826C40F035FB9C0FB00234 /* BentoColumns.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BentoColumns.swift; sourceTree = "<group>"; };
+		80024FC6CB6B1A605D5B7425 /* LibraryStore+Import.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LibraryStore+Import.swift"; sourceTree = "<group>"; };
 		81608F1EC59D6A4B4309FB7A /* ApplicationLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationLifecycle.swift; sourceTree = "<group>"; };
 		85F83077C2622F2D653FD323 /* ReportScopeManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportScopeManifest.swift; sourceTree = "<group>"; };
 		8B5BE6BDA87F822ED233D32F /* DroneAnnotations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneAnnotations.swift; sourceTree = "<group>"; };
 		8CBB1A0BBFB7632EBE80C42A /* TelemetryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetryService.swift; sourceTree = "<group>"; };
+		8CDDF3689947E1FEA82A6AF0 /* AlertProfileChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertProfileChart.swift; sourceTree = "<group>"; };
 		973B3986662CFA9BD3A110AD /* Clients.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Clients.swift; sourceTree = "<group>"; };
 		9BCD1CFB308445BA1215D96E /* FlightWindowCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightWindowCoordinator.swift; sourceTree = "<group>"; };
 		9C7E4498DE9FA167DF465E48 /* GNSSCoverage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GNSSCoverage.swift; sourceTree = "<group>"; };
 		9DC881E5A3314E11ACF46DD1 /* AlertKnowledge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertKnowledge.swift; sourceTree = "<group>"; };
 		9E37575D142A735F0733E355 /* UpdateSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateSettingsView.swift; sourceTree = "<group>"; };
 		9FE3B699A73B88B059D1ABA7 /* libKataLogCore.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libKataLogCore.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		A02B03EEE99591A5CF438442 /* LibraryStore+Maintenance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LibraryStore+Maintenance.swift"; sourceTree = "<group>"; };
 		A07E65B3288F0CCC78ABC99F /* DroneAnnotationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroneAnnotationStore.swift; sourceTree = "<group>"; };
 		A212A8CC9F08D187462D8ACB /* ReportInteraction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportInteraction.swift; sourceTree = "<group>"; };
 		A9A172B8D44CC0C1F51B4646 /* Workspace06View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workspace06View.swift; sourceTree = "<group>"; };
@@ -225,6 +235,7 @@
 			isa = PBXGroup;
 			children = (
 				2879274F7AD19AC7F2F22D47 /* AlertExplanationView.swift */,
+				8CDDF3689947E1FEA82A6AF0 /* AlertProfileChart.swift */,
 				D04D50D0B4BE0AF590382E3B /* AnalysisRevisionsView.swift */,
 				81608F1EC59D6A4B4309FB7A /* ApplicationLifecycle.swift */,
 				E98860FD022BF7F7428184D5 /* AppPreviewConfiguration.swift */,
@@ -250,10 +261,14 @@
 				1F9FCAC2168E5A7B6D85F2C3 /* GCSStorageIO.swift */,
 				44288B5CAF3F1AFD2A1B24A7 /* GCSStore.swift */,
 				D2C120A7ADD1771A31CA7DFE /* ImportOptions06.swift */,
+				62B4C605EF5907F193E7E4D9 /* LibraryCommandCapabilities.swift */,
 				C5EB0EE7CFDB8B5DE1DDBE53 /* LibraryHelpViews.swift */,
 				446E8DF7AE87B41A4CA8284C /* LibraryNavigationCache.swift */,
 				53B41688D88BD65000BB0B41 /* LibraryStorageStore.swift */,
 				0ACBF6FE3DBC7EE0DCE73010 /* LibraryStore.swift */,
+				80024FC6CB6B1A605D5B7425 /* LibraryStore+Import.swift */,
+				A02B03EEE99591A5CF438442 /* LibraryStore+Maintenance.swift */,
+				680726B650EB3C3772AE85C3 /* LibraryStore+Reports.swift */,
 				3776621835431D949972CFCA /* LibraryViewStore.swift */,
 				BD3E883DBD573A4915EAB398 /* main.swift */,
 				FFF65C0B487A5E345983033B /* MaskImpact06.swift */,
@@ -531,6 +546,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				1F79A47BEF8649BAF132A57F /* AlertExplanationView.swift in Sources */,
+				151A3C04FC59BFF392F10036 /* AlertProfileChart.swift in Sources */,
 				EBF73258F86F97774D49F830 /* AnalysisRevisionsView.swift in Sources */,
 				54EDE7EFFC2FA19C752E51E3 /* AppPreviewConfiguration.swift in Sources */,
 				244CACA55F30DDA40588BBA7 /* ApplicationLifecycle.swift in Sources */,
@@ -556,9 +572,13 @@
 				428E8716FF45B6544123848A /* GCSStorageIO.swift in Sources */,
 				AFC4E1BC00350A4426AD22E7 /* GCSStore.swift in Sources */,
 				0B2871C810BAEDD6AD60B155 /* ImportOptions06.swift in Sources */,
+				1785D80523917AECF541B8B0 /* LibraryCommandCapabilities.swift in Sources */,
 				3898E772B1A14F8BC289D101 /* LibraryHelpViews.swift in Sources */,
 				14219B5E54D24A178496A931 /* LibraryNavigationCache.swift in Sources */,
 				1E5EA08A906E690DDCE90454 /* LibraryStorageStore.swift in Sources */,
+				BB7B2F15C26A2AFABC3C1500 /* LibraryStore+Import.swift in Sources */,
+				ACF822B9667F85A61B64722B /* LibraryStore+Maintenance.swift in Sources */,
+				DA0532A483D90F259101FB00 /* LibraryStore+Reports.swift in Sources */,
 				3470A2C48748F4BAD520EEAF /* LibraryStore.swift in Sources */,
 				091C66D92888242DA707372B /* LibraryViewStore.swift in Sources */,
 				77F0C88A506BE0B40E028ED3 /* MaskImpact06.swift in Sources */,
