@@ -1,13 +1,14 @@
 import Foundation
 
 /// Only helpers launched through KataLog's process controls are registered.
-/// Termination permanently closes the launch gate for this app instance.
+/// Termination closes the launch gate until exit or an explicitly cancelled quit.
 public enum EngineOperations {
     static let registry = EngineOperationRegistry()
 
     public static var activeProcessCount: Int { registry.activeProcessCount }
 
     public static func beginTermination() { registry.beginTermination() }
+    @discardableResult public static func cancelTermination() -> Bool { registry.cancelTermination() }
 }
 
 final class EngineOperationRegistry: @unchecked Sendable {
@@ -39,4 +40,13 @@ final class EngineOperationRegistry: @unchecked Sendable {
         // Do not hold the registry lock while entering a process control.
         for control in owned { control.cancel() }
     }
+    /// A failed final save may cancel quit, but never reopen while old helpers
+    /// still own operations or writer leases.
+    func cancelTermination() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard controls.isEmpty else { return false }
+        isTerminating = false
+        return true
+    }
+
 }

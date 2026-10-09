@@ -20,9 +20,9 @@ public enum AnalysisService {
         return snapshot
     }
 
-    public static func scan(folder: URL, database: URL, output: URL, progress: URL, engine: URL, archiveDestination: URL? = nil, clientID: String? = nil) async throws -> FleetSnapshot {
+    public static func scan(folder: URL, database: URL, output: URL, progress: URL, engine: URL, archiveDestination: URL? = nil, clientID: String? = nil, additionalOutputs: [URL] = []) async throws -> FleetSnapshot {
         try await scan(folder: folder, database: database, output: output, progress: progress, engine: engine,
-                       archiveDestination: archiveDestination, clientID: clientID, runtimeConfiguration: .current)
+                       archiveDestination: archiveDestination, clientID: clientID, additionalOutputs: additionalOutputs, runtimeConfiguration: .current)
     }
 
     public static func scanPaged(folder: URL, database: URL, output: URL, progress: URL, engine: URL, archiveDestination: URL? = nil, clientID: String? = nil) async throws -> FleetSnapshot {
@@ -34,6 +34,7 @@ public enum AnalysisService {
                      skipSnapshot: Bool = false,
                      archiveDestination: URL? = nil,
                      clientID: String? = nil,
+                     additionalOutputs: [URL] = [],
                      runtimeConfiguration: EngineRuntimeResolver.Configuration) async throws -> FleetSnapshot {
         guard archiveDestination?.isFileURL ?? true else { throw AnalysisError.engine("Choisissez un dossier local pour les archives.") }
         let control = ProcessLifetime()
@@ -50,11 +51,12 @@ public enum AnalysisService {
                 let stderr = work.appendingPathComponent("stderr.txt")
                 let runtime = try EngineRuntimeResolver.resolve(configuration: runtimeConfiguration,
                                                                launch: control.run, finished: control.finish)
-                let arguments = ["-B", engine.path, "scan", "--folder", folder.path,
+                var arguments: [String] = ["-B", engine.path, "scan", "--folder", folder.path,
                     "--database", database.path, "--output", output.path, "--progress", progress.path]
-                    + (skipSnapshot ? ["--skip-snapshot"] : [])
-                    + (archiveDestination.map { ["--archive-destination", $0.path] } ?? [])
-                    + (clientID.map { ["--client-id", $0] } ?? [])
+                if skipSnapshot { arguments.append("--skip-snapshot") }
+                if let archiveDestination { arguments.append(contentsOf: ["--archive-destination", archiveDestination.path]) }
+                if let clientID { arguments.append(contentsOf: ["--client-id", clientID]) }
+                for output in additionalOutputs { arguments.append(contentsOf: ["--additional-output", output.path]) }
                 let status = try execute(runtime, arguments: arguments, control: control, stderr: stderr)
                 guard status == 0 else {
                     let detail = (try? String(contentsOf: stderr, encoding: .utf8)) ?? ""

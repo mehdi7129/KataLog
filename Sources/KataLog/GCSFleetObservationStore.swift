@@ -21,28 +21,33 @@ final class GCSFleetObservationStore {
     private(set) var errorMessage: String?
     private let file: URL
     private let canMutate: () -> Bool
+    private let automaticFlush: Bool
+    var pendingState: GCSFleetObservationState? { dirty && writable ? state : nil }
     private var dirty = false
     private var writable = true
-    init(file: URL, canMutate: @escaping () -> Bool) {
-        self.file = file; self.canMutate = canMutate
-        guard FileManager.default.fileExists(atPath: file.path) else { return }
-        do {
-            let attributes = try file.resourceValues(forKeys: [.fileSizeKey, .isSymbolicLinkKey])
-            guard (attributes.fileSize ?? Int.max) <= 4 * 1024 * 1024, attributes.isSymbolicLink != true else {
-                throw AnalysisError.engine("Registre trop volumineux ou lien inattendu. Le fichier existant est conservé.")
-            }
-            let data = try Data(contentsOf: file)
-            guard data.count <= 4 * 1024 * 1024 else { throw AnalysisError.engine("Le registre des observations dépasse 4 Mio.") }
-            let loaded = try JSONDecoder().decode(GCSFleetObservationState.self, from: data)
-            guard loaded.schemaVersion == 1, loaded.revision >= 0, loaded.drones.count <= 10_000,
-                  Set(loaded.drones.map(\.uuid)).count == loaded.drones.count,
-                  loaded.drones.allSatisfy({ GCSIdentity.isValid($0.uuid) && $0.uuid == $0.uuid.uppercased() && Self.validObservation($0) }) else {
-                throw AnalysisError.engine("Registre des observations incompatible. Le fichier existant est conservé.")
-            }
-            state = loaded
-        } catch { writable = false; errorMessage = "Les observations GCS ne peuvent pas être relues : \(error.localizedDescription)" }
+    init(file: URL, automaticFlush: Bool = true,
+         loaded: Result<GCSFleetObservationState, Error>? = nil, canMutate: @escaping () -> Bool) {
+        self.file = file; self.canMutate = canMutate; self.automaticFlush = automaticFlush
+        do { state = try (loaded ?? Result { try Self.read(file: file) }).get() }
+        catch { writable = false; errorMessage = "Les observations GCS ne peuvent pas être relues : \(error.localizedDescription)" }
     }
-    private static func validObservation(_ entry: GCSFleetObservation) -> Bool {
+    nonisolated static func read(file: URL) throws -> GCSFleetObservationState {
+        guard FileManager.default.fileExists(atPath: file.path) else { return GCSFleetObservationState() }
+        let attributes = try file.resourceValues(forKeys: [.fileSizeKey, .isSymbolicLinkKey])
+        guard (attributes.fileSize ?? Int.max) <= 4 * 1024 * 1024, attributes.isSymbolicLink != true else {
+            throw AnalysisError.engine("Registre trop volumineux ou lien inattendu. Le fichier existant est conservé.")
+        }
+        let data = try Data(contentsOf: file)
+        guard data.count <= 4 * 1024 * 1024 else { throw AnalysisError.engine("Le registre des observations dépasse 4 Mio.") }
+        let loaded = try JSONDecoder().decode(GCSFleetObservationState.self, from: data)
+        guard loaded.schemaVersion == 1, loaded.revision >= 0, loaded.drones.count <= 10_000,
+              Set(loaded.drones.map(\.uuid)).count == loaded.drones.count,
+              loaded.drones.allSatisfy({ GCSIdentity.isValid($0.uuid) && $0.uuid == $0.uuid.uppercased() && Self.validObservation($0) }) else {
+            throw AnalysisError.engine("Registre des observations incompatible. Le fichier existant est conservé.")
+        }
+        return loaded
+    }
+    nonisolated private static func validObservation(_ entry: GCSFleetObservation) -> Bool {
         guard let stamp = entry.lastSeenAtUTC else { return entry.lastSeenSource == nil }
         guard stamp.utf8.count <= 64, entry.lastSeenSource == "gcs-telemetry" else { return false }
         let fractional = ISO8601DateFormatter(); fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -86,6 +91,14 @@ final class GCSFleetObservationStore {
         }
     }
 
+    func registrationState(_ observed: [GCSDrone], authorized: Set<String>) throws -> GCSFleetObservationState {
+        guard writable, canMutate() else { throw AnalysisError.unavailable(errorMessage ?? "Le registre des drones ne peut pas être modifié pour le moment.") }
+        return try updatedState(observed, authorized: authorized)
+    }
+    func didPersist(_ saved: GCSFleetObservationState) {
+        if saved.revision >= state.revision { state = saved; dirty = false; errorMessage = nil }
+    }
+
     private func updatedState(_ observed: [GCSDrone], authorized: Set<String>) throws -> GCSFleetObservationState {
         var entries = Dictionary(uniqueKeysWithValues: state.drones.map { ($0.uuid, $0) })
         let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -112,7 +125,7 @@ final class GCSFleetObservationStore {
         try data.write(to: file, options: .atomic)
     }
     func flush() {
-        guard dirty, writable, canMutate() else { return }
+        guard automaticFlush, dirty, writable, canMutate() else { return }
         do {
             try write(state); dirty = false; errorMessage = nil
         } catch { errorMessage = "Les observations GCS ne peuvent pas être enregistrées : \(error.localizedDescription)" }

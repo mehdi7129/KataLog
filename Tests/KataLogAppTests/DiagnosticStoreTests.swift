@@ -98,10 +98,7 @@ final class DiagnosticStoreTests: XCTestCase {
     func testExportCancellationWaitsForCleanupAndPreservesExistingDestination() async throws {
         let root = try folder(), destination = root.appendingPathComponent("existing.zip")
         let before = Data("previous complete archive".utf8); try before.write(to: destination)
-        let store = DiagnosticStore(journal: journal(root), exporter: { _, _, _, _, _, _ in
-            try await Task.sleep(for: .seconds(30))
-            throw CancellationError()
-        })
+        let journal = journal(root), store = DiagnosticStore(journal: journal)
         store.load(report: report); try await settle(store)
         store.export(to: destination); XCTAssertTrue(store.isExporting); XCTAssertFalse(store.canExport)
         store.prepareForTermination(); XCTAssertTrue(store.isCancellingExport)
@@ -109,6 +106,48 @@ final class DiagnosticStoreTests: XCTestCase {
         XCTAssertFalse(store.isCancellingExport); XCTAssertTrue(store.exportMessage?.contains("annulé") == true)
         XCTAssertNil(store.errorMessage); XCTAssertEqual(try Data(contentsOf: destination), before)
         XCTAssertTrue(store.canExport)
+        XCTAssertEqual(try journal.snapshot().events.last?.kind, .exportFailed)
+        XCTAssertEqual(try journal.snapshot().events.last?.code, .cancelled)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.path), ["existing.zip"])
+    }
+
+    func testCancellationAfterPublicationReportsSuccessfulExport() async throws {
+        let root = try folder(), destination = root.appendingPathComponent("existing.zip")
+        let before = Data("previous complete archive".utf8); try before.write(to: destination)
+        let journal = journal(root), gate = DiagnosticPublicationGate()
+        let store = DiagnosticStore(journal: journal, exporter: { url, report, snapshot, gcs, privateGCS, ulogs in
+            let result = try await DiagnosticBundle.export(to: url, report: report, journal: snapshot,
+                gcs: gcs, includePrivateGCS: privateGCS, privateULogs: ulogs)
+            // Hold only the successful return, after the real exporter committed.
+            await gate.waitAfterPublication()
+            return result
+        })
+        store.load(report: report); try await settle(store)
+        store.export(to: destination)
+        let deadline = Date().addingTimeInterval(5)
+        while !(await gate.hasPublished()), store.isExporting, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        let published = await gate.hasPublished()
+        XCTAssertTrue(published, "The real exporter must publish before cancellation.")
+        store.cancelExport()
+        await gate.release()
+        try await settle(store)
+
+        XCTAssertNotEqual(try Data(contentsOf: destination), before)
+        XCTAssertTrue(store.exportMessage?.contains("Diagnostic exporté") == true)
+        XCTAssertNil(store.errorMessage); XCTAssertFalse(store.isCancellingExport); XCTAssertTrue(store.canExport)
+        let events = try journal.snapshot().events
+        XCTAssertEqual(events.map(\.kind), [.exportStarted, .exportCompleted])
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.path), ["existing.zip"])
+
+        let extracted = root.appendingPathComponent("extracted")
+        let process = Process(); process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        process.arguments = ["-x", "-k", destination.path, extracted.path]
+        try process.run(); ProcessLifetime.wait(for: process)
+        XCTAssertEqual(process.terminationStatus, 0)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: extracted.path).sorted(),
+                       ["LISEZ-MOI.txt", "events.jsonl", "manifest.json", "snapshot.json"])
     }
 
     func testBadULogSelectionCannotPublishAndRemovingItRestoresReview() async throws {
@@ -198,4 +237,17 @@ private actor DiagnosticServiceProbe {
         return try await withCheckedThrowingContinuation { pending[host] = $0 }
     }
     func complete(host: String, result: GCSServiceDiagnosticsResult) { pending.removeValue(forKey: host)?.resume(returning: result) }
+}
+
+private actor DiagnosticPublicationGate {
+    private var published = false
+    private var released = false
+    private var continuation: CheckedContinuation<Void, Never>?
+    func hasPublished() -> Bool { published }
+    func waitAfterPublication() async {
+        published = true
+        guard !released else { return }
+        await withCheckedContinuation { continuation = $0 }
+    }
+    func release() { released = true; continuation?.resume(); continuation = nil }
 }

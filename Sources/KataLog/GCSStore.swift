@@ -17,7 +17,7 @@ private struct GCSTransferSource: Hashable, Sendable {
 final class GCSStore: ObservableObject {
     @Published private(set) var collectionClientID: String?
     var collectionClientName: String { library?.clients.scopeLabel(for: collectionClientID ?? "") ?? "Sans client" }
-    @Published var host: String
+    @Published var host: String { didSet { if terminationRequested { host = oldValue } } }
     @Published private(set) var isConnected = false
     @Published private(set) var isConnecting = false
     @Published private(set) var isBusy = false
@@ -25,16 +25,16 @@ final class GCSStore: ObservableObject {
     @Published var statusMessage: String?
     @Published var errorMessage: String?
     @Published private(set) var drones: [GCSDrone] = []
-    @Published private(set) var allowedUUIDs: Set<String>
+    @Published private(set) var allowedUUIDs: Set<String> { didSet { refreshQueueCounts() } }
     @Published private(set) var selectedUUID: String?
     @Published private(set) var files: [GCSLogFile] = []
     @Published var selectedFileIDs: Set<String> = []
-    @Published private(set) var queue: [GCSTransfer]
+    @Published private(set) var queue: [GCSTransfer] { didSet { queueRevision &+= 1 } }
     @Published private(set) var downloadDirectory: URL
     @Published var autoImport: Bool {
         didSet {
             guard !isApplyingRestoredState else { return }
-            if isReadOnly || isMaintenanceBlocked {
+            if isReadOnly || isMaintenanceBlocked || terminationRequested {
                 isApplyingRestoredState = true; autoImport = oldValue; isApplyingRestoredState = false
                 _ = permitMutation(); return
             }
@@ -49,6 +49,47 @@ final class GCSStore: ObservableObject {
     private let queueDatabaseURL: URL
     private var queueRepository: GCSQueueRepository?
     private var repositoryWritable = false
+    private lazy var storageIO = GCSStorageIO(database: queueDatabaseURL, settings: stateURL)
+    private var attachmentTask: Task<Void, Never>?
+    private var persistenceTask: Task<Void, Never>?
+    private var persistAgain = false
+    private var persistenceError: Error?
+    private var configurationRevision: UInt64 = 0
+    private var countsTask: Task<Void, Never>?
+    private var countsAgain = false
+    private var storageGeneration: UInt64 = 0
+    @Published private var isStorageTransitioning = false
+    private var terminationRequested = false
+    private var controlRevision: UInt64 = 0
+    private var deferredFleetObservations: [String: GCSDrone] = [:]
+    var hasPendingPersistence: Bool { persistenceTask != nil }
+    private var hasCompleteInMemoryQueue = true
+    private var queueRevision: UInt64 = 0
+    private struct CountsSelection: Equatable, Sendable {
+        let batchID: String
+        let authorizedUUIDs: Set<String>
+    }
+    private struct CountsSnapshot {
+        let selection: CountsSelection
+        let queueRevision: UInt64
+        let progress: GCSBatchProgress
+        let retryable: Int
+        let total: Int
+    }
+    @Published private var countsSnapshot: CountsSnapshot?
+    @Published private(set) var countsError: String?
+    private var countsSelection: CountsSelection { CountsSelection(batchID: currentBatchID, authorizedUUIDs: allowedUUIDs) }
+    private var selectedCounts: CountsSnapshot? { countsSnapshot?.selection == countsSelection ? countsSnapshot : nil }
+    var hasQueueCounts: Bool { selectedCounts != nil }
+    var countsAreCurrent: Bool { selectedCounts?.queueRevision == queueRevision && countsError == nil }
+    var countsReadMessage: String? {
+        guard !countsAreCurrent else { return nil }
+        if countsError != nil {
+            return hasQueueCounts ? "Totaux indisponibles · derniers comptes vérifiés affichés." : "Totaux indisponibles · la file complète ne peut pas être lue."
+        }
+        return "Actualisation des totaux de collecte…"
+    }
+
     private var queueStorageIssue: String?
     private var dirtyTransferIDs: Set<String> = []
     private var queueSourceIndex: [GCSTransferSource: Int] = [:]
@@ -58,7 +99,7 @@ final class GCSStore: ObservableObject {
     private let collectorOverride: URL?
     private let snapshotOverride: (() -> FleetSnapshot)?
     private let importOverride: ((URL, String?) async throws -> FleetSnapshot)?
-    private let directoryIssueOverride: ((URL) -> String?)?
+    private let directoryIssueOverride: (@Sendable (URL) -> String?)?
     private weak var library: LibraryStore?
     private var discoveryTask: Task<Void, Never>?
     private var inventoryTask: Task<Void, Never>?
@@ -84,27 +125,82 @@ final class GCSStore: ObservableObject {
     private var activeInventoryUUID: String?
     let maxConcurrentDownloads = GCSQueuePolicy.maxConcurrentDownloads
     var activeTransferCount: Int { transferTasks.count }
-    var retryableCount: Int {
-        if let queueRepository, let count = try? queueRepository.retryableCount(authorizedUUIDs: allowedUUIDs) { return count }
-        return queue.filter { ["failed", "interrupted", "stopped"].contains($0.state) && allowedUUIDs.contains($0.droneUUID) }.count
-    }
+    var retryableCount: Int { selectedCounts?.retryable ?? 0 }
     var isStopping: Bool { queue.contains { (transferTasks[$0.id] != nil || activeAnalysisID == $0.id) && $0.state == "stopped" } }
-    var diagnosticJobCount: Int? {
-        if let queueRepository { return try? queueRepository.transferCount(overlay: dirtyTransfers) }
-        return queueStorageIssue == nil ? queue.count : nil
+    var diagnosticJobCount: Int? { countsAreCurrent ? selectedCounts?.total : nil }
+    var batchProgress: GCSBatchProgress { selectedCounts?.progress ?? GCSBatchProgress(transfers: []) }
+
+    // Called by model updates, never by SwiftUI getters. A failed read preserves
+    // only the last explicit snapshot for this batch and authorized fleet.
+    private func loadInitialCounts() {
+        // Background maintenance may own the repository lock. Its final save or
+        // the existing timer refreshes counts after the gate is released.
+        guard !isMaintenanceBlocked else { return }
+        do {
+            if let queueStorageIssue { throw AnalysisError.unavailable(queueStorageIssue) }
+            let progress: GCSBatchProgress, retryable: Int, total: Int
+            if let queueRepository {
+                let counts = try queueRepository.counts(batchID: currentBatchID, authorizedUUIDs: allowedUUIDs, overlay: dirtyTransfers)
+                progress = counts.progress; retryable = counts.retryable; total = counts.total
+            } else {
+                guard hasCompleteInMemoryQueue else { throw AnalysisError.unavailable("La file complète ne peut pas être lue.") }
+                progress = GCSBatchProgress(transfers: queue.filter { $0.batchID == currentBatchID })
+                retryable = queue.filter { $0.isRetryable && allowedUUIDs.contains($0.droneUUID) }.count
+                total = queue.count
+            }
+            countsSnapshot = CountsSnapshot(selection: countsSelection, queueRevision: queueRevision,
+                                            progress: progress, retryable: retryable, total: total)
+            countsError = nil
+        } catch { countsError = error.localizedDescription }
     }
-    var batchProgress: GCSBatchProgress {
-        if let queueRepository, let progress = try? queueRepository.batchProgress(id: currentBatchID, overlay: dirtyTransfers) { return progress }
-        return GCSBatchProgress(transfers: queue.filter { $0.batchID == currentBatchID })
+    func refreshQueueCounts() {
+        guard !isMaintenanceBlocked else { return }
+        countsAgain = true
+        guard countsTask == nil else { return }
+        countsTask = Task { [weak self] in
+            guard let self else { return }
+            defer { countsTask = nil }
+            while countsAgain && !isMaintenanceBlocked {
+                countsAgain = false
+                let selection = countsSelection, revision = queueRevision, generation = storageGeneration
+                let repository = queueRepository, overlay = dirtyTransfers
+                let all = repository == nil ? queue : []
+                let complete = hasCompleteInMemoryQueue, issue = queueStorageIssue
+                do {
+                    let result = try await storageIO.perform {
+                        if let issue { throw AnalysisError.unavailable(issue) }
+                        if let repository { return try repository.counts(batchID: selection.batchID, authorizedUUIDs: selection.authorizedUUIDs, overlay: overlay) }
+                        guard complete else { throw AnalysisError.unavailable("La file complète ne peut pas être lue.") }
+                        return GCSQueueCounts(progress: GCSBatchProgress(transfers: all.filter { $0.batchID == selection.batchID }),
+                            retryable: all.filter { $0.isRetryable && selection.authorizedUUIDs.contains($0.droneUUID) }.count,
+                            total: all.count)
+                    }
+                    guard generation == storageGeneration, !isMaintenanceBlocked else { continue }
+                    if selection == countsSelection && revision == queueRevision {
+                        countsSnapshot = CountsSnapshot(selection: selection, queueRevision: revision,
+                            progress: result.progress, retryable: result.retryable, total: result.total)
+                        countsError = nil
+                    } else { countsAgain = true }
+                } catch {
+                    guard generation == storageGeneration, selection == countsSelection else { continue }
+                    countsError = error.localizedDescription
+                }
+            }
+        }
+    }
+    func waitForQueueCounts() async {
+        refreshQueueCounts()
+        await countsTask?.value
     }
     var collectionFraction: Double { overallFraction(for: batchProgress) }
     func overallFraction(for progress: GCSBatchProgress) -> Double {
+        guard countsAreCurrent else { return 0 }
         if progress.totalCount > 0 { return progress.fraction }
         let allPreviewFilesPresent = destinationPreviewFileCount.map { $0 > 0 && cachedFileCount == $0 } ?? true
         return cachedFileCount > 0 && allPreviewFilesPresent && !isScanningFleet && !hasIncompleteInventory ? 1 : 0
     }
     var isReadOnly: Bool { library?.isReadOnly == true }
-    var isMaintenanceBlocked: Bool { library?.isMaintainingLibrary == true }
+    var isMaintenanceBlocked: Bool { isReconcilingClients || isStorageTransitioning || startupStorageDeferred || library?.isStartupBlocked == true || library?.isMaintainingLibrary == true }
     /// Discovery is limited to the connected GCS. Explicit bulk collection also
     /// registers its new UUIDs; assigning a stock number is a separate operation.
     var collectableDrones: [GCSDrone] { drones.filter { GCSIdentity.isValid($0.uuid) && $0.isOnline && $0.armed != true } }
@@ -113,6 +209,7 @@ final class GCSStore: ObservableObject {
     var hasIncompleteInventory: Bool { !expectedInventoryUUIDs.isSubset(of: completedInventoryUUIDs) || !inventoryFailures.isEmpty }
     var inventoryCoverageLabel: String { "\(completedInventoryUUIDs.intersection(expectedInventoryUUIDs).count) / \(expectedInventoryUUIDs.count) drones recensés" }
     var batchStatusMessage: String {
+        if let countsReadMessage { return countsReadMessage }
         let progress = batchProgress
         if isScanningFleet { return "Lecture des inventaires de la flotte · \(inventoryCoverageLabel)" }
         if isBusy && progress.totalCount == 0 && selectedUUID != nil && files.isEmpty {
@@ -148,7 +245,18 @@ final class GCSStore: ObservableObject {
         if progress.failedCount > 0 { return "Collecte terminée avec des erreurs · relancez les fichiers concernés." }
         return "Les fichiers téléchargés sont conservés sur ce Mac."
     }
-    var downloadDirectoryIssue: String? { directoryIssue(downloadDirectory) }
+    private struct DestinationSnapshot {
+        let url: URL
+        let issue: String?
+    }
+    @Published private var destinationSnapshot: DestinationSnapshot?
+    private var destinationCheckTask: Task<Void, Never>?
+    var downloadDirectoryIssue: String? {
+        guard let snapshot = destinationSnapshot, snapshot.url == downloadDirectory else {
+            return "Vérification du dossier de collecte…"
+        }
+        return snapshot.issue
+    }
     var canStopCollection: Bool { isBusy || queue.contains(where: \.isPending) }
     private func updateBusy() { isBusy = inventoryTask != nil || !transferTasks.isEmpty || analysisTask != nil || bufferedAnalysisCount > 0 }
     private func isRemoteBusy(_ uuid: String) -> Bool {
@@ -160,11 +268,14 @@ final class GCSStore: ObservableObject {
     private var pendingAttachmentReconnect = false
     private var connectedHost: String?
     private var lastSave = Date.distantPast
+    private var startupStorageDeferred = false
+    private var isReconcilingClients = false
+    private var reconciledClientIDs: Set<String>?
 
     init(storageDirectory: URL? = nil, collector: URL? = nil,
          snapshot: (() -> FleetSnapshot)? = nil,
          importer: ((URL, String?) async throws -> FleetSnapshot)? = nil,
-         directoryIssue: ((URL) -> String?)? = nil,
+         directoryIssue: (@Sendable (URL) -> String?)? = nil,
          previewConfiguration: AppPreviewConfiguration = AppPreviewConfiguration(),
          applicationSupportDirectory: URL? = nil) {
         collectorOverride = collector
@@ -173,6 +284,7 @@ final class GCSStore: ObservableObject {
         directoryIssueOverride = directoryIssue
         let base = previewConfiguration.libraryDirectory(storageDirectory: storageDirectory,
                                                         applicationSupportDirectory: applicationSupportDirectory)
+        startupStorageDeferred = LibraryStorageService.hasPendingRestore(in: base)
         stateURL = base.appendingPathComponent("gcs-settings.json")
         legacyStateURL = base.appendingPathComponent("gcs-collection.json")
         queueDatabaseURL = base.appendingPathComponent("gcs-queue.sqlite")
@@ -180,7 +292,7 @@ final class GCSStore: ObservableObject {
         initialDestination = FileManager.default.fileExists(atPath: inputStateURL.path) ? nil : base.appendingPathComponent("Collected Logs")
         var state = GCSCollectionState(downloadDirectory: base.appendingPathComponent("Collected Logs").path)
         var loadError: String?
-        if FileManager.default.fileExists(atPath: inputStateURL.path) {
+        if !startupStorageDeferred, FileManager.default.fileExists(atPath: inputStateURL.path) {
             do {
                 let saved = try JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: inputStateURL))
                 guard saved.schemaVersion == 1 else { throw AnalysisError.schema(saved.schemaVersion) }
@@ -194,12 +306,12 @@ final class GCSStore: ObservableObject {
         host = state.host
         collectionClientID = state.collectionClientID
         allowedUUIDs = Set(state.allowedUUIDs.filter(GCSIdentity.isValid).map { $0.uppercased() })
-        if let saved = try? JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: legacyStateURL)) { legacyTransfers = saved.queue }
-        if FileManager.default.fileExists(atPath: queueDatabaseURL.path) {
+        if !startupStorageDeferred, let saved = try? JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: legacyStateURL)) { legacyTransfers = saved.queue }
+        if !startupStorageDeferred, FileManager.default.fileExists(atPath: queueDatabaseURL.path) {
             do {
                 let repository = try GCSQueueRepository(url: queueDatabaseURL, readOnly: true)
                 if try repository.hasMigratedLegacy { state.queue = try repository.retainedTransfers() }
-                queueRepository = repository
+                queueRepository = repository; hasCompleteInMemoryQueue = false
             } catch { loadError = error.localizedDescription; queueStorageIssue = loadError }
         } else if state.queueStorageVersion != nil {
             loadError = "La file SQLite enregistrée est absente. Restaurez une sauvegarde avant de relancer la collecte."
@@ -223,65 +335,113 @@ final class GCSStore: ObservableObject {
         autoImport = state.autoImport; reconnect = state.reconnect
         errorMessage = loadError
         rebuildQueueIndexes()
+        if !startupStorageDeferred {
+            _ = fleetObservations
+            destinationSnapshot = DestinationSnapshot(url: downloadDirectory,
+                issue: directoryIssue.map { $0(downloadDirectory) } ?? Self.directoryIssue(downloadDirectory))
+        }
+        loadInitialCounts()
         termination = NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification).sink { [weak self] _ in
             self?.stopForTermination()
         }
     }
 
     func chooseCollectionClient(_ id: String) {
+        let isValid = id.isEmpty || library?.clients.profiles.contains(where: { $0.id == id }) == true
+        // View synchronization is not a mutation when the destination is unchanged.
+        if isValid, (collectionClientID ?? "") == id { return }
         guard permitMutation(), !isBusy else { return }
-        guard id.isEmpty || library?.clients.profiles.contains(where: { $0.id == id }) == true else {
+        guard isValid else {
             errorMessage = "Ce client n’existe plus. Choisissez un destinataire."; return
         }
         collectionClientID = id; persist()
     }
 
     /// Called while the library owns its maintenance gate. No original is touched.
-    func resetForApplication() throws {
+    func resetForApplication() async throws {
         guard !isBusy else { throw AnalysisError.engine("Arrêtez la collecte avant la réinitialisation.") }
         discoveryTask?.cancel(); discoveryTask = nil
         inventoryTask?.cancel(); inventoryTask = nil
-        pendingAttachmentReconnect = false; reconnect = false
+        pendingAttachmentReconnect = false; reconnect = false; isQueuePaused = true; configurationDirty = true
         isConnected = false; isConnecting = false; connectedHost = nil
+        try await validateResetForApplication()
+        await persistenceTask?.value
+        storageGeneration &+= 1
+        await countsTask?.value
+        try await storageIO.close()
         queueRepository = nil; repositoryWritable = false
-        try LibraryStore.removeConfigurationFiles(in: stateURL.deletingLastPathComponent(), names: [
-            "gcs-settings.json", "gcs-collection.json", "gcs-queue.sqlite", "gcs-queue.sqlite-wal",
-            "gcs-queue.sqlite-shm", "fleet.json"
-        ])
-        try loadRestoredCollectionState()
+        let directory = stateURL.deletingLastPathComponent(), names = Self.resetConfigurationNames
+        try await storageIO.perform {
+            try LibraryStore.removeConfigurationFiles(in: directory, names: names)
+        }
+        try await loadRestoredCollectionState()
         collectionClientID = nil; isQueuePaused = false
         errorMessage = nil; statusMessage = nil; configurationDirty = true
+    }
+
+    private static let resetConfigurationNames = ["gcs-settings.json", "gcs-collection.json",
+        "gcs-queue.sqlite", "gcs-queue.sqlite-wal", "gcs-queue.sqlite-shm", "fleet.json"]
+
+    private func validateResetForApplication() async throws {
+        guard !isBusy else { throw AnalysisError.engine("Arrêtez la collecte avant la réinitialisation.") }
+        let directory = stateURL.deletingLastPathComponent(), names = Self.resetConfigurationNames
+        try await storageIO.perform { try LibraryStore.validateConfigurationFiles(in: directory, names: names) }
     }
 
     func attach(library: LibraryStore) {
         guard self.library == nil else { return }
         self.library = library
-        library.hasExternalActivity = { [weak self] in self?.isBusy == true }
-        library.willMaintainLibrary = { [weak self] in try self?.flushPersistedStateForMaintenance() }
-        library.willRestoreLibrary = { [weak self] in try self?.preparePersistedStorageForRestore() }
-        library.didRestoreLibrary = { [weak self] in try self?.reloadPersistedStateAfterRestore() }
-        library.resetCollectionState = { [weak self] in try self?.resetForApplication() }
+        library.hasExternalActivity = { [weak self] in self?.isBusy == true || self?.isReconcilingClients == true || self?.isStorageTransitioning == true }
+        library.willMaintainLibrary = { [weak self] in try await self?.flushPersistedStateForMaintenance() }
+        library.willRestoreLibrary = { [weak self] in try await self?.preparePersistedStorageForRestore() }
+        library.didRestoreLibrary = { [weak self] in try await self?.reloadPersistedStateAfterRestore() }
+        library.resetCollectionState = { [weak self] in try await self?.resetForApplication() }
+        library.validateCollectionReset = { [weak self] in try await self?.validateResetForApplication() }
         library.clientDidDelete = { [weak self] id in try await self?.removeClientAttribution(id) }
+        library.clientProfilesDidLoad = { [weak self] ids in try await self?.reconcileClientAttributions(validIDs: ids) }
+        if !library.isStartupBlocked && (startupStorageDeferred || library.recoveredAtStartup) {
+            startupStorageDeferred = true
+            attachmentTask = Task { [weak self] in
+                guard let self else { return }
+                defer { attachmentTask = nil }
+                do { try await reloadPersistedStateAfterRestore() }
+                catch { errorMessage = error.localizedDescription }
+            }
+        }
         recordFleetObservations([])
         // A first launch can attach while the index is being prepared. Preserve
         // this pending initialization so the app-owned destination and queue are
         // created after maintenance instead of waiting for a manual connection.
         configurationDirty = true
         if !isReadOnly && !isMaintenanceBlocked { persist() }
+        startRefreshLoop()
+        pendingAttachmentReconnect = reconnect && !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        reconnectAfterAttachmentIfReady()
+        library.clients.reloadIfNeeded(refresh: true)
+    }
+
+    private func startRefreshLoop() {
+        refreshTask?.cancel()
         refreshTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
                 guard !Task.isCancelled, let self else { return }
+                self.refreshQueueCounts()
+                self.refreshDestination()
                 self.objectWillChange.send() // Availability and retry countdown expire without new packets.
-                if (!self.dirtyTransferIDs.isEmpty || self.configurationDirty) && !self.isReadOnly && !self.isMaintenanceBlocked { self.persist() }
+                if (!self.dirtyTransferIDs.isEmpty || self.configurationDirty || self.fleetObservations.pendingState != nil) && !self.isReadOnly && !self.isMaintenanceBlocked { self.persist() }
                 self.fleetObservations.flush()
                 self.reconnectAfterAttachmentIfReady()
                 self.runQueue()
             }
         }
-        pendingAttachmentReconnect = reconnect && !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        reconnectAfterAttachmentIfReady()
     }
+    func cancelTermination() {
+        terminationRequested = false
+        if library != nil { startRefreshLoop() }
+        refreshQueueCounts()
+    }
+    func waitForStorageLoad() async { await attachmentTask?.value }
 
     private func reconnectAfterAttachmentIfReady() {
         // Startup index preparation temporarily owns the maintenance gate.
@@ -293,39 +453,79 @@ final class GCSStore: ObservableObject {
 
     private func removeClientAttribution(_ id: String) async throws {
         guard !isBusy else { throw AnalysisError.engine("Arrêtez la collecte avant de supprimer ce client.") }
+        isReconcilingClients = true
+        defer { isReconcilingClients = false }
+        await persistenceTask?.value
         if let repository = queueRepository {
-            try await Task.detached { try repository.removeClientAttribution(id) }.value
+            try await storageIO.perform { try repository.removeClientAttribution(id) }
         }
         for index in queue.indices where queue[index].clientID == id {
             queue[index].clientID = nil; dirtyTransferIDs.insert(queue[index].id)
         }
         if collectionClientID == id { collectionClientID = ""; configurationDirty = true }
+        try await saveState(duringMaintenance: true)
     }
 
-    /// Called before the maintenance flag is raised, so backups include the latest discovery settings.
-    func flushPersistedStateForMaintenance() throws {
+    private func reconcileClientAttributions(validIDs: Set<String>) async throws {
+        guard reconciledClientIDs != validIDs else { return }
+        guard !isReadOnly, !isBusy, !isMaintenanceBlocked else {
+            throw AnalysisError.engine("Arrêtez la collecte et attendez la fin de la maintenance avant de recharger les clients.")
+        }
+        if let queueStorageIssue { throw AnalysisError.engine(queueStorageIssue) }
+        isReconcilingClients = true
+        defer { isReconcilingClients = false }
+        await persistenceTask?.value
+        if !repositoryWritable { try await writeState(duringMaintenance: true) }
+        if let repository = queueRepository {
+            try await storageIO.perform { try repository.reconcileClientAttributions(validIDs: validIDs) }
+        }
+        for index in queue.indices {
+            if let id = queue[index].clientID, !validIDs.contains(id) {
+                queue[index].clientID = nil; dirtyTransferIDs.insert(queue[index].id)
+            }
+        }
+        if let id = collectionClientID, !id.isEmpty, !validIDs.contains(id) {
+            collectionClientID = ""; configurationDirty = true
+        }
+        // Keep the gate until cleanup is durably saved after all admitted writes.
+        try await saveState(duringMaintenance: true)
+        reconciledClientIDs = validIDs
+    }
+
+    /// The library raises its maintenance gate before awaiting this durable drain.
+    func flushPersistedStateForMaintenance() async throws {
         guard !isBusy else { throw AnalysisError.unavailable("Arrêtez la collecte avant l’opération de stockage.") }
-        try saveState()
+        let previousTransition = isStorageTransitioning
+        isStorageTransitioning = true
+        defer { if !previousTransition { finishStorageTransition() } }
+        try await saveState(duringMaintenance: true)
         fleetObservations.flush()
         if let error = fleetObservations.errorMessage { throw AnalysisError.engine(error) }
     }
 
     /// Restore changes files beneath this store. Reopen handles without reconnecting or starting work.
-    func preparePersistedStorageForRestore() throws {
+    func preparePersistedStorageForRestore() async throws {
         guard !isBusy else { throw AnalysisError.unavailable("Arrêtez la collecte avant de restaurer la bibliothèque.") }
         discoveryTask?.cancel(); discoveryTask = nil
         isConnected = false; isConnecting = false; connectedHost = nil; reconnect = false
+        await persistenceTask?.value
+        storageGeneration &+= 1
+        await countsTask?.value
+        try await storageIO.close()
         queueRepository = nil; repositoryWritable = false
+        countsSnapshot = nil; hasCompleteInMemoryQueue = false
+        refreshQueueCounts()
     }
 
     /// Restore changes files beneath this store. Reopen handles without reconnecting or starting work.
-    func reloadPersistedStateAfterRestore() throws {
+    func reloadPersistedStateAfterRestore() async throws {
         guard !isReadOnly, !isBusy else { throw AnalysisError.unavailable("Arrêtez la collecte avant de restaurer la bibliothèque.") }
-        try preparePersistedStorageForRestore()
+        try await preparePersistedStorageForRestore()
         queueStorageIssue = "La file de collecte restaurée n’a pas encore été vérifiée."
         queue = []; rebuildQueueIndexes(); legacyTransfers = []; dirtyTransferIDs = []; configurationDirty = false
         isQueuePaused = true
-        do { try loadRestoredCollectionState() }
+        defer { refreshQueueCounts() }
+        do { try await loadRestoredCollectionState(); startupStorageDeferred = false }
         catch {
             queueRepository = nil; repositoryWritable = false
             queue = []; rebuildQueueIndexes(); legacyTransfers = []; dirtyTransferIDs = []; configurationDirty = false
@@ -335,23 +535,33 @@ final class GCSStore: ObservableObject {
         }
     }
 
-    private func loadRestoredCollectionState() throws {
+    private func loadRestoredCollectionState() async throws {
+        reconciledClientIDs = nil
         drones = []; selectedUUID = nil; files = []; selectedFileIDs = []; knownAnalysisHashes = []
         queueRepository = nil; repositoryWritable = false
-        let input = FileManager.default.fileExists(atPath: stateURL.path) ? stateURL : legacyStateURL
-        var state = GCSCollectionState(downloadDirectory: stateURL.deletingLastPathComponent().appendingPathComponent("Collected Logs").path)
-        if FileManager.default.fileExists(atPath: input.path) {
-            state = try JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: input))
-            guard state.schemaVersion == 1 else { throw AnalysisError.schema(state.schemaVersion) }
-            if let version = state.queueStorageVersion, version != 1 { throw AnalysisError.schema(version) }
+        countsSnapshot = nil; hasCompleteInMemoryQueue = true
+        let stateURL = stateURL, legacyStateURL = legacyStateURL, queueDatabaseURL = queueDatabaseURL
+        let loaded = try await storageIO.perform { () -> (GCSCollectionState, GCSQueueRepository?, Result<GCSFleetObservationState, Error>) in
+            let input = FileManager.default.fileExists(atPath: stateURL.path) ? stateURL : legacyStateURL
+            var state = GCSCollectionState(downloadDirectory: stateURL.deletingLastPathComponent().appendingPathComponent("Collected Logs").path)
+            if FileManager.default.fileExists(atPath: input.path) {
+                state = try JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: input))
+                guard state.schemaVersion == 1 else { throw AnalysisError.schema(state.schemaVersion) }
+                if let version = state.queueStorageVersion, version != 1 { throw AnalysisError.schema(version) }
+            }
+            var repository: GCSQueueRepository?
+            if FileManager.default.fileExists(atPath: queueDatabaseURL.path) {
+                repository = try GCSQueueRepository(url: queueDatabaseURL, readOnly: true)
+                if try repository?.hasMigratedLegacy == true { state.queue = try repository!.retainedTransfers() }
+            } else if state.queueStorageVersion != nil {
+                throw AnalysisError.unavailable("La sauvegarde restaurée ne contient pas la file SQLite attendue.")
+            }
+            let fleet = Result { try GCSFleetObservationStore.read(file: stateURL.deletingLastPathComponent().appendingPathComponent("fleet.json")) }
+            return (state, repository, fleet)
         }
-        if FileManager.default.fileExists(atPath: queueDatabaseURL.path) {
-            let repository = try GCSQueueRepository(url: queueDatabaseURL, readOnly: true)
-            if try repository.hasMigratedLegacy { state.queue = try repository.retainedTransfers() }
-            queueRepository = repository
-        } else if state.queueStorageVersion != nil {
-            throw AnalysisError.unavailable("La sauvegarde restaurée ne contient pas la file SQLite attendue.")
-        }
+        try Task.checkCancellation()
+        var state = loaded.0
+        queueRepository = loaded.1; hasCompleteInMemoryQueue = loaded.1 == nil
         for index in state.queue.indices { state.queue[index].recoverAfterRelaunch() }
         currentBatchID = state.currentBatchID ?? UUID().uuidString
         for index in state.queue.indices where state.queue[index].batchID == nil { state.queue[index].batchID = currentBatchID }
@@ -361,9 +571,11 @@ final class GCSStore: ObservableObject {
         host = state.host
         collectionClientID = state.collectionClientID
         allowedUUIDs = Set(state.allowedUUIDs.filter(GCSIdentity.isValid).map { $0.uppercased() })
-        fleetObservations = makeFleetObservationStore()
+        fleetObservations = makeFleetObservationStore(loaded: loaded.2)
         fleetObservationRevision = fleetObservations.state.revision
         downloadDirectory = URL(fileURLWithPath: state.downloadDirectory, isDirectory: true)
+        destinationSnapshot = nil
+        _ = try await destinationIssue(downloadDirectory)
         isApplyingRestoredState = true; autoImport = state.autoImport; isApplyingRestoredState = false
         cachedFileCount = state.cachedFileCount ?? 0
         destinationPreviewFileCount = state.destinationPreviewFileCount
@@ -373,7 +585,7 @@ final class GCSStore: ObservableObject {
         inventoryBusyUntil = state.inventoryBusyUntil ?? [:]
         queueStorageIssue = nil; isQueuePaused = true; configurationDirty = true; errorMessage = nil
         statusMessage = "Collecte restaurée et mise en pause. Reconnectez la GCS pour reprendre explicitement."
-        if !isMaintenanceBlocked { try saveState() }
+        if !isMaintenanceBlocked { try await saveState() }
     }
 
     private var script: URL? {
@@ -457,6 +669,7 @@ final class GCSStore: ObservableObject {
 
     func disconnect() {
         guard !isBusy else { pauseQueue(); return }
+        controlRevision &+= 1
         pendingAttachmentReconnect = false
         reconnect = false; isQueuePaused = true
         if let uuid = activeInventoryUUID { inventoryBusyUntil[uuid] = Date().addingTimeInterval(21) }
@@ -485,35 +698,56 @@ final class GCSStore: ObservableObject {
         persist()
     }
 
-    private func makeFleetObservationStore() -> GCSFleetObservationStore {
-        GCSFleetObservationStore(file: stateURL.deletingLastPathComponent().appendingPathComponent("fleet.json"), canMutate: { [weak self] in
+    private func makeFleetObservationStore(loaded: Result<GCSFleetObservationState, Error>? = nil) -> GCSFleetObservationStore {
+        GCSFleetObservationStore(file: stateURL.deletingLastPathComponent().appendingPathComponent("fleet.json"), automaticFlush: false, loaded: loaded, canMutate: { [weak self] in
             guard let self else { return false }
             return !self.isReadOnly && !self.isMaintenanceBlocked
         })
     }
     private func recordFleetObservations(_ observed: [GCSDrone]) {
+        if isStorageTransitioning {
+            for drone in observed { deferredFleetObservations[drone.uuid] = drone }
+            return
+        }
         fleetObservations.record(observed, authorized: allowedUUIDs)
         fleetObservationRevision = fleetObservations.state.revision
         if let error = fleetObservations.errorMessage { errorMessage = error }
     }
 
-    func selectDrone(_ uuid: String) {
+    private func finishStorageTransition() {
+        guard isStorageTransitioning else { return }
+        isStorageTransitioning = false
+        let observed = Array(deferredFleetObservations.values)
+        deferredFleetObservations.removeAll()
+        if !observed.isEmpty { recordFleetObservations(observed) }
+    }
+
+    private func registerFleet(_ drones: [GCSDrone], authorized: Set<String>) async throws {
+        let next = try fleetObservations.registrationState(drones, authorized: authorized)
+        isStorageTransitioning = true
+        defer { finishStorageTransition(); refreshQueueCounts() }
+        try await saveState(authorizing: authorized, fleet: next, duringMaintenance: true)
+        allowedUUIDs = authorized
+    }
+
+    func selectDrone(_ uuid: String) async {
         guard permitMutation(), !isBusy else { return }
+        let control = controlRevision
         if !allowedUUIDs.contains(uuid) {
             guard let drone = collectableDrones.first(where: { $0.uuid == uuid }) else { return }
             let admitted = allowedUUIDs.union([uuid])
             do {
-                try fleetObservations.register([drone], authorized: admitted) { try saveState(authorizing: admitted) }
+                try await registerFleet([drone], authorized: admitted)
                 allowedUUIDs = admitted; fleetObservationRevision = fleetObservations.state.revision
             } catch { errorMessage = error.localizedDescription; return }
         }
+        guard control == controlRevision, !terminationRequested else { persist(); return }
         selectedUUID = uuid; selectedFileIDs = []; files = []
         refreshInventory()
     }
 
     func refreshInventory(updateDestinationProgress: Bool = false) {
         guard permitMutation() else { return }
-        guard validateDestination(downloadDirectory) else { return }
         guard let uuid = selectedUUID, canRead(uuid), !isBusy, inventoryTask == nil else { return }
         isBusy = true; errorMessage = nil; statusMessage = "Lecture de la carte SD…"
         let currentHost = connectedHost ?? host, destination = downloadDirectory.path
@@ -529,8 +763,9 @@ final class GCSStore: ObservableObject {
                     let cached = Set(self.files.filter(\.isDownloaded).map {
                         GCSTransferSource(uuid: uuid, file: $0, destination: destination).cacheIdentity
                     })
-                    try self.prepareQueueStorage()
-                    self.cachedFileCount = try self.queueRepository?.recordCachedFiles(batchID: self.currentBatchID, identities: cached) ?? 0
+                    try await self.prepareQueueStorage()
+                    let repository = self.queueRepository, batch = self.currentBatchID
+                    self.cachedFileCount = try await self.storageIO.perform { try repository?.recordCachedFiles(batchID: batch, identities: cached) ?? 0 }
                     self.persist()
                 }
                 self.statusMessage = "\(self.files.count) logs · \(self.files.filter(\.isDownloaded).count) déjà récupérés"
@@ -554,7 +789,8 @@ final class GCSStore: ObservableObject {
                 statusMessage = "Attente de la fin du transfert déjà lancé sur la GCS…"
                 try await Task.sleep(for: .seconds(1))
             }
-            try requireDestination(URL(fileURLWithPath: destination, isDirectory: true))
+            try await requireDestination(URL(fileURLWithPath: destination, isDirectory: true))
+            try Task.checkCancellation()
             var retryable = true
             activeInventoryUUID = uuid
             defer { activeInventoryUUID = nil }
@@ -709,12 +945,14 @@ final class GCSStore: ObservableObject {
             }
             dirtyTransferIDs.insert(job.id); added += 1
         }
-        if added > 0 { queue = updated; library?.diagnostics.record(.collectionStarted, correlation: currentBatchID, metrics: [.items: Int64(added)]) }
+        if added > 0 {
+            queue = updated
+            library?.diagnostics.record(.collectionStarted, correlation: currentBatchID, metrics: [.items: Int64(added)])
+        }
         return added
     }
     func enqueueSelected() {
         guard permitMutation() else { return }
-        guard validateDestination(downloadDirectory) else { return }
         guard let uuid = selectedUUID, canRead(uuid), !isBusy, !isScanningFleet, !isStopping else { return }
         beginBatchIfNeeded()
         recordInventory(uuid: uuid)
@@ -726,6 +964,8 @@ final class GCSStore: ObservableObject {
             guard let self else { return }
             defer { inventoryTask = nil; updateBusy(); persist(); runQueue() }
             do {
+                try await requireDestination(URL(fileURLWithPath: destination, isDirectory: true))
+                try Task.checkCancellation()
                 let added = try await enqueue(candidates, uuid: uuid, host: currentHost, destination: destination, clientID: clientID)
                 selectedFileIDs = []; isQueuePaused = false; statusMessage = "\(added) logs ajoutés à la collecte"
             } catch is CancellationError { statusMessage = "Préparation de la collecte arrêtée." }
@@ -733,25 +973,25 @@ final class GCSStore: ObservableObject {
         }
     }
 
-    func collectAll() {
+    func collectAll() async {
         guard permitMutation() else { return }
-        guard validateDestination(downloadDirectory) else { return }
-        guard canCollectAll, let currentHost = connectedHost else { return }
+        let control = controlRevision
+        guard await validateDestination(downloadDirectory), control == controlRevision, permitMutation(),
+              canCollectAll, let currentHost = connectedHost else { return }
         let candidates = collectableDrones
         let fleet = Set(candidates.map(\.uuid)).sorted()
         let registered = allowedUUIDs.union(fleet)
         do {
             // Do not publish membership or schedule work until both settings and
             // registry have been saved. A failed admission leaves no queued jobs.
-            try fleetObservations.register(candidates, authorized: registered) {
-                try saveState(authorizing: registered)
-            }
+            try await registerFleet(candidates, authorized: registered)
             allowedUUIDs = registered
             fleetObservationRevision = fleetObservations.state.revision
         } catch {
             errorMessage = "Collecte non démarrée. \(error.localizedDescription)"
             return
         }
+        guard control == controlRevision, !terminationRequested else { persist(); return }
         let destination = downloadDirectory.path
         let clientID = collectionClientID ?? ""
         beginBatchIfNeeded(); isQueuePaused = false; isBusy = true; isScanningFleet = true; errorMessage = nil
@@ -772,8 +1012,9 @@ final class GCSStore: ObservableObject {
                     guard self.allowedUUIDs.contains(uuid) else { continue }
                     self.recordInventory(uuid: uuid)
                     let cached = Set(items.filter(\.isDownloaded).map { GCSTransferSource(uuid: uuid, file: $0, destination: destination).cacheIdentity })
-                    try self.prepareQueueStorage()
-                    self.cachedFileCount = try self.queueRepository?.recordCachedFiles(batchID: self.currentBatchID, identities: cached) ?? 0
+                    try await self.prepareQueueStorage()
+                    let repository = self.queueRepository, batch = self.currentBatchID
+                    self.cachedFileCount = try await self.storageIO.perform { try repository?.recordCachedFiles(batchID: batch, identities: cached) ?? 0 }
                     try await self.enqueue(items, uuid: uuid, host: currentHost, destination: destination, clientID: clientID)
                     if self.selectedUUID == uuid { self.files = items; self.selectedFileIDs = [] }
                     self.persist()
@@ -796,41 +1037,55 @@ final class GCSStore: ObservableObject {
     }
     func resumeQueue() { guard permitMutation() else { return }; isQueuePaused = false; library?.diagnostics.record(.collectionStarted, correlation: currentBatchID); persist(); runQueue() }
     func stopCollection() {
+        controlRevision &+= 1
         library?.diagnostics.record(.collectionStopped, code: .cancelled, correlation: currentBatchID)
         isQueuePaused = true
         if let uuid = activeInventoryUUID { inventoryBusyUntil[uuid] = Date().addingTimeInterval(21) }
         inventoryTask?.cancel()
         for task in transferTasks.values { task.cancel() }
         analysisTask?.cancel()
-        for i in queue.indices where queue[i].isPending || queue[i].isActive {
-            queue[i].state = "stopped"; queue[i].nextRetryAt = nil
-            queue[i].error = "Arrêt demandé. Le fichier pourra être relancé ; les fichiers déjà vérifiés sont conservés."
-            dirtyTransferIDs.insert(queue[i].id)
+        var updated = queue
+        for i in updated.indices where updated[i].isPending || updated[i].isActive {
+            updated[i].state = "stopped"; updated[i].nextRetryAt = nil
+            updated[i].error = "Arrêt demandé. Le fichier pourra être relancé ; les fichiers déjà vérifiés sont conservés."
+            dirtyTransferIDs.insert(updated[i].id)
         }
+        queue = updated
         statusMessage = "Collecte arrêtée · les transferts déjà envoyés à la GCS peuvent finir côté drone."
         persist()
     }
-    func retryFailed() {
+    func retryFailed() async {
+        defer { refreshQueueCounts() }
         guard permitMutation() else { return }
         guard !isBusy, !isScanningFleet else { return }
+        let control = controlRevision
+        // A save admitted before this command may replace the retained array.
+        // Drain it before capturing the revision, so this harmless replacement
+        // does not silently discard an explicit retry.
+        await persistenceTask?.value
+        guard control == controlRevision, permitMutation(), !isBusy, !isScanningFleet else { return }
         do {
-            let existing = Set(queue.map(\.id))
-            let stored = try queueRepository?.retryableTransfers(authorizedUUIDs: allowedUUIDs) ?? []
+            let existing = Set(queue.map(\.id)), revision = queueRevision, selection = countsSelection
+            let repository = queueRepository, authorized = allowedUUIDs
+            let stored = try await storageIO.perform { try repository?.retryableTransfers(authorizedUUIDs: authorized) ?? [] }
+            guard control == controlRevision, permitMutation(), !isBusy, revision == queueRevision, selection == countsSelection else { return }
             queue.append(contentsOf: stored.filter { !existing.contains($0.id) && allowedUUIDs.contains($0.droneUUID) })
             rebuildQueueIndexes()
         } catch { errorMessage = error.localizedDescription; return }
-        let candidates = queue.indices.filter { ["failed", "interrupted", "stopped"].contains(queue[$0].state) && allowedUUIDs.contains(queue[$0].droneUUID) }
+        let candidates = queue.indices.filter { queue[$0].isRetryable && allowedUUIDs.contains(queue[$0].droneUUID) }
         guard !candidates.isEmpty else { return }
         beginBatchIfNeeded(preserveInventories: true)
         var identities = Set(queue.filter { $0.isPending || $0.isActive }.map { GCSTransferSource($0) })
+        var updated = queue
         for i in candidates {
-            let key = GCSTransferSource(queue[i])
+            let key = GCSTransferSource(updated[i])
             guard identities.insert(key).inserted else { continue }
-            queue[i].state = "queued"; queue[i].error = nil; queue[i].completedBytes = 0
-            queue[i].attemptCount = 0; queue[i].nextRetryAt = nil; queue[i].batchID = currentBatchID
-            queue[i].phase = nil; queue[i].phaseBytes = nil; queue[i].phaseTotal = nil
-            dirtyTransferIDs.insert(queue[i].id)
+            updated[i].state = "queued"; updated[i].error = nil; updated[i].completedBytes = 0
+            updated[i].attemptCount = 0; updated[i].nextRetryAt = nil; updated[i].batchID = currentBatchID
+            updated[i].phase = nil; updated[i].phaseBytes = nil; updated[i].phaseTotal = nil
+            dirtyTransferIDs.insert(updated[i].id)
         }
+        queue = updated
         isQueuePaused = false; statusMessage = "Reprise de la collecte demandée"; persist(); runQueue()
     }
 
@@ -843,31 +1098,30 @@ final class GCSStore: ObservableObject {
     }
     private func runQueue() {
         runAnalysisQueue()
-        guard !isReadOnly, !isMaintenanceBlocked, queueStorageIssue == nil, inventoryTask == nil, !isQueuePaused, isConnected, let currentHost = connectedHost, let script else { return }
+        guard !isReadOnly, !isMaintenanceBlocked, !terminationRequested, persistenceTask == nil, queueStorageIssue == nil, persistenceError == nil, inventoryTask == nil, !isQueuePaused, isConnected, let currentHost = connectedHost, let script else { return }
         let available = Set(drones.filter { allowedUUIDs.contains($0.uuid) && $0.isOnline && $0.armed != true && (inventoryBusyUntil[$0.uuid] ?? .distantPast) <= Date() }.map(\.uuid))
-        var retargeted = false
-        for index in queue.indices where queue[index].isPending && available.contains(queue[index].droneUUID) {
-            if let issue = directoryIssue(URL(fileURLWithPath: queue[index].destination, isDirectory: true)) {
-                dirtyTransferIDs.insert(queue[index].id)
-                queue[index].state = "failed"; queue[index].nextRetryAt = nil
-                queue[index].error = issue; errorMessage = issue; retargeted = true
-            } else if queue[index].host != currentHost {
-                dirtyTransferIDs.insert(queue[index].id)
-                queue[index].retargetPending(to: currentHost)
+        // One publication per scheduling pass avoids repeated array updates and
+        // keeps intermediate changes to a job out of subscribers.
+        var updated = queue, retargeted = false
+        for index in updated.indices where updated[index].isPending && available.contains(updated[index].droneUUID) {
+            if updated[index].host != currentHost {
+                dirtyTransferIDs.insert(updated[index].id)
+                updated[index].retargetPending(to: currentHost)
                 retargeted = true
             }
         }
         let importCapacity = max(0, maxBufferedImports - bufferedAnalysisCount - transferTasks.count)
-        let jobs = GCSQueuePolicy.nextJobs(queue: queue, activeIDs: Set(transferTasks.keys), availableUUIDs: available, host: currentHost).prefix(importCapacity)
+        let jobs = GCSQueuePolicy.nextJobs(queue: updated, activeIDs: Set(transferTasks.keys), availableUUIDs: available, host: currentHost).prefix(importCapacity)
         for id in jobs {
             guard let index = queueIDIndex[id] else { continue }
-            queue[index].state = "downloading"; queue[index].error = nil
-            queue[index].completedBytes = 0; queue[index].attemptCount += 1; queue[index].nextRetryAt = nil
-            queue[index].phase = nil; queue[index].phaseBytes = nil; queue[index].phaseTotal = nil
+            updated[index].state = "downloading"; updated[index].error = nil
+            updated[index].completedBytes = 0; updated[index].nextRetryAt = nil
+            updated[index].phase = nil; updated[index].phaseBytes = nil; updated[index].phaseTotal = nil
             dirtyTransferIDs.insert(id)
             // Reserve synchronously before a task can yield or discovery schedules more work.
             transferTasks[id] = Task { [weak self] in await self?.download(id: id, script: script) }
         }
+        if retargeted || !jobs.isEmpty { queue = updated }
         updateBusy()
         if retargeted || !jobs.isEmpty { persist() }
     }
@@ -875,14 +1129,19 @@ final class GCSStore: ObservableObject {
         guard let index = queueIDIndex[id] else { return }
         let job = queue[index]
         let diagnosticCorrelation = (job.batchID ?? currentBatchID) + id
-        library?.diagnostics.record(.transferStarted, correlation: diagnosticCorrelation, metrics: [.totalBytes: job.size, .retryAttempt: Int64(job.attemptCount)])
         var lastDiagnosticProgress = Date.distantPast
         defer { dirtyTransferIDs.insert(id); transferTasks[id] = nil; updateBusy(); persist(); runQueue() }
         var retryable = false
         var diagnosticFailure: DiagnosticEvent.Code = .storageUnavailable
         do {
             try Task.checkCancellation()
-            try requireDestination(URL(fileURLWithPath: job.destination, isDirectory: true))
+            try await requireDestination(URL(fileURLWithPath: job.destination, isDirectory: true))
+            try Task.checkCancellation()
+            queue[index].attemptCount += 1
+            // A reserved job must be durable before its collector can start.
+            try await saveState()
+            try Task.checkCancellation()
+            library?.diagnostics.record(.transferStarted, correlation: diagnosticCorrelation, metrics: [.totalBytes: job.size, .retryAttempt: Int64(queue[index].attemptCount)])
             retryable = true; diagnosticFailure = .transferFailed
             var downloaded = false
             let args = ["download", "--host", job.host, "--port", "1999", "--http-port", "8080", "--uuid", job.droneUUID,
@@ -892,43 +1151,50 @@ final class GCSStore: ObservableObject {
                 if event.event == "error" { retryable = event.retryable ?? true; throw AnalysisError.engine(event.message ?? "Échec de la collecte.") }
                 guard event.uuid == job.droneUUID, event.path == job.remotePath else { continue }
                 dirtyTransferIDs.insert(id)
+                var updated = queue[index]
+                var changed = true, save = false
                 switch event.event {
                 case "transfer_started":
-                    queue[index].phase = "drone"; queue[index].phaseBytes = 0; queue[index].phaseTotal = job.size
+                    updated.phase = "drone"; updated.phaseBytes = 0; updated.phaseTotal = job.size
                     library?.diagnostics.record(.transferProgress, phase: .drone, correlation: diagnosticCorrelation, metrics: [.bytes: 0, .totalBytes: job.size])
-                    queue[index].remoteBusyUntil = Date().addingTimeInterval(min(3600, max(300, event.timeoutSeconds ?? 300)) + 5)
-                    persist()
-                case "transfer_finished": queue[index].remoteBusyUntil = nil; persist()
+                    updated.remoteBusyUntil = Date().addingTimeInterval(min(3600, max(300, event.timeoutSeconds ?? 300)) + 5)
+                    save = true
+                case "transfer_finished": updated.remoteBusyUntil = nil; save = true
                 case "phase":
                     if let phase = event.phase, ["drone", "http", "verification"].contains(phase) {
-                        queue[index].phase = phase; queue[index].phaseBytes = event.bytes; queue[index].phaseTotal = event.total
+                        updated.phase = phase; updated.phaseBytes = event.bytes; updated.phaseTotal = event.total
                         library?.diagnostics.record(.transferProgress, phase: DiagnosticEvent.Phase(rawValue: phase), correlation: diagnosticCorrelation, metrics: [.bytes: event.bytes ?? 0, .totalBytes: event.total ?? job.size])
-                    }
+                    } else { changed = false }
                 case "progress":
-                    queue[index].receiveProgress(phase: event.phase, bytes: event.bytes ?? 0, total: event.total)
+                    updated.receiveProgress(phase: event.phase, bytes: event.bytes ?? 0, total: event.total)
                     if Date().timeIntervalSince(lastDiagnosticProgress) >= 5 {
                         lastDiagnosticProgress = Date()
-                        library?.diagnostics.record(.transferProgress, phase: DiagnosticEvent.Phase(rawValue: queue[index].phase ?? ""), correlation: diagnosticCorrelation, metrics: [.bytes: event.bytes ?? 0, .totalBytes: event.total ?? job.size])
+                        library?.diagnostics.record(.transferProgress, phase: DiagnosticEvent.Phase(rawValue: updated.phase ?? ""), correlation: diagnosticCorrelation, metrics: [.bytes: event.bytes ?? 0, .totalBytes: event.total ?? job.size])
                     }
-                    if Date().timeIntervalSince(lastSave) > 1 { persist() }
+                    if Date().timeIntervalSince(lastSave) > 1 { save = true }
                 case "downloaded":
                     guard let local = event.localPath, let hash = event.sha256, event.bytes == job.size else { throw AnalysisError.engine("Réponse de téléchargement incomplète.") }
-                    queue[index].localPath = local; queue[index].sha256 = hash
-                    queue[index].completedBytes = job.size; downloaded = true
-                    queue[index].phase = "verified"; queue[index].phaseBytes = job.size; queue[index].phaseTotal = job.size
-                default: break
+                    updated.localPath = local; updated.sha256 = hash
+                    updated.completedBytes = job.size; downloaded = true
+                    updated.phase = "verified"; updated.phaseBytes = job.size; updated.phaseTotal = job.size
+                default: changed = false
                 }
+                if changed { queue[index] = updated }
+                if save { persist() }
+                refreshQueueCounts()
             }
             try Task.checkCancellation()
             guard downloaded else { throw AnalysisError.engine("Aucun fichier complet reçu.") }
             // The collector has exited after verified publication. Persist the analysis
             // obligation before this worker releases its network/per-drone slot.
             retryable = false; diagnosticFailure = .storageUnavailable
-            queue[index].state = autoImport ? "importing" : "downloaded"
-            if autoImport { queue[index].phase = "import" }
+            var finished = queue[index]
+            finished.state = autoImport ? "importing" : "downloaded"
+            if autoImport { finished.phase = "import" }
+            queue[index] = finished
             dirtyTransferIDs.insert(id)
-            try saveState()
-            if !autoImport { finishTransfer(job: job, analyzed: false) }
+            try await saveState()
+            if !autoImport { await finishTransfer(job: job, analyzed: false) }
         } catch {
             if Task.isCancelled {
                 library?.diagnostics.record(.transferCompleted, code: .cancelled, correlation: diagnosticCorrelation)
@@ -949,7 +1215,7 @@ final class GCSStore: ObservableObject {
     private func runAnalysisQueue() {
         // Pause drains files whose transfer already finished; stop marks them stopped
         // and cancels the one analyzer. Importing remains a durable unfinished state.
-        guard !isReadOnly, !isMaintenanceBlocked, queueStorageIssue == nil, analysisTask == nil,
+        guard !isReadOnly, !isMaintenanceBlocked, !terminationRequested, persistenceTask == nil, queueStorageIssue == nil, persistenceError == nil, analysisTask == nil,
               let job = queue.first(where: { $0.state == "importing" && transferTasks[$0.id] == nil }) else { return }
         activeAnalysisID = job.id
         analysisTask = Task { [weak self] in await self?.analyze(job: job) }
@@ -981,7 +1247,7 @@ final class GCSStore: ObservableObject {
             dirtyTransferIDs.insert(id)
             knownAnalysisHashes.insert(log.id)
             if log.status == "partial" { queue[index].error = "Analyse partielle : consultez la couverture du log." }
-            finishTransfer(job: job, analyzed: true)
+            await finishTransfer(job: job, analyzed: true)
         } catch {
             if Task.isCancelled {
                 library?.diagnostics.record(.transferCompleted, code: .cancelled, correlation: correlation)
@@ -998,11 +1264,12 @@ final class GCSStore: ObservableObject {
         }
     }
 
-    private func finishTransfer(job: GCSTransfer, analyzed: Bool) {
+    private func finishTransfer(job: GCSTransfer, analyzed: Bool) async {
+        await waitForQueueCounts()
         library?.diagnostics.record(.transferCompleted, correlation: (job.batchID ?? currentBatchID) + job.id,
                                     metrics: [.bytes: job.size, .totalBytes: job.size])
         let completed = batchProgress
-        if completed.totalCount > 0 && completed.completedCount == completed.totalCount {
+        if countsAreCurrent && completed.totalCount > 0 && completed.completedCount == completed.totalCount {
             library?.diagnostics.record(.collectionCompleted, correlation: currentBatchID, metrics: [.items: Int64(completed.totalCount)])
         }
         if selectedUUID == job.droneUUID, let index = files.firstIndex(where: { $0.path == job.remotePath }) { files[index].isDownloaded = true }
@@ -1015,35 +1282,45 @@ final class GCSStore: ObservableObject {
         let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true
         panel.canCreateDirectories = true; panel.prompt = "Choisir"; panel.title = "Dossier de collecte"
         if panel.runModal() == .OK, let url = panel.url {
-            do { try setDownloadDirectory(url) }
-            catch { errorMessage = error.localizedDescription }
+            Task {
+                do { try await setDownloadDirectory(url) }
+                catch { errorMessage = error.localizedDescription }
+            }
         }
     }
-    func setDownloadDirectory(_ url: URL) throws {
+    func setDownloadDirectory(_ url: URL) async throws {
         guard permitMutation() else { throw AnalysisError.unavailable(errorMessage ?? "La bibliothèque est en lecture seule.") }
         guard !isBusy, !queue.contains(where: \.isPending) else {
             throw AnalysisError.unavailable("Arrêtez la collecte et les transferts en attente avant de changer de dossier.")
         }
         let destination = url.standardizedFileURL
-        try requireDestination(destination)
+        try await requireDestination(destination)
+        guard permitMutation(), !isBusy, !queue.contains(where: \.isPending) else {
+            throw AnalysisError.unavailable("La collecte ne permet plus de changer de dossier.")
+        }
         guard destination.path != downloadDirectory.standardizedFileURL.path else { return }
-        let previous = downloadDirectory
+        isStorageTransitioning = true
+        defer { finishStorageTransition() }
+        let previous = downloadDirectory, previousDestination = destinationSnapshot
         let previousBatch = currentBatchID, previousCachedCount = cachedFileCount
         let previousPreviewCount = destinationPreviewFileCount
         let previousExpected = expectedInventoryUUIDs, previousCompleted = completedInventoryUUIDs
         let previousFailures = inventoryFailures, previousErrors = inventoryErrors
         downloadDirectory = destination
+        destinationSnapshot = DestinationSnapshot(url: destination, issue: nil)
         currentBatchID = UUID().uuidString; cachedFileCount = 0
         destinationPreviewFileCount = nil
         expectedInventoryUUIDs = []; completedInventoryUUIDs = []; inventoryFailures = [:]; inventoryErrors = []
-        do { try saveState() }
+        do { try await saveState(duringMaintenance: true) }
         catch {
-            downloadDirectory = previous; currentBatchID = previousBatch; cachedFileCount = previousCachedCount
+            downloadDirectory = previous; destinationSnapshot = previousDestination; currentBatchID = previousBatch; cachedFileCount = previousCachedCount
             destinationPreviewFileCount = previousPreviewCount
             expectedInventoryUUIDs = previousExpected; completedInventoryUUIDs = previousCompleted
             inventoryFailures = previousFailures; inventoryErrors = previousErrors
+            refreshQueueCounts()
             throw error
         }
+        finishStorageTransition()
         library?.diagnostics.record(.destinationChanged)
         files = []; selectedFileIDs = []
         errorMessage = nil
@@ -1054,11 +1331,10 @@ final class GCSStore: ObservableObject {
         }
     }
     func revealDownloads() {
-        guard validateDestination(downloadDirectory) else { return }
-        NSWorkspace.shared.open(downloadDirectory)
+        let destination = downloadDirectory
+        Task { if await validateDestination(destination) { NSWorkspace.shared.open(destination) } }
     }
-    private func directoryIssue(_ url: URL) -> String? {
-        if let directoryIssueOverride { return directoryIssueOverride(url) }
+    private nonisolated static func directoryIssue(_ url: URL) -> String? {
         guard url.isFileURL, url.path.hasPrefix("/") else { return "Le dossier de collecte doit être un dossier local : \(url.path)." }
         var directory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &directory), directory.boolValue else {
@@ -1070,18 +1346,48 @@ final class GCSStore: ObservableObject {
         }
         return nil
     }
-    private func requireDestination(_ url: URL) throws {
-        if let issue = directoryIssue(url) { throw AnalysisError.unavailable(issue) }
+    private func destinationIssue(_ url: URL) async throws -> String? {
+        let checker = directoryIssueOverride, generation = storageGeneration
+        let issue = try await storageIO.perform {
+            if let checker { return checker(url) }
+            return Self.directoryIssue(url)
+        }
+        if generation == storageGeneration, url == downloadDirectory {
+            destinationSnapshot = DestinationSnapshot(url: url, issue: issue)
+        }
+        return issue
     }
-    private func validateDestination(_ url: URL) -> Bool {
-        do { try requireDestination(url); return true }
+    private func refreshDestination() {
+        guard !isMaintenanceBlocked, !terminationRequested, destinationCheckTask == nil else { return }
+        let destination = downloadDirectory
+        destinationCheckTask = Task { [weak self] in
+            guard let self else { return }
+            defer { destinationCheckTask = nil }
+            _ = try? await destinationIssue(destination)
+        }
+    }
+    func waitForDestinationCheck() async { await destinationCheckTask?.value }
+    private func requireDestination(_ url: URL) async throws {
+        if let issue = try await destinationIssue(url) { throw AnalysisError.unavailable(issue) }
+    }
+    private func validateDestination(_ url: URL) async -> Bool {
+        do { try await requireDestination(url); return true }
         catch { errorMessage = error.localizedDescription; return false }
     }
-    private func saveState(authorizing proposed: Set<String>? = nil) throws {
-        guard permitMutation() else { throw AnalysisError.unavailable(errorMessage ?? "La bibliothèque est en lecture seule.") }
-        try prepareQueueStorage()
-        let dirty = dirtyTransfers
-        _ = try queueRepository?.saveTransfers(dirty)
+    private func saveState(authorizing proposed: Set<String>? = nil,
+                           fleet registration: GCSFleetObservationState? = nil,
+                           duringMaintenance: Bool = false) async throws {
+        await persistenceTask?.value
+        try await writeState(authorizing: proposed, fleet: registration, duringMaintenance: duringMaintenance)
+    }
+    private func writeState(authorizing proposed: Set<String>? = nil,
+                            fleet registration: GCSFleetObservationState? = nil,
+                            duringMaintenance: Bool = false) async throws {
+        guard !isReadOnly, (duringMaintenance || !isMaintenanceBlocked), queueStorageIssue == nil else {
+            throw AnalysisError.unavailable(queueStorageIssue ?? "La bibliothèque ne permet pas l’enregistrement de la collecte.")
+        }
+        let dirty = dirtyTransfers, revision = queueRevision, configuration = configurationRevision
+        let generation = storageGeneration
         var state = GCSCollectionState(downloadDirectory: downloadDirectory.path)
         state.collectionClientID = collectionClientID
         state.host = host; state.allowedUUIDs = proposed ?? allowedUUIDs; state.autoImport = autoImport
@@ -1089,63 +1395,120 @@ final class GCSStore: ObservableObject {
         state.currentBatchID = currentBatchID; state.cachedFileCount = cachedFileCount; state.queuePaused = isQueuePaused; state.inventoryBusyUntil = inventoryBusyUntil
         state.destinationPreviewFileCount = destinationPreviewFileCount
         state.expectedInventoryUUIDs = expectedInventoryUUIDs; state.completedInventoryUUIDs = completedInventoryUUIDs; state.inventoryFailures = inventoryFailures
-        try FileManager.default.createDirectory(at: stateURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try JSONEncoder().encode(state).write(to: stateURL, options: .atomic); lastSave = Date()
-        configurationDirty = false
-        if proposed == nil {
-            fleetObservations.record([], authorized: allowedUUIDs)
+        if proposed == nil { fleetObservations.record([], authorized: allowedUUIDs) }
+        let fleet = registration ?? fleetObservations.pendingState
+        let request = GCSStorageIO.Write(state: state, transfers: dirty, legacy: legacyTransfers,
+            initialDestination: initialDestination, retain: proposed == nil && !isBusy,
+            fleet: fleet, registering: registration != nil)
+        do {
+            let result = try await storageIO.save(request)
+            // Retained pending queues can be large. Build their immutable indexes
+            // off the UI actor, then revalidate before publishing the snapshot.
+            let retainedIndexes: (sources: [GCSTransferSource: Int], ids: [String: Int])?
+            if generation == storageGeneration, revision == queueRevision, !isBusy, let retained = result.retained {
+                retainedIndexes = try await storageIO.perform { Self.makeQueueIndexes(retained) }
+            } else { retainedIndexes = nil }
+            guard generation == storageGeneration else { return }
+            queueRepository = result.repository; repositoryWritable = true; hasCompleteInMemoryQueue = false
+            legacyTransfers = []
+            lastSave = Date(); persistenceError = nil
+            if configuration == configurationRevision { configurationDirty = false }
+            if revision == queueRevision {
+                dirtyTransferIDs.subtract(dirty.map(\.id))
+                if let retained = result.retained, let indexes = retainedIndexes, !isBusy {
+                    queue = retained; queueSourceIndex = indexes.sources; queueIDIndex = indexes.ids
+                }
+                let selection = CountsSelection(batchID: state.currentBatchID ?? "", authorizedUUIDs: state.allowedUUIDs)
+                if selection == countsSelection {
+                    switch result.counts {
+                    case .success(let counts):
+                        countsSnapshot = CountsSnapshot(selection: selection, queueRevision: queueRevision,
+                            progress: counts.progress, retryable: counts.retryable, total: counts.total)
+                        countsError = nil
+                    case .failure(let error): countsError = error.localizedDescription
+                    }
+                }
+            }
+            if let fleet { fleetObservations.didPersist(fleet) }
             fleetObservationRevision = fleetObservations.state.revision
+            if downloadDirectoryIssue != nil { refreshDestination() }
+        } catch {
+            persistenceError = error; isQueuePaused = true
+            throw error
         }
-        dirtyTransferIDs.subtract(dirty.map(\.id))
-        if proposed == nil, !isBusy, let queueRepository {
-            // Prune only when no worker holds an array index across an await.
-            queue = try queueRepository.retainedTransfers()
-            rebuildQueueIndexes()
-            queueRepository.forgetPayloads(except: Set(queue.map(\.id)))
-        }
+    }
+    func waitForPersistence() async throws {
+        await persistenceTask?.value
+        if let persistenceError { throw persistenceError }
     }
     private var dirtyTransfers: [GCSTransfer] { dirtyTransferIDs.compactMap { queueIDIndex[$0] }.sorted().map { queue[$0] } }
     private func rebuildQueueIndexes() {
-        queueSourceIndex = [:]; queueIDIndex = [:]
-        for (index, item) in queue.enumerated() {
-            queueIDIndex[item.id] = index
-            let source = GCSTransferSource(item)
-            if let previous = queueSourceIndex[source], queue[previous].isPending || queue[previous].isActive,
-               !item.isPending && !item.isActive { continue }
-            queueSourceIndex[source] = index
-        }
+        let indexes = Self.makeQueueIndexes(queue)
+        queueSourceIndex = indexes.sources; queueIDIndex = indexes.ids
     }
-    private func prepareQueueStorage() throws {
-        if repositoryWritable { return }
-        if let initialDestination, initialDestination.standardizedFileURL.path == downloadDirectory.standardizedFileURL.path,
-           !FileManager.default.fileExists(atPath: initialDestination.path) {
-            // A fresh app-owned destination is created only after acquiring write permission.
-            try FileManager.default.createDirectory(at: initialDestination, withIntermediateDirectories: true)
+    private nonisolated static func makeQueueIndexes(_ queue: [GCSTransfer]) -> (sources: [GCSTransferSource: Int], ids: [String: Int]) {
+        var sources: [GCSTransferSource: Int] = [:], ids: [String: Int] = [:]
+        sources.reserveCapacity(queue.count); ids.reserveCapacity(queue.count)
+        for (index, item) in queue.enumerated() {
+            ids[item.id] = index
+            let source = GCSTransferSource(item)
+            if let previous = sources[source], queue[previous].isPending || queue[previous].isActive,
+               !item.isPending && !item.isActive { continue }
+            sources[source] = index
         }
-        try FileManager.default.createDirectory(at: queueDatabaseURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        queueRepository = nil
-        let repository = try GCSQueueRepository(url: queueDatabaseURL)
-        try repository.migrateLegacy(legacyTransfers)
-        queueRepository = repository; repositoryWritable = true
+        return (sources, ids)
+    }
+    private func prepareQueueStorage() async throws {
+        if !repositoryWritable { try await saveState() }
     }
     private func permitMutation() -> Bool {
+        if terminationRequested { errorMessage = "La collecte est arrêtée pour la fermeture de l’app."; return false }
         if isReadOnly { errorMessage = "Cette bibliothèque est ouverte par une autre instance. La collecte est en lecture seule."; return false }
         if isMaintenanceBlocked { errorMessage = "Attendez la fin de l’opération de stockage avant de relancer la collecte."; return false }
         if let queueStorageIssue { errorMessage = queueStorageIssue; return false }
         return true
     }
     private func persist() {
-        configurationDirty = true
-        do { try saveState() }
-        catch { errorMessage = "Impossible d’enregistrer la file de collecte : \(error.localizedDescription)" }
+        configurationDirty = true; configurationRevision &+= 1
+        guard !isReadOnly, !isMaintenanceBlocked, queueStorageIssue == nil else { return }
+        persistAgain = true
+        guard persistenceTask == nil else { return }
+        persistenceTask = Task { [weak self] in
+            guard let self else { return }
+            defer { persistenceTask = nil; runQueue() }
+            while persistAgain && !isMaintenanceBlocked {
+                persistAgain = false
+                do { try await writeState() }
+                catch { errorMessage = "Impossible d’enregistrer la file de collecte : \(error.localizedDescription)"; break }
+            }
+            refreshQueueCounts()
+        }
+    }
+    func finishTermination() async throws {
+        stopForTermination()
+        await attachmentTask?.value
+        while isStorageTransitioning { try await Task.sleep(for: .milliseconds(10)) }
+        // An unavailable/read-only library owns no writable collection state.
+        guard !isReadOnly, !startupStorageDeferred, library?.isStartupBlocked != true, queueStorageIssue == nil else { return }
+        let transfers = Array(transferTasks.values), inventory = inventoryTask, analysis = analysisTask
+        await inventory?.value
+        for task in transfers { await task.value }
+        await analysis?.value
+        try await saveState()
+        try await waitForPersistence()
     }
     func stopForTermination() {
+        guard !terminationRequested else { return }
+        terminationRequested = true; controlRevision &+= 1
+        pendingAttachmentReconnect = false
         isQueuePaused = true
         if let uuid = activeInventoryUUID { inventoryBusyUntil[uuid] = Date().addingTimeInterval(21) }
-        discoveryTask?.cancel(); inventoryTask?.cancel(); refreshTask?.cancel()
+        discoveryTask?.cancel(); inventoryTask?.cancel(); refreshTask?.cancel(); attachmentTask?.cancel()
         for task in transferTasks.values { task.cancel() }
         analysisTask?.cancel()
-        for i in queue.indices where queue[i].isPending || queue[i].isActive { queue[i].recoverAfterRelaunch(); dirtyTransferIDs.insert(queue[i].id) }
+        var updated = queue
+        for i in updated.indices where updated[i].isPending || updated[i].isActive { updated[i].recoverAfterRelaunch(); dirtyTransferIDs.insert(updated[i].id) }
+        queue = updated
         persist()
     }
 }

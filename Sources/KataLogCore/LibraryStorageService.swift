@@ -12,6 +12,15 @@ public struct LibraryBackupResult: Codable, Sendable {
 }
 
 public enum LibraryStorageService {
+    public static func hasPendingRestore(in library: URL) -> Bool {
+        let path = library.appendingPathComponent(".restore-journal.json").path
+        return FileManager.default.fileExists(atPath: path)
+            || (try? FileManager.default.destinationOfSymbolicLink(atPath: path)) != nil
+    }
+    public static func recoverRestore(library: URL, engine: URL) async throws -> JSONValue {
+        let data = try await AnalysisService.run(["recover-restore", "--library", library.path], engine: engine)
+        return try JSONDecoder().decode(JSONValue.self, from: data)
+    }
     public static func backup(library: URL, destination: URL, includeULog: Bool, engine: URL) async throws -> LibraryBackupResult {
         var command = ["backup", "--library", library.path, "--destination", destination.path]
         if includeULog { command.append("--include-ulog") }

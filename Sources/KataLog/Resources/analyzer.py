@@ -9,7 +9,6 @@ https://docs.px4.io/main/en/msg_docs/SensorGps
 """
 from __future__ import annotations
 
-import argparse
 import contextlib
 from datetime import datetime, timezone
 import hashlib
@@ -24,7 +23,6 @@ import stat as stat_module
 import struct
 import sys
 import tempfile
-import zlib
 
 import numpy as np
 from pyulog import ULog
@@ -32,6 +30,15 @@ from pyulog import ULog
 # Works both as a bundled CLI and when loaded by file path in test tools.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from flight_data import enrich
+# Public compatibility names remain available to storage, reports and callers.
+from analysis_revisions import (ANALYSIS_REVISION_VERSION, MAX_ANALYSIS_BYTES,
+                                MAX_REVISION_STORAGE_BYTES, RevisionBudgetError,
+                                archive_analysis, decoded_revision, revision_metadata,
+                                validate_analysis_revisions, revision_page)
+from output_paths import validate_outputs
+from local_files import (CLOUD_SOURCE_DETAIL, CloudSourceUnavailableError,
+                         require_local_source, digest_file, stat_signature,
+                         atomic_json as _atomic_json)
 
 SCHEMA_VERSION = 1
 PARSER_VERSION = "1.4.0"
@@ -39,34 +46,10 @@ MESSAGE_FAMILIES = ("Batterie", "Communication", "GNSS", "Capteurs", "Propulsion
 LEVELS = ("EMERGENCY", "ALERT", "CRITICAL", "ERROR", "WARNING", "NOTICE", "INFO", "DEBUG")
 GAP_SECONDS = 10.0
 MIN_FLIGHT_COVERAGE_FRACTION = 0.99
-ANALYSIS_REVISION_VERSION = 1
-MAX_ANALYSIS_BYTES = 64 * 1024 * 1024
-MAX_REVISION_STORAGE_BYTES = 512 * 1024 * 1024
-CLOUD_SOURCE_DETAIL = ("Fichier présent dans le cloud, mais non téléchargé sur ce Mac. "
-                       "Dans le Finder, utilisez « Télécharger » sur le fichier ou son dossier. "
-                       "Le résumé et les analyses en cache restent disponibles.")
-
-
-class RevisionBudgetError(ValueError):
-    """Preserve the published analysis when revision retention cannot proceed."""
 
 
 class ArchiveImportError(ValueError):
     """Refuse this import before any new analysis is published."""
-
-
-class CloudSourceUnavailableError(OSError):
-    """Reading a File Provider placeholder could block while macOS hydrates it."""
-
-
-def require_local_source(path, metadata=None):
-    metadata = metadata if metadata is not None else Path(path).stat()
-    # Some bundled Python versions omit the Darwin constant even though stat
-    # still exposes st_flags. Do not interpret this bit on other platforms.
-    dataless = getattr(stat_module, 'UF_DATALESS', 0x40000000 if sys.platform == 'darwin' else 0)
-    if getattr(metadata, 'st_flags', 0) & dataless:
-        raise CloudSourceUnavailableError(CLOUD_SOURCE_DETAIL)
-    return metadata
 
 
 def utc_now():
@@ -75,20 +58,16 @@ def utc_now():
 
 def atomic_json(path, value):
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            json.dump(value, stream, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+    return _atomic_json(path, value, separators=(",", ":"), prefix=f".{path.name}.")
 
 
 def open_database(path, read_only=False):
+    # A partial file swap is neither a fresh library nor a coherent reader.
+    # Check both the library path and a database symlink's resolved location.
+    for root in {Path(path).parent.resolve(), Path(path).resolve().parent}:
+        journal = root / '.restore-journal.json'
+        if journal.exists() or journal.is_symlink():
+            raise ValueError('Une restauration interrompue nécessite une récupération avant d’ouvrir la bibliothèque.')
     if read_only:
         db = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True, timeout=30)
         db.row_factory = sqlite3.Row
@@ -166,123 +145,14 @@ def open_database(path, read_only=False):
     return db
 
 
-def archive_analysis(db, log_id, kind, parser_version, summary, created_at=None):
-    """Deduplicated immutable recorded JSON, with bounded compressed retention.
-
-    The caller owns its transaction. No old revision is automatically removed.
-    Capture time is explicitly separate from the flight or original parse date.
-    """
-    if not re.fullmatch(r'[a-f0-9]{64}', log_id):
-        return None  # path-only import failures are not recorded ULog analyses
-    if kind not in ('summary', 'detail') or not isinstance(parser_version, str) or not 1 <= len(parser_version.encode()) <= 256:
-        raise ValueError('Type ou version de révision invalide.')
-    raw = summary.encode('utf-8')
-    if len(raw) > MAX_ANALYSIS_BYTES:
-        raise RevisionBudgetError('Analyse au-delà de la limite de rétention de 64 Mio ; analyse publiée conservée.')
-    try:
-        value = json.loads(summary)
-    except (ValueError, TypeError):
-        return None  # an invalid legacy cache is not an exploitable revision
-    if not isinstance(value, dict) or value.get('id') != log_id or value.get('status') == 'error':
-        return None
-    checksum = hashlib.sha256(raw).hexdigest()
-    identity = hashlib.sha256(('\n'.join((log_id, kind, parser_version, checksum))).encode()).hexdigest()
-    row = db.execute('SELECT id FROM analysis_revisions WHERE id=?', (identity,)).fetchone()
-    if row:
-        return identity
-    payload = zlib.compress(raw, 6)
-    stored = int(db.execute("SELECT COALESCE((SELECT value FROM settings WHERE key='analysisRevisionStorageBytes'),'0')").fetchone()[0])
-    if stored + len(payload) > MAX_REVISION_STORAGE_BYTES:
-        raise RevisionBudgetError('Historique des analyses plein (512 Mio). Exportez puis nettoyez des anciennes révisions ; aucune analyse publiée n’a été remplacée.')
-    captured = created_at or datetime.now(timezone.utc).isoformat(timespec='microseconds').replace('+00:00', 'Z')
-    db.execute('INSERT INTO analysis_revisions VALUES(?,?,?,?,?,?,?,?)', (identity, log_id, kind, parser_version, checksum, captured, len(raw), payload))
-    db.execute("INSERT OR REPLACE INTO settings VALUES('analysisRevisionStorageBytes',?)", (str(stored + len(payload)),))
-    return identity
-
-
-def decoded_revision(row):
-    if not 0 <= row['size_bytes'] <= MAX_ANALYSIS_BYTES:
-        raise ValueError('Révision d’analyse hors budget.')
-    decoder = zlib.decompressobj()
-    try:
-        raw = decoder.decompress(row['payload'], row['size_bytes'] + 1)
-    except zlib.error as error:
-        raise ValueError('Révision d’analyse compressée invalide.') from error
-    if len(raw) != row['size_bytes'] or not decoder.eof or decoder.unused_data or decoder.unconsumed_tail or hashlib.sha256(raw).hexdigest() != row['analysis_sha256']:
-        raise ValueError('Empreinte ou taille de révision d’analyse incorrecte.')
-    value = json.loads(raw)
-    identity = hashlib.sha256(('\n'.join((row['log_id'], row['kind'], row['parser_version'], row['analysis_sha256']))).encode()).hexdigest()
-    if identity != row['id'] or not isinstance(value, dict) or value.get('id') != row['log_id'] or value.get('status') == 'error' or row['kind'] not in ('summary', 'detail'):
-        raise ValueError('Identité de révision d’analyse incohérente.')
-    return value
-
-
-def validate_analysis_revisions(db):
-    if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='analysis_revisions'").fetchone():
-        return
-    original_factory = db.row_factory
-    db.row_factory = sqlite3.Row
-    try:
-        schema = db.execute("SELECT value FROM settings WHERE key='analysisRevisionSchema'").fetchone()
-        if not schema or schema[0] != str(ANALYSIS_REVISION_VERSION):
-            raise ValueError('Version des révisions d’analyse non prise en charge.')
-        total = 0
-        for row in db.execute('SELECT * FROM analysis_revisions'):
-            total += len(row['payload'])
-            if total > MAX_REVISION_STORAGE_BYTES:
-                raise ValueError('Historique des analyses sauvegardé au-delà de 512 Mio.')
-            decoded_revision(row)
-    finally:
-        db.row_factory = original_factory
-
-
-def revision_metadata(db, row, current_hashes=None):
-    if row['kind'] not in ('summary', 'detail') or not isinstance(row['parser_version'], str) or not 1 <= len(row['parser_version'].encode()) <= 256 or not isinstance(row['created_at'], str) or len(row['created_at']) > 64:
-        raise ValueError('Métadonnées de révision invalides ou hors budget.')
-    table, key = ('logs', 'id') if row['kind'] == 'summary' else ('flight_details', 'log_id')
-    if current_hashes is None:
-        current = db.execute('SELECT parser_version,summary FROM ' + table + ' WHERE ' + key + '=?', (row['log_id'],)).fetchone()
-        current_hash = (current[0], hashlib.sha256(current[1].encode()).hexdigest()) if current else None
-    else:
-        current_hash = current_hashes.get(row['kind'])
-    is_current = current_hash == (row['parser_version'], row['analysis_sha256'])
-    return {'schemaVersion': ANALYSIS_REVISION_VERSION, 'id': row['id'], 'kind': row['kind'],
-            'parserVersion': row['parser_version'], 'analysisSHA256': row['analysis_sha256'],
-            'createdAt': row['created_at'], 'createdAtSource': 'captured', 'sizeBytes': row['size_bytes'], 'current': is_current}
-
-
 def analysis_revisions(log_id, database, offset=0, limit=32, read_only=False):
     if not re.fullmatch(r'[a-f0-9]{64}', log_id) or type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 200:
         raise ValueError('Identité ou pagination des révisions invalide.')
     db = open_database(database, read_only=read_only)
     try:
-        if not db.execute('SELECT 1 FROM logs WHERE id=?', (log_id,)).fetchone():
-            raise ValueError('Ce log n’est pas dans la bibliothèque.')
-        available = bool(db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='analysis_revisions'").fetchone())
-        rows = db.execute('SELECT id,log_id,kind,parser_version,analysis_sha256,created_at,size_bytes FROM analysis_revisions WHERE log_id=? ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?', (log_id, limit, offset)).fetchall() if available else []
-        total = db.execute('SELECT COUNT(*) FROM analysis_revisions WHERE log_id=?', (log_id,)).fetchone()[0] if available else 0
-        current_hashes = {}
-        for table, kind, key in (('logs', 'summary', 'id'), ('flight_details', 'detail', 'log_id')):
-            current = db.execute('SELECT parser_version,summary FROM ' + table + ' WHERE ' + key + '=?', (log_id,)).fetchone()
-            current_hashes[kind] = (current[0], hashlib.sha256(current[1].encode()).hexdigest()) if current else None
-        values = [revision_metadata(db, row, current_hashes) for row in rows]
-        return {'revisionVersion': ANALYSIS_REVISION_VERSION, 'logID': log_id, 'total': total, 'revisions': values,
-                'nextOffset': offset + len(values) if offset + len(values) < total else None}
+        return revision_page(db, log_id, offset, limit)
     finally:
         db.close()
-
-
-def digest_file(path):
-    require_local_source(path)
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def stat_signature(stat):
-    return (stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino)
 
 
 def source_availability(path, log_id, known_file=None, checked_at=None):
@@ -721,6 +591,16 @@ def gps_date(datasets, start, coverage):
     return None
 
 
+def analysis_origin(path, root, digest, size, canonical=None):
+    """Seed a fresh parse with its recorded origin, never previous analysis data."""
+    origin = base_log(path, root, digest, size)
+    if canonical is not None:
+        for field in ('droneID', 'droneName', 'date', 'dateSource', 'fileName', 'sourcePaths'):
+            origin[field] = canonical[field]
+    # analyze_file can replace identity/name/date with authoritative ULog data.
+    return origin
+
+
 def analyze_file(path, root, digest=None, detailed=False, event_dictionary_directory=None, origin_context=None, track_sink=None):
     path = Path(path).resolve()
     require_local_source(path)
@@ -899,7 +779,7 @@ def snapshot(db, stats=None):
             "importStats": stats, "logs": logs}
 
 
-def scan(folder, database, output=None, progress=None, skip_snapshot=False, archive_destination=None, client_id=None):
+def scan(folder, database, output=None, progress=None, skip_snapshot=False, archive_destination=None, client_id=None, additional_outputs=()):
     root = Path(folder).expanduser().resolve()
     exact_file = root if root.is_file() and root.suffix.lower() == '.ulg' else None
     if not root.is_dir() and exact_file is None:
@@ -915,6 +795,7 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
         for filename in sorted(files):
             if Path(filename).suffix.lower() == ".ulg":
                 discovered.append(Path(current) / filename)
+    validate_outputs((output, progress, *additional_outputs), database=database, inputs=[__file__, *discovered])
     stats = dict.fromkeys(("discovered", "imported", "unchanged", "duplicates", "failed"), 0)
     stats["discovered"] = len(discovered)
     archive_result = None
@@ -977,13 +858,15 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
             signature = None
             category = None
             try:
+                # Keep remember_log's savepoint inside this file transaction:
+                # RELEASE must not publish before source and cache checks pass.
+                db.execute('BEGIN')
                 before = path.stat()
                 signature = stat_signature(before)
                 cached = db.execute("SELECT files.*,logs.parser_version,logs.summary AS cached_summary FROM files JOIN logs ON logs.id=files.log_id WHERE path=?", (absolute,)).fetchone()
                 if cached and tuple(cached[key] for key in ("size", "mtime_ns", "ctime_ns", "inode")) == signature and cached["parser_version"] == PARSER_VERSION and json.loads(cached["cached_summary"]).get("status") != "error":
-                    origin_context = base_log(path, root, cached['log_id'], before.st_size)
+                    origin_context = analysis_origin(path, root, cached['log_id'], before.st_size, json.loads(cached['cached_summary']))
                     managed = archive_import(cached['log_id'], index, path, signature, origin_context)
-                    stats["unchanged"] += 1
                     # Card name metadata can appear after the first import.
                     _, name = card_context(path, root)
                     if name:
@@ -998,13 +881,14 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
                     observation = source_availability(path, cached['log_id'], cached)
                     db.execute('INSERT OR REPLACE INTO source_observations VALUES(?,?,?,?)', (cached['log_id'], absolute, observation['state'], observation['checkedAt']))
                     db.commit()
+                    stats["unchanged"] += 1
                     continue
                 digest = digest_file(path)
-                origin_context = base_log(path, root, digest, before.st_size)
+                existing = db.execute("SELECT parser_version,summary FROM logs WHERE id=?", (digest,)).fetchone()
+                origin_context = analysis_origin(path, root, digest, before.st_size, json.loads(existing['summary']) if existing else None)
                 managed = archive_import(digest, index, path, signature, origin_context)
                 analysis_signature = stat_signature(managed.stat()) if archive_result is not None else signature
                 full_tracks = []
-                existing = db.execute("SELECT parser_version,summary FROM logs WHERE id=?", (digest,)).fetchone()
                 if existing and existing["parser_version"] == PARSER_VERSION and json.loads(existing["summary"]).get("status") != "error":
                     saved = json.loads(existing["summary"])
                     _, name = card_context(path, root)
@@ -1013,7 +897,9 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
                         remember_log(db, saved)
                     category = "duplicates"
                 else:
-                    saved = analyze_file(managed, root, digest, origin_context=origin_context, track_sink=full_tracks.append) if archive_result is not None else analyze_file(path, root, digest, track_sink=full_tracks.append)
+                    saved = analyze_file(managed, root, digest,
+                                         origin_context=origin_context if existing is not None or archive_result is not None else None,
+                                         track_sink=full_tracks.append)
                     remember_log(db, saved)
                     category = "failed" if saved["status"] == "error" else "imported"
                 if existing is None and client_id is not None:
@@ -1056,6 +942,8 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
                 saved["issues"] = [f"{type(error).__name__}: {error}"]
                 saved["coverage"] = ["Fichier non analysable; réessayer l'import lorsque la source est disponible."]
                 existing_error = db.execute('SELECT 1 FROM logs WHERE id=?', (digest,)).fetchone()
+                # Publish the retryable error and its source together as well.
+                db.execute('BEGIN')
                 remember_log(db, saved)
                 if existing_error is None and client_id is not None:
                     db.execute('INSERT INTO log_clients VALUES(?,?)', (digest, client_id))
@@ -1094,6 +982,7 @@ def scan(folder, database, output=None, progress=None, skip_snapshot=False, arch
 
 
 def detail(log_id, database, output=None, read_only=False, revision=None):
+    validate_outputs((output,), database=database, inputs=(__file__,))
     if not re.fullmatch(r"[a-f0-9]{64}", log_id):
         raise ValueError("Identifiant de contenu ULog invalide.")
     db = open_database(database, read_only=read_only)
@@ -1244,6 +1133,7 @@ def detail(log_id, database, output=None, read_only=False, revision=None):
 
 def refresh_analysis(database, output=None, progress=None):
     """Refresh stale summaries globally, preserving old analysis on failure."""
+    validate_outputs((output, progress), database=database, inputs=(__file__,))
     db = open_database(database)
     stats = {'total': 0, 'reanalyzed': 0, 'unavailable': 0, 'failed': 0}
     try:
@@ -1260,12 +1150,10 @@ def refresh_analysis(database, output=None, progress=None):
                     if digest_file(path) != identity:
                         continue
                     available = True
-                    candidate = analyze_file(path, path.parent, identity)
+                    origin = analysis_origin(path, path.parent, identity, before[0], saved)
+                    candidate = analyze_file(path, path.parent, identity, origin_context=origin)
                     if stat_signature(path.stat()) != before or candidate['status'] == 'error':
                         continue
-                    candidate['droneID'], candidate['droneName'] = saved['droneID'], saved['droneName']
-                    if not candidate.get('date') and saved.get('date'):
-                        candidate['date'], candidate['dateSource'] = saved['date'], saved['dateSource']
                     remember_log(db, candidate)
                     db.commit()
                     refreshed = True
@@ -1401,265 +1289,10 @@ def telemetry_series(log_id, database, request):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Import local incrémental de logs PX4")
-    commands = parser.add_subparsers(dest="command", required=True)
-    scan_command = commands.add_parser("scan")
-    scan_command.add_argument("--folder", required=True)
-    scan_command.add_argument("--database", required=True)
-    scan_command.add_argument("--output", required=True)
-    scan_command.add_argument("--progress")
-    scan_command.add_argument("--skip-snapshot", action="store_true")
-    scan_command.add_argument('--archive-destination')
-    scan_command.add_argument('--client-id')
-    snapshot_command = commands.add_parser("snapshot")
-    snapshot_command.add_argument("--database", required=True)
-    snapshot_command.add_argument("--output", required=True)
-    snapshot_command.add_argument("--read-only", action="store_true")
-    for name in ('source-folders', 'retire-source', 'restore-source'):
-        command = commands.add_parser(name)
-        command.add_argument('--database', required=True)
-        command.add_argument('--output', required=True)
-        if name == 'source-folders':
-            command.add_argument('--offset', type=int, default=0)
-            command.add_argument('--limit', type=int, default=200)
-            command.add_argument('--include-removed', action='store_true')
-        else:
-            command.add_argument('--folder', required=True)
-    query_command = commands.add_parser("query")
-    query_command.add_argument("--request", required=True)
-    query_command.add_argument("--database", required=True)
-    query_command.add_argument("--output", required=True)
-    query_command.add_argument("--read-only", action="store_true")
-    index_command = commands.add_parser("ensure-index")
-    index_command.add_argument("--database", required=True)
-    index_command.add_argument("--output", required=True)
-    refresh_command = commands.add_parser('refresh-analysis')
-    refresh_command.add_argument('--database', required=True)
-    refresh_command.add_argument('--output', required=True)
-    refresh_command.add_argument('--progress')
-    status_command = commands.add_parser('indexed-status')
-    status_command.add_argument('--database', required=True)
-    status_command.add_argument('--request', required=True)
-    status_command.add_argument('--output', required=True)
-    dictionary_command = commands.add_parser('event-dictionary')
-    dictionary_command.add_argument('--database', required=True)
-    dictionary_command.add_argument('--file', required=True)
-    dictionary_command.add_argument('--output', required=True)
-    detail_command = commands.add_parser("detail")
-    detail_command.add_argument("--log-id", required=True)
-    detail_command.add_argument("--database", required=True)
-    detail_command.add_argument("--output", required=True)
-    detail_command.add_argument("--read-only", action="store_true")
-    detail_command.add_argument('--revision')
-    revisions_command = commands.add_parser('analysis-revisions')
-    revisions_command.add_argument('--log-id', required=True)
-    revisions_command.add_argument('--database', required=True)
-    revisions_command.add_argument('--output', required=True)
-    revisions_command.add_argument('--offset', type=int, default=0)
-    revisions_command.add_argument('--limit', type=int, default=32)
-    revisions_command.add_argument('--read-only', action='store_true')
-    series_command = commands.add_parser('series')
-    series_command.add_argument('--log-id', required=True)
-    series_command.add_argument('--database', required=True)
-    series_command.add_argument('--request')
-    series_command.add_argument('--recipe', choices=('battery', 'gnss', 'ekf'))
-    series_command.add_argument('--topic')
-    series_command.add_argument('--field')
-    series_command.add_argument('--instance', type=int, default=0)
-    series_command.add_argument('--time-from', type=float)
-    series_command.add_argument('--time-to', type=float)
-    series_command.add_argument('--budget', type=int, default=2048)
-    series_command.add_argument('--output', required=True)
-    for name in ('capture-report', 'export-captured'):
-        command = commands.add_parser(name)
-        command.add_argument('--capture', required=True)
-        command.add_argument('--output', required=True)
-        if name == 'capture-report':
-            command.add_argument('--database', required=True)
-            command.add_argument('--request', required=True)
-        else:
-            command.add_argument('--destination', required=True)
-            command.add_argument('--progress')
-    for name in ('storage-info', 'archive', 'recover-archive', 'reassociate', 'clean-cache', 'restore-cache'):
-        command = commands.add_parser(name)
-        command.add_argument('--database', required=True)
-        command.add_argument('--output', required=True)
-        if name in ('storage-info', 'archive', 'recover-archive', 'clean-cache'):
-            command.add_argument('--library', required=True)
-        if name in ('archive', 'clean-cache'):
-            command.add_argument('--request', required=True)
-        if name == 'archive':
-            command.add_argument('--destination', required=True)
-        if name == 'storage-info':
-            command.add_argument('--offset', type=int, default=0)
-            command.add_argument('--limit', type=int, default=200)
-        if name == 'reassociate':
-            command.add_argument('--folder', required=True)
-        if name == 'restore-cache':
-            command.add_argument('--recovery', required=True)
-    backup_command = commands.add_parser("backup")
-    backup_command.add_argument("--library", required=True)
-    backup_command.add_argument("--destination", required=True)
-    backup_command.add_argument("--include-ulog", action="store_true")
-    backup_command.add_argument("--output", required=True)
-    inspect_command = commands.add_parser("inspect-backup")
-    inspect_command.add_argument("--archive", required=True)
-    inspect_command.add_argument("--output", required=True)
-    restore_command = commands.add_parser("restore")
-    restore_command.add_argument("--archive", required=True)
-    restore_command.add_argument("--library", required=True)
-    restore_command.add_argument("--output", required=True)
-    recover_command = commands.add_parser("recover-restore")
-    recover_command.add_argument("--library", required=True)
-    recover_command.add_argument("--output", required=True)
-    for name in ('clients', 'create-client', 'rename-client', 'delete-client', 'assign-client', 'retire-all-sources', 'reset-library'):
-        command = commands.add_parser(name)
-        command.add_argument('--database', required=True)
-        command.add_argument('--output', required=True)
-        if name in ('create-client', 'rename-client', 'delete-client', 'assign-client'):
-            command.add_argument('--request', required=True)
-        if name == 'clients':
-            command.add_argument('--read-only', action='store_true')
-        if name == 'reset-library':
-            command.add_argument('--library', required=True)
-            command.add_argument('--all-settings', action='store_true')
-    args = parser.parse_args(argv)
-    try:
-        if args.command in ('clients', 'create-client', 'rename-client', 'delete-client', 'assign-client', 'retire-all-sources', 'reset-library'):
-            import library_clients
-            request = None
-            if hasattr(args, 'request'):
-                if Path(args.request).stat().st_size > 16 * 1024 * 1024:
-                    raise ValueError('Requête de clients trop volumineuse.')
-                request = json.loads(Path(args.request).read_text(encoding='utf-8'))
-            if args.command == 'reset-library':
-                result = library_clients.reset_library(args.database, args.library, args.all_settings)
-            elif args.command == 'retire-all-sources':
-                result = library_clients.retire_all_sources(args.database)
-            else:
-                result = library_clients.command(args.database, args.command, request, read_only=getattr(args, 'read_only', False))
-            atomic_json(args.output, result)
-            print(json.dumps({'command': args.command, 'ok': True}))
-            return 0
-        if args.command in ('source-folders', 'retire-source', 'restore-source'):
-            import library_sources
-            result = (library_sources.source_folders(args.database, args.offset, args.limit, args.include_removed)
-                      if args.command == 'source-folders' else
-                      library_sources.set_removed(args.database, args.folder, args.command == 'retire-source'))
-            atomic_json(args.output, result)
-            print(json.dumps({'command': args.command, 'ok': True}))
-            return 0
-        if args.command == 'analysis-revisions':
-            result = analysis_revisions(args.log_id, args.database, args.offset, args.limit, args.read_only)
-            atomic_json(args.output, result)
-            print(json.dumps({'command': args.command, 'ok': True}))
-            return 0
-        if args.command == 'event-dictionary':
-            result = import_event_dictionary(args.database, args.file)
-            atomic_json(args.output, result)
-            print(json.dumps({'command': args.command, 'sha256': result['sha256'], 'ok': True}))
-            return 0
-        if args.command == 'indexed-status':
-            if Path(args.request).stat().st_size > 1024 * 1024:
-                raise ValueError('Requête d’index trop volumineuse.')
-            result = indexed_status(args.database, json.loads(Path(args.request).read_text(encoding='utf-8')))
-            atomic_json(args.output, result)
-            print(json.dumps({'command': args.command, 'ok': True}))
-            return 0
-        if args.command == 'refresh-analysis':
-            result = refresh_analysis(args.database, args.output, args.progress)
-            print(json.dumps({'command': args.command, 'revision': result['revision'], 'ok': True}))
-            return 0
-        if args.command == 'series':
-            if args.request:
-                if Path(args.request).stat().st_size > 1024 * 1024:
-                    raise ValueError('Requête de télémétrie trop volumineuse.')
-                request = json.loads(Path(args.request).read_text(encoding='utf-8'))
-            else:
-                request = {'seriesVersion': 1, 'instance': args.instance, 'budget': args.budget}
-                if args.recipe: request['recipe'] = args.recipe
-                else: request.update(topic=args.topic, field=args.field)
-                if args.time_from is not None: request['timeFrom'] = args.time_from
-                if args.time_to is not None: request['timeTo'] = args.time_to
-            result = telemetry_series(args.log_id, args.database, request)
-            atomic_json(args.output, result)
-            print(json.dumps({'command': 'series', 'logID': args.log_id, 'ok': True}))
-            return 0
-        if args.command in ('capture-report', 'export-captured'):
-            import library_reports
-            if args.command == 'capture-report':
-                if Path(args.request).stat().st_size > 16 * 1024 * 1024:
-                    raise ValueError('Requête de rapport trop volumineuse.')
-                result = library_reports.capture_report(args.database, args.capture, json.loads(Path(args.request).read_text(encoding='utf-8')))
-            else:
-                result = library_reports.prepare_report(args.capture, args.destination, progress=args.progress)
-            atomic_json(args.output, result)
-            print(json.dumps({'command': args.command, 'ok': True}))
-            return 0
-        if args.command in ('storage-info', 'archive', 'recover-archive', 'reassociate', 'clean-cache', 'restore-cache'):
-            import library_archives
-            request = None
-            if hasattr(args, 'request'):
-                if Path(args.request).stat().st_size > 16 * 1024 * 1024:
-                    raise ValueError('Sélection de stockage trop volumineuse.')
-                request = json.loads(Path(args.request).read_text(encoding='utf-8'))
-            if args.command == 'storage-info': result = library_archives.storage_info(args.database, args.library, args.offset, args.limit)
-            elif args.command == 'archive': result = library_archives.archive_logs(args.database, args.library, args.destination, request.get('logIDs'))
-            elif args.command == 'recover-archive': result = library_archives.recover_archive(args.database, args.library)
-            elif args.command == 'reassociate': result = library_archives.reassociate(args.database, args.folder)
-            elif args.command == 'clean-cache': result = library_archives.clean_detail_cache(args.database, args.library, request.get('logIDs'))
-            else: result = library_archives.restore_detail_cache(args.database, args.recovery)
-            atomic_json(args.output, result)
-            print(json.dumps({'command': args.command, 'ok': True}))
-            return 0
-        if args.command in ("query", "ensure-index"):
-            import library_repository
-            db = open_database(args.database, read_only=getattr(args, "read_only", False))
-            try:
-                if args.command == "ensure-index":
-                    library_repository.initialize(db)
-                    result = {"queryVersion": 1, "revision": int(db.execute("SELECT value FROM kl_meta WHERE key='revision'").fetchone()[0]), "ok": True}
-                else:
-                    if Path(args.request).stat().st_size > 16 * 1024 * 1024:
-                        raise ValueError("La requête de bibliothèque dépasse 16 Mio.")
-                    request = json.loads(Path(args.request).read_text(encoding="utf-8"))
-                    result = library_repository.query(db, request, read_only=args.read_only)
-            finally:
-                db.close()
-            atomic_json(args.output, result)
-            print(json.dumps({"command": args.command, "revision": result["revision"], "ok": True}))
-            return 0
-        if args.command in ("backup", "inspect-backup", "restore", "recover-restore"):
-            import library_storage
-            if args.command == "backup":
-                result = library_storage.backup(args.library, args.destination, args.include_ulog)
-            elif args.command == "inspect-backup":
-                result = library_storage.inspect_backup(args.archive)
-            elif args.command == "restore":
-                result = library_storage.restore(args.archive, args.library)
-            else:
-                result = library_storage.recover_restore(args.library)
-            atomic_json(args.output, result)
-            print(json.dumps({"command": args.command, "ok": True}))
-            return 0
-        if args.command == "detail":
-            result = detail(args.log_id, args.database, args.output, read_only=args.read_only, revision=args.revision)
-            print(json.dumps({"logID": result["id"], "status": result["status"]}))
-            return 0
-        if args.command == "scan":
-            result = scan(args.folder, args.database, args.output, args.progress, skip_snapshot=args.skip_snapshot, archive_destination=args.archive_destination, client_id=args.client_id)
-        else:
-            db = open_database(args.database, read_only=args.read_only)
-            try:
-                result = snapshot(db)
-            finally:
-                db.close()
-            atomic_json(args.output, result)
-        print(json.dumps({"logs": len(result["logs"]), "importStats": result["importStats"]}, ensure_ascii=False))
-        return 0
-    except Exception as error:
-        print(f"{type(error).__name__}: {error}", file=sys.stderr)
-        return 1
+    from types import SimpleNamespace
+    from analyzer_cli import main as cli_main
+    # Keep this facade's functions when loaded by path or run as __main__.
+    return cli_main(argv, SimpleNamespace(**globals()))
 
 
 if __name__ == "__main__":

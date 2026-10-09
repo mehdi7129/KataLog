@@ -65,6 +65,34 @@ public struct GCSLogFile: Decodable, Identifiable, Sendable {
     }
 }
 
+/// Known values are used for behavior, while persisted transfers keep their raw
+/// strings so an unknown legacy/future value is never rewritten or rejected.
+enum GCSTransferState: String, CaseIterable, Sendable {
+    case queued, retrying, downloading, importing, downloaded, complete, failed, interrupted, stopped
+
+    enum Category: Sendable { case pending, active, successful, failed, stopped }
+    var category: Category {
+        switch self {
+        case .queued, .retrying: .pending
+        case .downloading, .importing: .active
+        case .downloaded, .complete: .successful
+        case .failed, .interrupted: .failed
+        case .stopped: .stopped
+        }
+    }
+}
+
+enum GCSTransferPhase: String, CaseIterable, Sendable {
+    case drone, http, verification, verified, importing = "import"
+
+    var acceptsDroneProgress: Bool {
+        switch self {
+        case .drone: true
+        case .http, .verification, .verified, .importing: false
+        }
+    }
+}
+
 public struct GCSTransfer: Codable, Identifiable, Sendable {
     public var id: String = UUID().uuidString
     public let droneUUID: String
@@ -75,7 +103,7 @@ public struct GCSTransfer: Codable, Identifiable, Sendable {
     public var originalHost: String?
     public let destination: String
     public var completedBytes: Int64 = 0
-    public var state: String = "queued"
+    public var state: String = GCSTransferState.queued.rawValue
     public var error: String?
     public var localPath: String?
     public var sha256: String?
@@ -91,9 +119,12 @@ public struct GCSTransfer: Codable, Identifiable, Sendable {
     public var phaseBytes: Int64?
     public var phaseTotal: Int64?
     public var attemptCount: Int { get { attempts ?? 0 } set { attempts = newValue } }
-    public var isPending: Bool { ["queued", "retrying"].contains(state) }
-    public var isActive: Bool { ["downloading", "importing"].contains(state) }
-    public var isSuccessful: Bool { ["downloaded", "complete"].contains(state) }
+    var stateCategory: GCSTransferState.Category? { GCSTransferState(rawValue: state)?.category }
+    var knownPhase: GCSTransferPhase? { phase.flatMap(GCSTransferPhase.init(rawValue:)) }
+    public var isPending: Bool { stateCategory == .pending }
+    public var isActive: Bool { stateCategory == .active }
+    public var isSuccessful: Bool { stateCategory == .successful }
+    public var isRetryable: Bool { stateCategory == .failed || stateCategory == .stopped }
     public var progress: Double { size > 0 ? min(1, max(0, Double(completedBytes) / Double(size))) : 0 }
     /// Overall collection work, distinct from the bytes received on this Mac.
     /// Drone → GCS and GCS → Mac each contribute half; 100% requires success.
@@ -101,9 +132,9 @@ public struct GCSTransfer: Codable, Identifiable, Sendable {
         if isSuccessful { return 1 }
         guard !isPending, size > 0 else { return 0 }
         let fraction: Double
-        switch phase {
-        case "drone": fraction = 0.5 * (phaseProgress ?? 0)
-        case "http": fraction = 0.5 + 0.5 * progress
+        switch knownPhase {
+        case .drone: fraction = 0.5 * (phaseProgress ?? 0)
+        case .http: fraction = 0.5 + 0.5 * progress
         default: fraction = progress // Queues/collectors predating transport phases.
         }
         return min(0.99, max(0, fraction))
@@ -114,16 +145,16 @@ public struct GCSTransfer: Codable, Identifiable, Sendable {
     }
     public mutating func receiveProgress(phase incomingPhase: String?, bytes: Int64, total: Int64?) {
         // Legacy collectors reported a single transport. New collectors always identify it.
-        let incoming = incomingPhase ?? "http"
-        guard ["drone", "http"].contains(incoming) else { return }
+        let incoming = GCSTransferPhase(rawValue: incomingPhase ?? GCSTransferPhase.http.rawValue)
+        guard incoming == .drone || incoming == .http else { return }
         // A delayed drone event cannot rewind an HTTP/verification phase.
-        if incoming == "drone", ["http", "verification", "verified", "import"].contains(phase ?? "") { return }
+        if incoming == .drone, knownPhase?.acceptsDroneProgress == false { return }
         if phase != incomingPhase { phaseBytes = 0 }
         // Keep legacy, unphased collectors on their original 0–100% scale.
         phase = incomingPhase
         phaseTotal = max(0, total ?? size)
         phaseBytes = min(phaseTotal ?? size, max(phaseBytes ?? 0, max(0, bytes)))
-        if incoming == "http" { completedBytes = min(max(0, size), max(completedBytes, max(0, bytes))) }
+        if incoming == .http { completedBytes = min(max(0, size), max(completedBytes, max(0, bytes))) }
     }
     public var filename: String { (remotePath as NSString).lastPathComponent }
     public init(droneUUID: String, remotePath: String, size: Int64, host: String, destination: String) {
@@ -131,8 +162,8 @@ public struct GCSTransfer: Codable, Identifiable, Sendable {
         self.host = host; self.destination = destination
     }
     public mutating func recoverAfterRelaunch() {
-        if ["downloading", "importing", "queued", "retrying"].contains(state) {
-            state = "interrupted"
+        if isPending || isActive {
+            state = GCSTransferState.interrupted.rawValue
             error = "Collecte interrompue. Réessayez pour vérifier le fichier local et reprendre la file."
         }
     }
@@ -222,10 +253,10 @@ public struct GCSBatchProgress: Sendable {
         let completedWork = transfers.reduce(0.0) { $0 + Double(max(0, $1.size)) * $1.workFraction }
         self.init(totalCount: transfers.count,
                   completedCount: transfers.filter(\.isSuccessful).count,
-                  failedCount: transfers.filter { ["failed", "interrupted"].contains($0.state) }.count,
+                  failedCount: transfers.filter { $0.stateCategory == .failed }.count,
                   activeCount: transfers.filter(\.isActive).count,
                   pendingCount: transfers.filter(\.isPending).count,
-                  stoppedCount: transfers.filter { $0.state == "stopped" }.count,
+                  stoppedCount: transfers.filter { $0.stateCategory == .stopped }.count,
                   totalBytes: GCSProgressMath.boundedInteger(workTotal), completedBytes: GCSProgressMath.boundedInteger(macBytes),
                   completedWorkBytes: completedWork, totalWorkBytes: workTotal)
     }

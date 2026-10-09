@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 struct Workspace06View: View {
     @ObservedObject var library: LibraryStore
     @ObservedObject var gcs: GCSStore
+    @StateObject var navigation: LibraryNavigationStore
     @ObservedObject private var views: LibraryViewStore
     @StateObject private var storage: LibraryStorageStore
     @StateObject private var sourcesSummary: SourcesImportStore
@@ -47,6 +48,7 @@ struct Workspace06View: View {
     @State private var lastOpenedLogID: String?
     @State private var selectedStorageLogs: Set<String> = []
     @State private var storageOffsets = [0]
+    private let initialHistoryCursor: String?
     @Environment(\.colorScheme) private var scheme
     @FocusState private var focusedControl: FocusControl?
     private enum FocusControl: Hashable { case importFolder, scope, refresh, historyLog(String), mask(Bool), diagnostic, restore }
@@ -71,26 +73,35 @@ struct Workspace06View: View {
             }
         }
     }
-    init(library: LibraryStore, gcs: GCSStore, initialPage: Page = .overview, updates: UpdateStore? = nil) {
+    init(library: LibraryStore, gcs: GCSStore, initialPage: Page = .overview, updates: UpdateStore? = nil,
+         initialHistoryCursor: String? = nil, navigation: LibraryNavigationStore? = nil) {
         self.library = library; self.gcs = gcs; views = library.views
+        _navigation = StateObject(wrappedValue: navigation ?? library.makeNavigationSession())
+        self.initialHistoryCursor = initialHistoryCursor
         _page = State(initialValue: initialPage)
+        _historyCursors = State(initialValue: initialHistoryCursor.map { [nil, $0] } ?? [nil])
         _updates = StateObject(wrappedValue: updates ?? UpdateStore())
         _storage = StateObject(wrappedValue: LibraryStorageStore(library: library))
         _sourcesSummary = StateObject(wrappedValue: SourcesImportStore(library: library))
         _diagnostics = StateObject(wrappedValue: library.diagnosticStore)
     }
-    private var totals: LibraryTotals? { library.historyPage?.totals }
+    private var totals: LibraryTotals? { navigation.historyPage?.totals }
     private var advancedMode: Bool { views.state.advancedMode ?? false }
     private var theme: ColorScheme? { WorkspaceAppearance.colorScheme(for: views.state.theme) }
     private var palette: Palette { Palette(dark: (theme ?? scheme) == .dark) }
     private var themeSelection: Binding<String> { Binding(get: { WorkspaceAppearance.selection(for: views.state.theme) }, set: { value in edit { try views.setTheme(value) } }) }
-    private var busy: Bool { library.isImporting || library.isMaintainingLibrary || library.isQuerying || library.isLoading || library.isLoadingFlight }
-    private var mutationBusy: Bool { busy || gcs.isBusy || library.activeDetailLoads > 0 || diagnostics.isExporting || diagnostics.isFetchingGCS }
+    private var commandCapabilities: WorkspaceCommandCapabilities {
+        WorkspaceCommandCapabilities(library: library.commandCapabilities, collecting: gcs.isBusy,
+            diagnosticExporting: diagnostics.isExporting, diagnosticFetching: diagnostics.isFetchingGCS,
+            navigationQuerying: navigation.isQuerying, navigationLoadingFlight: navigation.isLoadingFlight)
+    }
+    private var busy: Bool { !commandCapabilities.canNavigate }
+    private var mutationBusy: Bool { !commandCapabilities.canMutate }
     private var queryResultsUnavailable: Bool {
         switch page {
-        case .overview, .history: return !library.historyResultsCurrent
-        case .alerts: return selectedGroup == nil ? !library.groupResultsCurrent : !library.occurrenceResultsCurrent
-        case .drones: return !library.droneResultsCurrent
+        case .overview, .history: return !navigation.historyResultsCurrent
+        case .alerts: return selectedGroup == nil ? !navigation.groupResultsCurrent : !navigation.occurrenceResultsCurrent
+        case .drones: return !navigation.droneResultsCurrent
         default: return false
         }
     }
@@ -103,7 +114,7 @@ struct Workspace06View: View {
             annotations: library.annotations.state, maskedMessageKeys: views.state.maskedMessageKeys,
             viewRevision: views.state.revision, options: reportOptions)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-        return ((try? encoder.encode(request))?.base64EncodedString() ?? "") + ":\(library.historyPage?.revision ?? 0)"
+        return ((try? encoder.encode(request))?.base64EncodedString() ?? "") + ":\(navigation.historyPage?.revision ?? 0)"
     }
 
     var body: some View {
@@ -146,31 +157,33 @@ struct Workspace06View: View {
         workspaceContent
         .onAppear {
             let sortOverride: String? = page == .overview ? "recent" : nil
-            if library.historySortOverride != sortOverride {
-                library.historySortOverride = sortOverride
-                if library.usesPagedNavigation { library.loadHistory() }
+            if navigation.historySortOverride != sortOverride {
+                navigation.historySortOverride = sortOverride
+                if library.usesPagedNavigation { navigation.loadHistory() }
             }
             gcs.attach(library: library)
-            updates.installationAllowed = { !library.isReadOnly && !library.isImporting && !library.isExporting && !library.isMaintainingLibrary && !gcs.isBusy && !library.isQuerying && !library.isLoadingFlight && library.activeDetailLoads == 0 && !diagnostics.isExporting && !diagnostics.isFetchingGCS }
+            updates.installationAllowed = { commandCapabilities.canInstallUpdate }
             if !library.usesPagedNavigation { library.enablePagedNavigation() }
+            navigation.loadHistory(cursor: initialHistoryCursor)
         }
+        .onDisappear { navigation.close() }
         .onChange(of: page) { _, value in
-            library.historySortOverride = value == .overview ? "recent" : nil
+            navigation.historySortOverride = value == .overview ? "recent" : nil
             selectedGroup = nil; groupCursors = [nil]
             if value == .alerts, let group = pendingOverviewGroup {
                 pendingOverviewGroup = nil; selectedGroup = group; groupCursors = [nil]
-                library.loadOccurrences(groupID: group.id)
+                navigation.loadOccurrences(groupID: group.id)
             } else { pendingOverviewGroup = nil; reload(value, usingCache: true) }
         }
         .onChange(of: views.state.activeScope) { _, _ in historyCursors = [nil]; groupCursors = [nil]; selectedGroup = nil; selectedHistoryLogs = [] }
         .onChange(of: advancedMode) { _, enabled in if !enabled && page == .events { page = .overview } }
-        .onChange(of: library.historyPage.map { "\($0.scopeHash):\($0.revision)" }) { _, _ in
-            if page == .map { library.loadMap(proximity: library.mapProximity) }
-            if page == .drones { library.loadAuxiliary(kind: "drones", search: registrySearch) }
+        .onChange(of: navigation.historyPage.map { "\($0.scopeHash):\($0.revision)" }) { _, _ in
+            if page == .map { navigation.loadMap(proximity: navigation.mapProximity) }
+            if page == .drones { navigation.loadAuxiliary(kind: "drones", search: registrySearch) }
         }
         .onChange(of: gcs.host) { _, host in diagnostics.endpointChanged(to: host) }
         .onChange(of: views.state.historySort) { _, _ in historyCursors = [nil]; groupCursors = [nil] }
-        .onChange(of: library.currentHistoryCursor) { _, cursor in if cursor == nil { historyCursors = [nil] } }
+        .onChange(of: navigation.currentHistoryCursor) { _, cursor in if cursor == nil { historyCursors = [nil] } }
         .onReceive(library.annotations.$state.dropFirst()) { _ in selectedGroup = nil; groupCursors = [nil] }
         .onChange(of: storage.currentOffset) { _, offset in if offset == 0 { storageOffsets = [0] } }
         .onChange(of: storage.errorMessage) { _, issue in
@@ -216,7 +229,7 @@ struct Workspace06View: View {
                         Text("Les nouveaux logs seront attribués à ce client. Les logs déjà connus conservent leur attribution.")
                             .font(.caption).foregroundStyle(palette.secondary)
                     }.padding(.horizontal, 24).padding(.top, 24).frame(width: 700, alignment: .leading)
-                    ImportOptions06(source: source, initialState: importOptions, canApply: { !mutationBusy && !library.isReadOnly }) { destination in
+                    ImportOptions06(source: source, initialState: importOptions, canApply: { commandCapabilities.canImport }) { destination in
                         if let destination { importOptions.archiveDirectory = destination.path; try ImportOptionsPersistence.save(importOptions, library: library) }
                         library.importFolder(source, archiveDestination: destination, clientID: importClientID)
                     }
@@ -224,7 +237,7 @@ struct Workspace06View: View {
             }
         }
         .sheet(isPresented: Binding(get: { maskGroup != nil }, set: { if !$0 { maskGroup = nil } }), onDismiss: { focusedControl = selectedGroup == nil ? .scope : .mask(masking) }) {
-            if let group = maskGroup { MaskImpact06(group: group, masked: masking, library: library, canApply: { !mutationBusy && !library.isReadOnly }) { selectedGroup = nil; library.loadHistory() } }
+            if let group = maskGroup { MaskImpact06(group: group, masked: masking, library: library, canApply: { commandCapabilities.canEditAnnotations }) { selectedGroup = nil; navigation.loadHistory() } }
         }
     }
     private var header: some View {
@@ -298,7 +311,7 @@ struct Workspace06View: View {
                 .disabled(library.isReadOnly || library.isMaintainingLibrary)
             Button("Importer", systemImage: "plus") { chooseImport() }
                 .buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true))
-                .disabled(mutationBusy || library.isReadOnly).focused($focusedControl, equals: .importFolder)
+                .disabled(!commandCapabilities.canImport).focused($focusedControl, equals: .importFolder)
                 .keyboardShortcut("o", modifiers: .command).help("Importer un dossier de logs")
         }.font(.system(size: 11)).foregroundStyle(palette.secondary)
             .padding(.horizontal, 28).frame(height: 64)
@@ -339,9 +352,9 @@ struct Workspace06View: View {
     @ViewBuilder private var notices: some View {
         if library.isReadOnly { notice("Une autre instance utilise la bibliothèque. Fermez-la puis relancez KataLog pour modifier les données.", symbol: "lock") }
         if let message = library.statusMessage { notice(message, symbol: "info.circle") }
-        if library.isQuerying || (page == .reports && reportPreview.isLoading) {
-            LibraryReadRecoveryNotice(requestID: library.isQuerying ? library.queryToken.uuidString : reportPreviewKey,
-                                      isCancelling: library.isCancellingQuery, palette: palette,
+        if navigation.isQuerying || (page == .reports && reportPreview.isLoading) {
+            LibraryReadRecoveryNotice(requestID: navigation.isQuerying ? navigation.queryToken.uuidString : reportPreviewKey,
+                                      isCancelling: navigation.isCancellingQuery, palette: palette,
                                       cancel: cancelLibraryReads)
         }
         if library.isImporting {
@@ -351,20 +364,20 @@ struct Workspace06View: View {
                 else { ProgressView("Préparation de l’analyse…") }
             }
         }
-        if let error = localError ?? library.errorMessage ?? library.queryError ?? views.errorMessage {
+        if let error = localError ?? library.errorMessage ?? navigation.queryError ?? views.errorMessage {
             notice(error, symbol: "exclamationmark.triangle")
         }
         if library.needsAnalysisRefresh {
-            panel { HStack { Text("Certaines analyses ont été calculées avec un ancien moteur.").font(.callout); Spacer(); Button("Actualiser les analyses") { library.refreshAnalysis() }.disabled(mutationBusy || library.isReadOnly) } }
+            panel { HStack { Text("Certaines analyses ont été calculées avec un ancien moteur.").font(.callout); Spacer(); Button("Actualiser les analyses") { library.refreshAnalysis() }.disabled(!commandCapabilities.canRefreshAnalysis) } }
         }
     }
     private var queryPlaceholder: some View {
         panel {
-            if library.isQuerying {
-                ProgressView(library.isCancellingQuery ? "Arrêt de la lecture…" : "Lecture de la sélection…").controlSize(.small)
+            if navigation.isQuerying {
+                ProgressView(navigation.isCancellingQuery ? "Arrêt de la lecture…" : "Lecture de la sélection…").controlSize(.small)
                 Text("Les résultats s’afficheront une fois la lecture terminée.").foregroundStyle(palette.secondary)
             } else {
-                Text(library.queryWasCancelled ? "Lecture annulée" : "Lecture indisponible").font(.system(size: 16, weight: .semibold))
+                Text(navigation.queryWasCancelled ? "Lecture annulée" : "Lecture indisponible").font(.system(size: 16, weight: .semibold))
                 Text("Les analyses sont conservées. Vous pouvez reprendre la lecture ou choisir le dossier source avec « Importer un dossier ».")
                     .foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
                 Button("Reprendre la lecture", systemImage: "arrow.clockwise") { reload(page) }.disabled(busy)
@@ -373,7 +386,7 @@ struct Workspace06View: View {
     }
     private func cancelLibraryReads() {
         if reportPreview.isLoading { reportPreviewWasCancelled = true; reportPreview.cancel() }
-        Task { await library.cancelQuery() }
+        Task { await navigation.cancelQuery() }
     }
     private var scopeBar: some View {
         ViewThatFits(in: .horizontal) {
@@ -393,7 +406,7 @@ struct Workspace06View: View {
             if !views.state.maskedMessageKeys.isEmpty { Text("\(views.state.maskedMessageKeys.count) règles de masquage").foregroundStyle(palette.secondary) }
         }
     }
-    private var priorityGroups: [LibraryGroup] { (library.groupPage?.groups ?? []).filter { $0.priority >= 4 } }
+    private var priorityGroups: [LibraryGroup] { (navigation.groupPage?.groups ?? []).filter { $0.priority >= 4 } }
     private var overview: some View {
         VStack(alignment: .leading, spacing: 18) {
             overviewMetrics
@@ -403,7 +416,7 @@ struct Workspace06View: View {
                     Text("Votre flotte commence ici.").font(.system(size: 23, weight: .semibold)).tracking(-0.6)
                     Text("Importez un dossier de logs ou récupérez-les depuis votre GCS. KataLog conserve les analyses et déduplique les copies identiques.").foregroundStyle(palette.secondary)
                     Button("Importer un dossier", systemImage: "folder.badge.plus") { chooseImport() }
-                        .buttonStyle(WorkspaceActionButtonStyle(palette: palette, prominent: true)).disabled(mutationBusy || library.isReadOnly)
+                        .buttonStyle(WorkspaceActionButtonStyle(palette: palette, prominent: true)).disabled(!commandCapabilities.canImport)
                 }
             } else {
                 ViewThatFits(in: .horizontal) {
@@ -520,12 +533,12 @@ struct Workspace06View: View {
                 Spacer()
                 Button("Tout voir", systemImage: "arrow.right") { page = .history }.buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true)).font(.system(size: 11)).foregroundStyle(palette.secondary)
             }
-            Text("Aperçu : \(quantity(min(6, library.snapshot.logs.count), "log")) sur \(totals?.logs ?? 0) dans la sélection")
+            Text("Aperçu : \(quantity(min(6, navigation.snapshot.logs.count), "log")) sur \(totals?.logs ?? 0) dans la sélection")
                 .font(.system(size: 10)).foregroundStyle(palette.secondary)
             Text("Durées enregistrées, temps au sol inclus").font(.system(size: 10)).foregroundStyle(palette.secondary)
             if !recentActivity.isEmpty { activityChart }
             ScrollView { LazyVStack(alignment: .leading, spacing: 14) {
-            ForEach(Array(library.snapshot.logs.prefix(6))) { log in
+            ForEach(Array(navigation.snapshot.logs.prefix(6))) { log in
                 Button { open(log) } label: {
                     HStack(alignment: .top, spacing: 9) {
                         Circle().fill(log.status == "error" ? palette.red : log.hasAlerts ? palette.amber : palette.muted).frame(width: 5, height: 5).padding(.top, 5)
@@ -546,7 +559,7 @@ struct Workspace06View: View {
     }
     private var recentActivity: [(day: String, count: Int)] {
         var counts: [String: Int] = [:]
-        for log in library.snapshot.logs {
+        for log in navigation.snapshot.logs {
             if let day = SelectionScope.calendarDay(log.date) { counts[day, default: 0] += 1 }
         }
         return counts.keys.sorted().suffix(14).map { ($0, counts[$0] ?? 0) }
@@ -591,12 +604,12 @@ struct Workspace06View: View {
                     HStack { historyHeading; Spacer(); historySort }
                     VStack(alignment: .leading, spacing: 10) { historyHeading; historySort }
                 }
-                if library.snapshot.logs.isEmpty {
+                if navigation.snapshot.logs.isEmpty {
                     empty("Aucun enregistrement dans cette sélection.", action: "Réinitialiser") { edit { try views.chooseScope(clientOnlyScope) } }
                 }
-                if !library.snapshot.logs.isEmpty { historyAssignmentActions }
+                if !navigation.snapshot.logs.isEmpty { historyAssignmentActions }
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(library.snapshot.logs) { log in
+                    ForEach(navigation.snapshot.logs) { log in
                         HStack(spacing: 12) {
                             Toggle("Choisir ce log", isOn: Binding(get: { selectedHistoryLogs.contains(log.id) }, set: {
                                 if $0 { selectedHistoryLogs.insert(log.id) } else { selectedHistoryLogs.remove(log.id) }
@@ -607,7 +620,7 @@ struct Workspace06View: View {
                         Divider()
                     }
                 }
-                pagination(cursors: $historyCursors, next: library.historyPage?.nextCursor) { library.loadHistory(cursor: $0) }
+                pagination(cursors: $historyCursors, next: navigation.historyPage?.nextCursor) { navigation.loadHistory(cursor: $0) }
                 DisclosureGroup("Couverture et états enregistrés") {
                     Text("\(totals?.flightLogCount ?? 0) / \(totals?.logs ?? 0) logs avec temps de vol mesuré · \(totals?.failsafeLogs ?? 0) logs avec état failsafe. " + (views.state.activeScope.hasMessageFilters ? "Les états failsafe ne sont pas inclus dans ce filtre de messages." : "Un état failsafe est distinct d’une alerte textuelle et ne confirme pas une panne."))
                         .font(.system(size: 11)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true).padding(.top, 8)
@@ -618,7 +631,7 @@ struct Workspace06View: View {
     private var historyHeading: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text("Enregistrements").font(.system(size: 16, weight: .semibold))
-            Text("\(totals?.logs ?? 0) résultats · \(library.snapshot.logs.count) sur cette page")
+            Text("\(totals?.logs ?? 0) résultats · \(navigation.snapshot.logs.count) sur cette page")
                 .font(.system(size: 11)).foregroundStyle(palette.secondary)
         }
     }
@@ -640,7 +653,7 @@ struct Workspace06View: View {
         .disabled(mutationBusy || library.isReadOnly || library.clients.isWorking)
     }
     @ViewBuilder private var assignmentButtons: some View {
-        Button("Choisir cette page") { selectedHistoryLogs.formUnion(library.snapshot.logs.map(\.id)) }
+        Button("Choisir cette page") { selectedHistoryLogs.formUnion(navigation.snapshot.logs.map(\.id)) }
         if !selectedHistoryLogs.isEmpty {
             Button("Désélectionner") { selectedHistoryLogs = [] }
             Text("\(selectedHistoryLogs.count) logs choisis").font(.caption).foregroundStyle(palette.secondary)
@@ -759,10 +772,10 @@ struct Workspace06View: View {
     private var alertGroups: some View {
         panel {
             HStack { Text("Messages regroupés").font(.system(size: 16, weight: .semibold)); LibraryHelpButton(title: "Alertes enregistrées", text: LibraryHelp.alerts); Spacer() }
-            Text("\(quantity(library.groupPage?.total ?? 0, "groupe")) · tous niveaux disponibles").font(.system(size: 11)).foregroundStyle(palette.secondary)
-            if library.groupPage?.groups.isEmpty != false { Text("Aucun message dans cette sélection. Modifiez les filtres ou consultez les événements PX4.").foregroundStyle(palette.secondary).padding(.vertical, 12) }
-            ForEach(library.groupPage?.groups ?? []) { group in
-                Button { selectedGroup = group; groupCursors = [nil]; library.loadOccurrences(groupID: group.id) } label: {
+            Text("\(quantity(navigation.groupPage?.total ?? 0, "groupe")) · tous niveaux disponibles").font(.system(size: 11)).foregroundStyle(palette.secondary)
+            if navigation.groupPage?.groups.isEmpty != false { Text("Aucun message dans cette sélection. Modifiez les filtres ou consultez les événements PX4.").foregroundStyle(palette.secondary).padding(.vertical, 12) }
+            ForEach(navigation.groupPage?.groups ?? []) { group in
+                Button { selectedGroup = group; groupCursors = [nil]; navigation.loadOccurrences(groupID: group.id) } label: {
                     HStack(alignment: .top, spacing: 10) {
                         Circle().fill(groupColor(group)).frame(width: 6, height: 6).padding(.top, 5)
                         VStack(alignment: .leading, spacing: 6) {
@@ -778,8 +791,8 @@ struct Workspace06View: View {
                 }.buttonStyle(.plain).disabled(busy).accessibilityAddTraits(selectedGroup?.id == group.id ? .isSelected : [])
                 Divider()
             }
-            if selectedGroup == nil { pagination(cursors: $groupCursors, next: library.groupPage?.nextCursor) { library.loadAuxiliary(kind: "groups", cursor: $0) } }
-            else { Button("Tous les groupes") { selectedGroup = nil; groupCursors = [nil]; library.loadHistory() } }
+            if selectedGroup == nil { pagination(cursors: $groupCursors, next: navigation.groupPage?.nextCursor) { navigation.loadAuxiliary(kind: "groups", cursor: $0) } }
+            else { Button("Tous les groupes") { selectedGroup = nil; groupCursors = [nil]; navigation.loadHistory() } }
         }
     }
     private func groupColor(_ group: LibraryGroup) -> Color { group.priority >= 5 ? palette.red : group.priority >= 4 ? palette.amber : palette.muted }
@@ -788,8 +801,8 @@ struct Workspace06View: View {
             if let group = selectedGroup {
                 HStack { BentoStatus(label: group.level, color: groupColor(group)); Spacer(); Text(group.family).font(.system(size: 10)).foregroundStyle(palette.secondary) }
                 Text(group.title).font(.system(size: 19, weight: .semibold)).tracking(-0.5).textSelection(.enabled)
-                Text("\(quantity(group.logCount, "log")) · \(quantity(group.droneCount, "drone")) · \(quantity(library.occurrencePage?.total ?? group.messageCount, "occurrence"))").font(.system(size: 11)).foregroundStyle(palette.secondary)
-                if let first = library.occurrencePage?.occurrences.first { AlertExplanationView(message: first.message) }
+                Text("\(quantity(group.logCount, "log")) · \(quantity(group.droneCount, "drone")) · \(quantity(navigation.occurrencePage?.total ?? group.messageCount, "occurrence"))").font(.system(size: 11)).foregroundStyle(palette.secondary)
+                if let first = navigation.occurrencePage?.occurrences.first { AlertExplanationView(message: first.message) }
                 ViewThatFits(in: .horizontal) {
                     HStack { maskActions(group) }
                     VStack(alignment: .leading, spacing: 9) { maskActions(group) }
@@ -798,7 +811,7 @@ struct Workspace06View: View {
                 Text("Messages d’origine").font(.system(size: 13, weight: .semibold))
                 ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
-                ForEach(library.occurrencePage?.occurrences ?? []) { item in
+                ForEach(navigation.occurrencePage?.occurrences ?? []) { item in
                     VStack(alignment: .leading, spacing: 9) {
                         Text(item.message.text).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                         Text(occurrenceLabel(item)).font(.system(size: 10)).foregroundStyle(palette.secondary)
@@ -806,14 +819,14 @@ struct Workspace06View: View {
                             MessageClassificationControl(message: item.message, store: library.annotations, families: Array(totals?.familyLogCounts.keys ?? Dictionary<String, Int>().keys)).padding(.top, 8)
                         }.font(.system(size: 10))
                         Button("Voir le log", systemImage: "arrow.up.right") {
-                            library.openMapFlight(logID: item.logID)
-                        }.buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true)).disabled(library.isLoadingFlight)
+                            navigation.openMapFlight(logID: item.logID)
+                        }.buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true)).disabled(navigation.isLoadingFlight)
                     }.padding(.vertical, 5)
                     Divider()
                 }
                 }
                 }.frame(maxHeight: 420)
-                pagination(cursors: $groupCursors, next: library.occurrencePage?.nextCursor) { library.loadOccurrences(groupID: group.id, cursor: $0) }
+                pagination(cursors: $groupCursors, next: navigation.occurrencePage?.nextCursor) { navigation.loadOccurrences(groupID: group.id, cursor: $0) }
             } else {
                 BentoIcon(symbol: "text.book.closed", size: 23).foregroundStyle(palette.secondary)
                 Text("Comprendre un message").font(.system(size: 19, weight: .semibold)).tracking(-0.5)
@@ -834,11 +847,11 @@ struct Workspace06View: View {
     }
     private var map: some View {
         VStack(alignment: .leading, spacing: 14) {
-            FleetMapView(markers: library.mapPage?.markers ?? [], showsHeading: false,
-                proximity: library.mapProximity, scopeID: library.mapPage?.scopeHash ?? "", presentation: fleetMapPresentation,
-                totalCount: library.mapPage?.totalLogs, locatedCount: library.mapPage?.locatedLogs,
-                proximityUnavailableLogs: library.mapPage?.proximityUnavailableLogs, isSearching: library.isQuerying,
-                onProximityChange: { library.loadMap(proximity: $0) }, onSelectLog: { library.openMapFlight(logID: $0) })
+            FleetMapView(markers: navigation.mapPage?.markers ?? [], showsHeading: false,
+                proximity: navigation.mapProximity, scopeID: navigation.mapPage?.scopeHash ?? "", presentation: fleetMapPresentation,
+                totalCount: navigation.mapPage?.totalLogs, locatedCount: navigation.mapPage?.locatedLogs,
+                proximityUnavailableLogs: navigation.mapPage?.proximityUnavailableLogs, isSearching: navigation.isQuerying,
+                onProximityChange: { navigation.loadMap(proximity: $0) }, onSelectLog: { navigation.openMapFlight(logID: $0) })
             Text("Tous les lieux de la sélection sont représentés. Ouvrez un log pour consulter sa trajectoire détaillée.")
                 .font(.system(size: 10)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
         }
@@ -850,14 +863,14 @@ struct Workspace06View: View {
                     HStack { registryHeading; Spacer(); registrySearchControls }
                     VStack(alignment: .leading, spacing: 12) { registryHeading; registrySearchControls }
                 }
-                ForEach(library.dronePage?.drones ?? []) { drone in
+                ForEach(navigation.dronePage?.drones ?? []) { drone in
                     registryRow(drone)
                     Divider()
                 }
-                if library.dronePage?.drones.isEmpty != false {
+                if navigation.dronePage?.drones.isEmpty != false {
                     Text(registrySearch.isEmpty ? "Aucune identité enregistrée. Importez des logs ou collectez les drones de votre GCS." : "Aucun résultat pour cette recherche.").foregroundStyle(palette.secondary).padding(.vertical, 16)
                 }
-                pagination(cursors: $registryCursors, next: library.dronePage?.nextCursor) { library.loadAuxiliary(kind: "drones", cursor: $0, search: registrySearch) }
+                pagination(cursors: $registryCursors, next: navigation.dronePage?.nextCursor) { navigation.loadAuxiliary(kind: "drones", cursor: $0, search: registrySearch) }
             }
             Text("Le registre reste global. Les numéros de stock sont vos repères ; ils ne fusionnent pas les identités techniques des contrôleurs.")
                 .font(.system(size: 10)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
@@ -865,7 +878,7 @@ struct Workspace06View: View {
     }
     private var registryHeading: some View {
         HStack(spacing: 8) {
-            Text("\(library.dronePage?.total ?? 0) drones enregistrés").font(.system(size: 16, weight: .semibold))
+            Text("\(navigation.dronePage?.total ?? 0) drones enregistrés").font(.system(size: 16, weight: .semibold))
             LibraryHelpButton(title: "Registre des drones", text: LibraryHelp.drones)
         }
     }
@@ -877,7 +890,7 @@ struct Workspace06View: View {
                 .accessibilityLabel("Rechercher un drone").disabled(busy)
         }
     }
-    private func searchRegistry() { registryCursors = [nil]; library.loadAuxiliary(kind: "drones", search: registrySearch) }
+    private func searchRegistry() { registryCursors = [nil]; navigation.loadAuxiliary(kind: "drones", search: registrySearch) }
     private func registryRow(_ drone: LibraryDrone) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             ViewThatFits(in: .horizontal) {
@@ -1277,7 +1290,7 @@ struct Workspace06View: View {
             Divider()
             Button("Générer le rapport…", systemImage: "doc.badge.plus") { exportReport() }
                 .buttonStyle(WorkspaceActionButtonStyle(palette: palette, prominent: true))
-                .disabled(library.isExporting || mutationBusy || library.isReadOnly || reportPreview.isLoading || (reportPreview.preview?.totals.logs ?? 0) == 0)
+                .disabled(!commandCapabilities.canPrepareReport || reportPreview.isLoading || (reportPreview.preview?.totals.logs ?? 0) == 0)
                 .accessibilityIdentifier("reports.generate")
             if library.isExporting { Button("Arrêter", systemImage: "stop") { library.cancelExport() } }
         }
@@ -1484,7 +1497,7 @@ struct Workspace06View: View {
             Text("Clients, identifications et réglages conservés. Vos fichiers .ulg restent sur le disque.")
                 .font(.caption).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
             Button("Vider la bibliothèque…", systemImage: "trash", role: .destructive) { confirmingClear = true }
-                .disabled(mutationBusy || library.isReadOnly || library.isExporting)
+                .disabled(!commandCapabilities.canResetLibrary)
                 .accessibilityIdentifier("storage.clearLibrary")
         }
     }
@@ -1496,19 +1509,24 @@ struct Workspace06View: View {
             Text("Tous les clients sont concernés. Vos fichiers .ulg restent sur le disque.")
                 .font(.caption).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
             Button("Réinitialiser l’application…", systemImage: "arrow.counterclockwise", role: .destructive) { confirmingReset = true }
-                .disabled(mutationBusy || library.isReadOnly || library.isExporting)
+                .disabled(!commandCapabilities.canResetLibrary)
                 .accessibilityIdentifier("settings.resetApplication")
         }
     }
     private func clearLibrary(reset: Bool) {
-        guard !mutationBusy, !library.isReadOnly, !library.isExporting else { return }
+        guard commandCapabilities.canResetLibrary else { return }
         maintenanceTask = Task {
+            let previousReset = library.resetGeneration
             do {
-                if reset { try await library.resetApplication(); updates.setAutomaticallyChecksForUpdates(false) }
+                if reset { try await library.resetApplication() }
                 else { try await library.clearLibrary() }
-                selectedHistoryLogs = []; selectedStorageLogs = []; storageOffsets = [0]
-                storage.load(); sourcesSummary.load(); localError = nil
+                localError = nil
             } catch { localError = error.localizedDescription }
+            if library.resetGeneration != previousReset {
+                if reset { updates.setAutomaticallyChecksForUpdates(false) }
+                selectedHistoryLogs = []; selectedStorageLogs = []; storageOffsets = [0]
+                storage.load(); sourcesSummary.load()
+            }
             maintenanceTask = nil
         }
     }
@@ -1517,7 +1535,7 @@ struct Workspace06View: View {
             Text("Restaurer cette sauvegarde ?").font(.title2)
             Text("L’archive a été vérifiée. L’état actuel sera conservé dans un dossier de récupération. Les jobs de collecte actifs restaurés seront interrompus ; aucune collecte ne redémarrera automatiquement.").font(.callout).foregroundStyle(.secondary)
             ScrollView { VStack(alignment: .leading, spacing: 12) { Text("\(restorePreview?["logCount"]?.countValue ?? 0) logs · \(restorePreview?["fileCount"]?.countValue ?? 0) fichiers").font(.headline); Text("\(restorePreview?["missingSourceCount"]?.countValue ?? 0) sources absentes de la sauvegarde"); Text("Taille décompressée : " + bytes(Int64(restorePreview?["uncompressedBytes"]?.countValue ?? 0))); Text("Date : " + (restorePreview?["createdAt"]?.stringValue ?? "inconnue")) }.frame(maxWidth: .infinity, alignment: .leading) }
-            HStack { Button("Annuler") { restorePreview = nil; restoreCandidate = nil }.keyboardShortcut(.cancelAction); Spacer(); Button("Restaurer") { guard let candidate = restoreCandidate else { return }; restorePreview = nil; maintenanceTask = Task { do { _ = try await library.restore(from: candidate); storage.load() } catch { localError = error.localizedDescription }; maintenanceTask = nil } }.disabled(mutationBusy || library.isReadOnly).keyboardShortcut(.defaultAction) }
+            HStack { Button("Annuler") { restorePreview = nil; restoreCandidate = nil }.keyboardShortcut(.cancelAction); Spacer(); Button("Restaurer") { guard let candidate = restoreCandidate else { return }; restorePreview = nil; maintenanceTask = Task { do { _ = try await library.restore(from: candidate); storage.load() } catch { localError = error.localizedDescription }; maintenanceTask = nil } }.disabled(!commandCapabilities.canRestoreLibrary).keyboardShortcut(.defaultAction) }
         }.padding(26).frame(width: 620, height: 500)
     }
     private func panel<Content: View>(height: CGFloat? = nil, @ViewBuilder content: () -> Content) -> some View {
@@ -1553,12 +1571,12 @@ struct Workspace06View: View {
     private func reload(_ value: Page, usingCache: Bool = false) {
         if !usingCache { library.invalidateNavigationCache() }
         switch value {
-        case .drones: library.loadAuxiliary(kind: "drones", search: registrySearch, usingCache: usingCache)
-        case .map: library.loadAuxiliary(kind: "map", usingCache: usingCache)
+        case .drones: navigation.loadAuxiliary(kind: "drones", search: registrySearch, usingCache: usingCache)
+        case .map: navigation.loadAuxiliary(kind: "map", usingCache: usingCache)
         case .storage: storage.load()
         case .reports: if !usingCache { refreshReportPreview() }
         case .collection, .settings: break
-        default: library.loadHistory(usingCache: usingCache)
+        default: navigation.loadHistory(usingCache: usingCache)
         }
     }
     private func date(_ value: String) -> String { SelectionScope.calendarDay(value) ?? "Date inconnue" }
@@ -1649,77 +1667,4 @@ enum RegistryObservationFormat {
         default: "état indéterminé"
         }
     }
-}
-
-enum AlertProfile06 {
-    enum ChartKind: Equatable { case empty, bars, radar }
-    static func chartKind(axisCount: Int) -> ChartKind { axisCount == 0 ? .empty : axisCount < 3 ? .bars : .radar }
-    /// Presentation zoom only. Raw counts and the number of readable logs stay unchanged.
-    static func displayMaximum(counts: [String: Int], denominator: Int) -> Int {
-        guard denominator > 0 else { return 1 }
-        let peak = max(0, counts.values.max() ?? 0)
-        guard peak > 0 else { return 1 }
-        let remainder = peak % 4
-        guard remainder > 0, peak <= Int.max - (4 - remainder) else { return peak }
-        return peak + 4 - remainder
-    }
-    static func moving(_ family: String, in axes: [String], by offset: Int) -> [String] {
-        guard let index = axes.firstIndex(of: family), axes.indices.contains(index + offset) else { return axes }
-        var result = axes; result.swapAt(index, index + offset); return result
-    }
-    static func families(counts: [String: Int], selectedAxes: [String]) -> [String] {
-        Array(Set(counts.keys).union(selectedAxes)).sorted {
-            let lhs = counts[$0] ?? 0, rhs = counts[$1] ?? 0
-            return lhs == rhs ? $0 < $1 : lhs > rhs
-        }
-    }
-}
-
-struct AlertProfileChart06: View {
-    let axes: [String]; let counts: [String: Int]; let denominator: Int
-    @Environment(\.colorScheme) private var scheme
-    private var palette: Palette { Palette(dark: scheme == .dark) }
-    var body: some View {
-        switch AlertProfile06.chartKind(axisCount: axes.count) {
-        case .empty:
-            Text("Aucun axe sélectionné. Choisissez des familles pour afficher leur fréquence.")
-                .font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        case .bars:
-            VStack(alignment: .leading, spacing: 14) {
-                ForEach(axes, id: \.self) { family in
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack { Text(family).font(.caption); Spacer(); Text("\(counts[family] ?? 0) / \(denominator)").font(.caption).monospacedDigit() }
-                        GeometryReader { geometry in
-                            let fraction = denominator > 0 ? min(1, max(0, Double(max(0, counts[family] ?? 0)) / Double(AlertProfile06.displayMaximum(counts: counts, denominator: denominator)))) : 0
-                            ZStack(alignment: .leading) {
-                                Capsule().fill(palette.border)
-                                Capsule().fill(palette.mint.opacity(0.8)).frame(width: geometry.size.width * fraction)
-                            }
-                        }.frame(height: 8)
-                    }
-                }
-            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        case .radar: ProfileRadar06(axes: axes, counts: counts, denominator: denominator)
-        }
-    }
-}
-
-private struct ProfileRadar06: View {
-    let axes: [String]; let counts: [String: Int]; let denominator: Int
-    @Environment(\.colorScheme) private var scheme
-    private var palette: Palette { Palette(dark: scheme == .dark) }
-    var body: some View {
-        GeometryReader { geometry in
-            let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
-            let layoutRadius: CGFloat = min(geometry.size.width / 3, geometry.size.height / 2.6)
-            let radius: Double = Double(layoutRadius)
-            let count = axes.count
-            ZStack {
-                ForEach(1...4, id: \.self) { ring in Path { path in for index in 0..<count { let p = point(index, count, center, radius * Double(ring) / 4); if index == 0 { path.move(to: p) } else { path.addLine(to: p) } }; path.closeSubpath() }.stroke(palette.border, lineWidth: 1) }
-                Path { path in for (index, axis) in axes.enumerated() { let fraction = denominator > 0 ? min(1, Double(max(0, counts[axis] ?? 0)) / Double(AlertProfile06.displayMaximum(counts: counts, denominator: denominator))) : 0; let p = point(index, count, center, radius * fraction); if index == 0 { path.move(to: p) } else { path.addLine(to: p) } }; path.closeSubpath() }.fill(palette.mint.opacity(0.15)).overlay(Path { path in for (index, axis) in axes.enumerated() { let p = point(index, count, center, radius * (denominator > 0 ? min(1, Double(max(0, counts[axis] ?? 0)) / Double(AlertProfile06.displayMaximum(counts: counts, denominator: denominator))) : 0)); if index == 0 { path.move(to: p) } else { path.addLine(to: p) } }; path.closeSubpath() }.stroke(palette.mint, lineWidth: 1.5))
-                ForEach(Array(axes.enumerated()), id: \.element) { index, axis in Text(axis).font(.system(size: 9)).foregroundStyle(palette.secondary).frame(width: 100).position(point(index, count, center, radius + 25)) }
-            }
-        }
-    }
-    private func point(_ index: Int, _ count: Int, _ center: CGPoint, _ radius: Double) -> CGPoint { let angle = Double(index) * .pi * 2 / Double(count) - .pi / 2; return CGPoint(x: center.x + cos(angle) * radius, y: center.y + sin(angle) * radius) }
 }

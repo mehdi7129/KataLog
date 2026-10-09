@@ -24,6 +24,10 @@ kind=request.get('kind','logs') if command=='query' else command
 block_kind='map' if kind=='map-overview' else kind
 if command=='query':
     with (root/'query-calls').open('a') as stream: stream.write(kind+'\n')
+    if '--proximity-cache' in sys.argv:
+        cache=pathlib.Path(sys.argv[sys.argv.index('--proximity-cache')+1])
+        cache.write_text('synthetic cache')
+        (root/'last-map-cache').write_text(str(cache))
 if command=='clients':
     with (root/'client-calls').open('a') as stream: stream.write('clients\n')
 if (root/('block-'+block_kind)).exists():
@@ -126,6 +130,75 @@ pathlib.Path(sys.argv[sys.argv.index('--output')+1]).write_text(json.dumps(resul
         XCTAssertEqual(store.historyPage?.totals.logs, 3); XCTAssertNil(store.queryError)
     }
 
+    func testCancellingOneWindowDoesNotCancelAnotherWindowsIndexPreparation() async throws {
+        let (root, store) = try blockedQueryFixture(kind: "ensure-index")
+        let pid = try await activePID(root, kind: "ensure-index")
+        let other = store.makeNavigationSession()
+        other.loadHistory()
+        XCTAssertTrue(other.isQuerying)
+        let cancellation = Task { await store.cancelQuery() }
+        try await waitUntil { store.isCancellingQuery }
+        XCTAssertEqual(kill(pid, 0), 0, "Another reader still needs the shared index writer.")
+        XCTAssertTrue(store.isMaintainingLibrary)
+        try FileManager.default.removeItem(at: root.appendingPathComponent("block-ensure-index"))
+        await cancellation.value
+        try await waitUntil { !other.isQuerying }
+        XCTAssertTrue(store.queryWasCancelled)
+        XCTAssertNil(store.historyPage)
+        XCTAssertEqual(other.historyPage?.totals.logs, 3)
+        XCTAssertNil(other.queryError)
+        XCTAssertFalse(store.isMaintainingLibrary)
+    }
+
+    func testCancellingEveryWindowDrainsSharedIndexPreparation() async throws {
+        let (root, store) = try blockedQueryFixture(kind: "ensure-index")
+        let pid = try await activePID(root, kind: "ensure-index")
+        let other = store.makeNavigationSession()
+        other.loadHistory()
+        let firstCancellation = Task { await store.cancelQuery() }
+        let secondCancellation = Task { await other.cancelQuery() }
+        await firstCancellation.value; await secondCancellation.value
+        XCTAssertEqual(kill(pid, 0), -1); XCTAssertEqual(errno, ESRCH)
+        XCTAssertFalse(store.hasActiveWork)
+        XCTAssertTrue(store.queryWasCancelled); XCTAssertTrue(other.queryWasCancelled)
+        XCTAssertFalse(store.isMaintainingLibrary)
+    }
+
+    func testClosingNavigationSessionDrainsItsReaderBeforeMaintenance() async throws {
+        let (root, store) = try blockedQueryFixture(kind: "drones")
+        try await waitUntil { !store.isQuerying }
+        let other = store.makeNavigationSession()
+        other.loadAuxiliary(kind: "drones")
+        let pid = try await activePID(root, kind: "drones")
+        other.close()
+        XCTAssertTrue(store.isQuerying)
+        do { _ = try await store.performMaintenance { true }; XCTFail("Reader has not reaped.") } catch { }
+        try await waitUntil { !store.isQuerying }
+        XCTAssertEqual(kill(pid, 0), -1); XCTAssertEqual(errno, ESRCH)
+        let result = try await store.performMaintenance { true }
+        XCTAssertTrue(result)
+        XCTAssertEqual(store.historyPage?.totals.logs, 3)
+    }
+
+    func testSharedFilterChangeDuringAnotherWindowsCancellationReloadsAfterReaping() async throws {
+        let (root, store) = try blockedQueryFixture(kind: "drones")
+        try await waitUntil { !store.isQuerying }
+        let other = store.makeNavigationSession()
+        other.loadHistory(); try await waitUntil { !other.isQuerying }
+        other.loadAuxiliary(kind: "drones")
+        _ = try await activePID(root, kind: "drones")
+        let cancellation = Task { await other.cancelQuery() }
+        try await waitUntil { other.isCancellingQuery }
+        var scope = SelectionScope(); scope.logSearch = "new shared filter"
+        try store.views.chooseScope(scope)
+        await cancellation.value
+        try await waitUntil { !store.isQuerying }
+        XCTAssertTrue(other.historyResultsCurrent)
+        XCTAssertFalse(other.queryWasCancelled, "A new shared filter must replace the cancelled query after its helper drains.")
+        XCTAssertNil(other.queryError)
+        XCTAssertEqual(callCount(root, "logs"), 4, "Both readers reload the new scope once.")
+    }
+
     func testReloadUsesCommittedDatabaseInsteadOfStaleJSONAfterInterruptedImport() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("katalog-db-reload-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -162,6 +235,25 @@ pathlib.Path(sys.argv[sys.argv.index('--output')+1]).write_text(json.dumps(resul
         XCTAssertEqual(store.mapPage?.revision, 7)
         XCTAssertEqual(callCount(root, "map-overview"), 1)
         XCTAssertEqual(callCount(root, "logs"), 0)
+    }
+
+    func testMapSelectionCacheIsRemovedAfterCompletionAndCancellation() async throws {
+        let (root, store) = try blockedQueryFixture(kind: "map")
+        let area = GeographicProximity(latitude: 45, longitude: 4, radiusMeters: 100)
+        store.loadMap(proximity: area)
+        _ = try await activePID(root, kind: "map")
+        let cancelledCache = URL(fileURLWithPath: try String(contentsOf: root.appendingPathComponent("last-map-cache"), encoding: .utf8))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cancelledCache.path))
+        await store.cancelQuery()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cancelledCache.deletingLastPathComponent().path))
+        try FileManager.default.removeItem(at: root.appendingPathComponent("block-map"))
+        store.loadMap(proximity: area)
+        try await waitUntil { !store.isQuerying }
+        XCTAssertNil(store.queryError)
+        let completedCache = URL(fileURLWithPath: try String(contentsOf: root.appendingPathComponent("last-map-cache"), encoding: .utf8))
+        XCTAssertNotEqual(completedCache, cancelledCache)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: completedCache.deletingLastPathComponent().path))
+        XCTAssertEqual(store.mapPage?.revision, 7)
     }
 
     private func callCount(_ root: URL, _ kind: String? = nil) -> Int {
@@ -263,6 +355,49 @@ pathlib.Path(sys.argv[sys.argv.index('--output')+1]).write_text(json.dumps(resul
         store.loadHistory(usingCache: true)
         try await waitUntil { !store.isQuerying && !store.clients.isLoading }
         XCTAssertEqual(store.clients.profiles.map(\.name), ["Synthetic client"])
+    }
+
+    func testMaintenanceGateCoversAwaitedStorageDrainAndItsFailure() async throws {
+        let (root, store) = try blockedQueryFixture()
+        try FileManager.default.removeItem(at: root.appendingPathComponent("block-logs"))
+        try await waitUntil { !store.isQuerying && !store.clients.isLoading }
+        for fails in [false, true] {
+            var release: CheckedContinuation<Void, Never>?
+            defer { release?.resume() }
+            var operationEntered = false
+            store.willMaintainLibrary = {
+                await withCheckedContinuation { release = $0 }
+                if fails { throw AnalysisError.engine("Synthetic durable drain failure") }
+            }
+            let maintenance = Task {
+                try await store.performMaintenance { operationEntered = true }
+            }
+            try await waitUntil { release != nil }
+            XCTAssertTrue(store.isMaintainingLibrary, "Raise the gate before awaiting collection persistence.")
+            XCTAssertFalse(operationEntered)
+            var concurrentOperationEntered = false
+            do {
+                try await store.performMaintenance { concurrentOperationEntered = true }
+                XCTFail("A second operation cannot enter during the storage drain.")
+            } catch {}
+            XCTAssertFalse(concurrentOperationEntered)
+            let calls = clientCallCount(root)
+            store.clients.reload()
+            XCTAssertFalse(store.clients.isLoading)
+            XCTAssertEqual(clientCallCount(root), calls)
+            let continuation = try XCTUnwrap(release)
+            release = nil
+            continuation.resume()
+            do {
+                try await maintenance.value
+                XCTAssertFalse(fails)
+            } catch {
+                XCTAssertTrue(fails)
+                XCTAssertTrue(error.localizedDescription.contains("Synthetic durable drain failure"))
+            }
+            XCTAssertEqual(operationEntered, !fails)
+            XCTAssertFalse(store.isMaintainingLibrary, "A failed drain must also release the gate.")
+        }
     }
 
     func testFirstIndexCreationRecoversClientReadWithoutExistingDatabase() async throws {

@@ -18,6 +18,27 @@ final class GCSQueueRepositoryTests: XCTestCase {
         return item
     }
 
+    func testClientReconciliationCoversHistoryIsIdempotentAndRefusesReaders() throws {
+        let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("queue.sqlite")
+        let repository = try GCSQueueRepository(url: url)
+        let jobs = (0..<700).map { index in
+            var item = job(index); item.clientID = index % 2 == 0 ? "deleted" : "retained"; return item
+        }
+        try repository.saveTransfers(jobs)
+        let reader = try GCSQueueRepository(url: url, readOnly: true)
+        XCTAssertThrowsError(try reader.reconcileClientAttributions(validIDs: ["retained"]))
+        XCTAssertEqual(try reader.transfer(id: jobs[0].id)?.clientID, "deleted")
+        for _ in 0..<2 { try repository.reconcileClientAttributions(validIDs: ["retained"]) }
+        for item in jobs {
+            XCTAssertEqual(try reader.transfer(id: item.id)?.clientID, item.clientID == "deleted" ? nil : "retained")
+        }
+        XCTAssertEqual(try reader.transferCount(), 700)
+        let manyClients = Set((0..<40_000).map { "valid-\($0)" }).union(["retained"])
+        try repository.reconcileClientAttributions(validIDs: manyClients)
+        XCTAssertEqual(try reader.transfer(id: jobs[1].id)?.clientID, "retained")
+    }
+
     func testUpsertsOnlyChangedTransfersAndPersistsPhaseAcrossReopening() throws {
         let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("queue.sqlite")
@@ -111,6 +132,71 @@ final class GCSQueueRepositoryTests: XCTestCase {
         assertProgressEqual(try repository.batchProgress(id: "huge"), GCSBatchProgress(transfers: [hugeA, hugeB]))
     }
 
+    func testEveryStateAndPhaseKeepsItsCategoriesAndProgressInSQLiteAndJSON() throws {
+        let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("queue.sqlite")
+        let repository = try GCSQueueRepository(url: url)
+        let states = [
+            ("queued", "pending"), ("retrying", "pending"),
+            ("downloading", "active"), ("importing", "active"),
+            ("downloaded", "success"), ("complete", "success"),
+            ("failed", "failed"), ("interrupted", "failed"), ("stopped", "stopped"),
+            ("future' OR 1=1;--", "unknown"), ("", "unknown")
+        ]
+        let phases: [(String?, Double)] = [
+            (nil, 0.4), ("drone", 0.15), ("http", 0.7), ("verification", 0.4),
+            ("verified", 0.4), ("import", 0.4), ("future-phase", 0.4), ("", 0.4)
+        ]
+        XCTAssertEqual(Set(GCSTransferState.allCases.map(\.rawValue)), Set(states.filter { $0.1 != "unknown" }.map(\.0)))
+        XCTAssertEqual(Set(GCSTransferPhase.allCases.map(\.rawValue)), ["drone", "http", "verification", "verified", "import"])
+        var items: [GCSTransfer] = []
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        for (state, category) in states {
+            for (phase, partialWork) in phases {
+                var item = job(items.count, state: state, batch: "case-\(items.count)")
+                item.phase = phase; item.phaseBytes = 30; item.phaseTotal = 100; item.completedBytes = 40
+                let memory = GCSBatchProgress(transfers: [item])
+                XCTAssertEqual(item.isPending, category == "pending")
+                XCTAssertEqual(item.isActive, category == "active")
+                XCTAssertEqual(item.isSuccessful, category == "success")
+                XCTAssertEqual(item.isRetryable, ["failed", "interrupted", "stopped"].contains(state))
+                XCTAssertEqual(memory.completedCount, category == "success" ? 1 : 0)
+                XCTAssertEqual(memory.failedCount, category == "failed" ? 1 : 0)
+                XCTAssertEqual(memory.stoppedCount, category == "stopped" ? 1 : 0)
+                let expectedWork = category == "success" ? 1 : (category == "pending" ? 0 : partialWork)
+                XCTAssertEqual(memory.fraction, expectedWork, accuracy: 0.000001)
+                items.append(item)
+            }
+        }
+        try repository.saveTransfers(items)
+        let reopened = try GCSQueueRepository(url: url, readOnly: true)
+        for item in items {
+            assertProgressEqual(try reopened.batchProgress(id: try XCTUnwrap(item.batchID)), GCSBatchProgress(transfers: [item]))
+            let restored = try XCTUnwrap(reopened.transfer(id: item.id))
+            XCTAssertEqual(try encoder.encode(restored), try encoder.encode(item), "Raw states/phases, including unknown values, must round-trip without normalization.")
+        }
+        let retryable = items.filter { ["failed", "interrupted", "stopped"].contains($0.state) }
+        XCTAssertEqual(try reopened.retryableTransfers().map(\.id), retryable.map(\.id))
+        XCTAssertEqual(try reopened.retryableCount(authorizedUUIDs: Set(items.map(\.droneUUID))), retryable.count)
+        XCTAssertEqual(try reopened.retainedTransfers(terminalLimit: 0).map(\.id), items.filter { $0.isPending || $0.isActive }.map(\.id))
+    }
+
+    func testUnknownLegacyStringsAndMissingPhasePreserveExactJSONFields() throws {
+        for phase in [nil, "future-transport"] as [String?] {
+            var fields: [String: Any] = [
+                "id": "legacy", "droneUUID": "0102030405060708090A0B0C", "remotePath": "/legacy.ulg",
+                "size": 100, "host": "gcs.local", "destination": "/tmp/collection",
+                "completedBytes": 40, "state": "future-state"
+            ]
+            if let phase { fields["phase"] = phase }
+            var item = try JSONDecoder().decode(GCSTransfer.self, from: JSONSerialization.data(withJSONObject: fields))
+            item.recoverAfterRelaunch()
+            let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(item)) as? NSDictionary)
+            XCTAssertEqual(encoded, fields as NSDictionary)
+            XCTAssertEqual(item.workFraction, 0.4)
+        }
+    }
+
     func testSuccessfulAndQueuedHistoryAggregateDoesNotReadTheirPayloadsOrMigrateSchema() throws {
         let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("queue.sqlite")
@@ -180,6 +266,31 @@ final class GCSQueueRepositoryTests: XCTestCase {
         XCTAssertEqual(progress.completedCount, 1_198)
         var dirty = items[0]; dirty.receiveProgress(phase: "http", bytes: 40, total: 100)
         XCTAssertEqual(try repository.batchProgress(id: "batch", overlay: [dirty]).completedBytes, progress.completedBytes + 40)
+    }
+
+    func testGroupedCountsApplyLatestOverlayToProgressRetryAndFullHistory() throws {
+        let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
+        let repository = try GCSQueueRepository(url: root.appendingPathComponent("queue.sqlite"))
+        let failed = job(1, state: "failed"), complete = job(2)
+        _ = try repository.saveTransfers([failed, complete])
+        var retried = failed; retried.state = "queued"; retried.batchID = "new-batch"
+        var newFailure = job(3, state: "failed", batch: "new-batch")
+        let unauthorized = job(4, state: "stopped", batch: "new-batch")
+        let allowed: Set<String> = [failed.droneUUID, newFailure.droneUUID]
+        var snapshot = try repository.counts(batchID: "new-batch", authorizedUUIDs: allowed,
+                                             overlay: [failed, retried, newFailure, unauthorized])
+        XCTAssertEqual(snapshot.total, 4)
+        XCTAssertEqual(snapshot.retryable, 1)
+        XCTAssertEqual(snapshot.progress.totalCount, 3)
+        XCTAssertEqual(snapshot.progress.pendingCount, 1)
+        XCTAssertEqual(snapshot.progress.failedCount, 1)
+        XCTAssertEqual(snapshot.progress.stoppedCount, 1)
+        newFailure.state = "complete"
+        snapshot = try repository.counts(batchID: "new-batch", authorizedUUIDs: allowed,
+                                          overlay: [retried, newFailure, unauthorized])
+        XCTAssertEqual(snapshot.retryable, 0)
+        XCTAssertEqual(snapshot.progress.completedCount, 1)
+        XCTAssertEqual(try repository.retryableCount(authorizedUUIDs: allowed), 1, "Read overlays never persist jobs.")
     }
 
     func testLegacyMigrationIsAtomicIdempotentAndIndexedSourceLookupUsesBoundParameters() throws {

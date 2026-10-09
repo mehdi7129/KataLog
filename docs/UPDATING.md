@@ -17,6 +17,18 @@ release une première fois par DMG : leurs builds n’activent pas le flux publi
 Ensuite les mises à jour se font depuis l’app. KataLog Preview reste une app de
 review indépendante.
 
+## Version 0.8.3 en préparation
+
+Le candidat **0.8.3 (build 22)** apporte des corrections de fiabilité et de
+réactivité sans modifier les fonctions ni les parcours. Il conserve le parseur
+**1.4.0** et la projection SQLite **8** ; depuis 0.8.2, aucun réimport, nouveau
+téléchargement GCS ni nouvelle migration n’est nécessaire. Les données,
+attributions, identités, dossiers et réglages restent conservés.
+
+La [recette 0.8.3](RELEASE-0.8.3.md) suit la qualification du nouveau package.
+La stable publiée reste 0.8.2 tant que ces contrôles ne sont pas terminés ;
+le flux public n’est pas modifié par la préparation de cette version.
+
 ## Passage à 0.8.2
 
 Le correctif **0.8.2 (build 21)** rétablit la consultation de l’historique lorsque
@@ -134,7 +146,7 @@ de staging doit être créé et vérifié séparément avant activation.
 Configurer un build de staging :
 
 ```bash
-KATALOG_VERSION=0.8.2 KATALOG_BUILD_NUMBER=21 \
+KATALOG_VERSION=0.8.3 KATALOG_BUILD_NUMBER=22 \
 KATALOG_UPDATE_CHANNEL=staging \
 KATALOG_UPDATE_FEED_URL=https://updates.example.org/staging/appcast.xml \
 KATALOG_UPDATE_PUBLIC_KEY='<cle-publique-base64>' \
@@ -148,11 +160,11 @@ Pour relire un brouillon, une archive ZIP existante suffit :
 
 ```bash
 python3 tools/update-feed.py prepare \
-  --archive dist/KataLog-0.8.2-macOS-arm64.zip \
-  --archive-url https://updates.example.org/KataLog-0.8.2-macOS-arm64.zip \
+  --archive dist/KataLog-0.8.3-macOS-arm64.zip \
+  --archive-url https://updates.example.org/KataLog-0.8.3-macOS-arm64.zip \
   --output /private/tmp/katalog-update-draft \
   --release-notes /private/tmp/katalog-release-notes.txt \
-  --channel staging --previous-build 20 --draft
+  --channel staging --previous-build 21 --draft
 ```
 
 Le brouillon est nommé `appcast.draft.xml` et reste non signé. Pour préparer un

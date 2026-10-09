@@ -74,7 +74,9 @@ original_replace=os.replace;original_link=os.link;original_json=storage.atomic_j
 def replace(source,target,*args,**kwargs):
     selected=(request['action']=='backup' and Path(target)==Path(request['destination'])) or (
         request['action']=='restore' and point in ('before','after') and
-        Path(source).parent.name=='state' and Path(target)==library/'annotations.json')
+        Path(source).parent.name=='state' and Path(target)==library/'annotations.json') or (
+        request['action']=='recover-restore' and point in ('before','after') and
+        Path(source).parent.name=='original-files' and Path(target)==library/'library.sqlite')
     if selected and point=='before':die()
     result=original_replace(source,target,*args,**kwargs)
     if selected and point=='after':die()
@@ -88,10 +90,12 @@ def link(source,target,*args,**kwargs):
 def atomic(path,value):
     result=original_json(path,value)
     if request['action']=='restore' and point=='complete-journal' and Path(path)==library/'.restore-journal.json' and value.get('phase')=='complete':die()
+    if request['action']=='recover-restore' and point=='recovery-journal' and Path(path)==library/'.restore-journal.json' and value.get('phase')=='recovering-originals':die()
     return result
 os.replace=replace;os.link=link;storage.atomic_json=atomic
 if request['action']=='backup':storage.backup(library,request['destination'],include_ulog=True)
 elif request['action']=='restore':storage.restore(request['archive'],library)
+elif request['action']=='recover-restore':storage.recover_restore(library)
 elif request['action']=='archive':archives.archive_logs(library/'library.sqlite',library,request['destination'],[request['identity']])
 else:
     source=Path(request['source'])
@@ -184,6 +188,29 @@ class CrashRecoveryTests(unittest.TestCase):
                 self.assertFalse((library / ".restore-journal.json").exists())
                 for path, signature in originals.items(): self.assertEqual((sha(path), path.stat().st_mtime_ns), signature)
 
+    def test_recovery_death_before_after_original_move_or_phase_publication_is_retryable(self):
+        for point in ('before', 'after', 'recovery-journal'):
+            with self.subTest(point=point):
+                library, source, _ = self.library('recover-old-' + point, 8, 'old')
+                incoming, incoming_source, _ = self.library('recover-new-' + point, 9, 'new')
+                old_state = logical_state(library)
+                originals = {path: (sha(path), path.stat().st_mtime_ns) for path in (source, incoming_source)}
+                lease_inode = (library / '.library-writer.lock').stat().st_ino
+                archive = self.root / ('recover-' + point + '.zip')
+                storage.backup(incoming, archive, include_ulog=True)
+                self.kill_at(library, 'restore', 'after', archive=archive)
+                self.kill_at(library, 'recover-restore', point)
+                result = storage.recover_restore(library)
+                self.assertTrue(result['recovered'])
+                self.assertFalse(result['completedRestore'])
+                self.assertEqual(logical_state(library), old_state)
+                database_sha = sha(library / 'library.sqlite')
+                self.assertFalse(storage.recover_restore(library)['recovered'])
+                self.assertEqual(sha(library / 'library.sqlite'), database_sha)
+                self.assertEqual((library / '.library-writer.lock').stat().st_ino, lease_inode)
+                for path, signature in originals.items():
+                    self.assertEqual((sha(path), path.stat().st_mtime_ns), signature)
+
     def test_archive_death_recovers_verified_copy_or_preserved_partial_idempotently(self):
         for point in ("before", "after"):
             with self.subTest(point=point):
@@ -206,6 +233,44 @@ class CrashRecoveryTests(unittest.TestCase):
                 self.assertFalse(archives.recover_archive(library / "library.sqlite", library)["recovered"])
                 self.assertEqual(sha(library / "library.sqlite"), after)
                 self.assertEqual((sha(source), source.stat().st_mtime_ns), source_signature)
+
+    def test_recovery_retains_hot_delete_journal_with_its_original_database(self):
+        library = self.root / 'hot-journal-library'
+        library.mkdir()
+        database = library / 'cache.sqlite'
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute('PRAGMA journal_mode=DELETE')
+            db.execute('CREATE TABLE state(id INTEGER PRIMARY KEY, value BLOB)')
+            db.executemany('INSERT INTO state VALUES(?,?)', [(index, b'original' * 600) for index in range(100)])
+        script = '''import os,signal,sqlite3,sys
+db=sqlite3.connect(sys.argv[1]); db.execute('PRAGMA cache_size=5')
+db.execute('PRAGMA synchronous=FULL'); db.execute('BEGIN IMMEDIATE')
+db.execute('UPDATE state SET value=?',(b'uncommitted'*600,))
+os.kill(os.getpid(),signal.SIGKILL)
+'''
+        killed = subprocess.run([sys.executable, '-B', '-c', script, str(database)], capture_output=True, timeout=10)
+        self.assertEqual(killed.returncode, -signal.SIGKILL, killed.stderr.decode(errors='replace'))
+        journal = library / 'cache.sqlite-journal'
+        self.assertTrue(journal.is_file())
+        before = {path.name: path.read_bytes() for path in (database, journal)}
+        recovery = library / ('recovery-' + 'b' * 32)
+        original = recovery / 'original-files'
+        original.mkdir(parents=True)
+        for name in before:
+            (library / name).rename(original / name)
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute('CREATE TABLE incoming(value TEXT)')
+            db.execute("INSERT INTO incoming VALUES('replacement')")
+        storage.atomic_json(library / '.restore-journal.json', {
+            'restoreVersion': 1, 'phase': 'prepared', 'recoveryDirectory': recovery.name,
+            'archiveDirectory': 'restored-ulogs-' + 'b' * 32,
+            'moved': list(before), 'installed': ['cache.sqlite']})
+        self.assertTrue(storage.recover_restore(library)['recovered'])
+        self.assertEqual({name: (library / name).read_bytes() for name in before}, before)
+        self.assertFalse(storage.recover_restore(library)['recovered'])
+        with closing(sqlite3.connect(database)) as db:
+            self.assertEqual(db.execute('SELECT DISTINCT value FROM state').fetchall(), [(b'original' * 600,)])
+            self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0], 'ok')
 
     def test_prepared_import_death_retains_provenance_without_inventing_analysis(self):
         for point in ("before", "after"):

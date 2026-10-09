@@ -3,12 +3,17 @@ set -euo pipefail
 
 # Build outside Desktop/iCloud: file-provider FinderInfo can break code signing.
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
+# One lock covers shared caches, compilation and capture of the final bundle.
+# build-engine inherits the descriptor when called by build-app.
+if [[ "${KATALOG_BUILD_LOCK_SCRIPT:-}" != "$project_dir/tools/build-app.sh" ]]; then
+    exec python3 "$project_dir/tools/build-lock.py" "$project_dir/tools/build-app.sh" "$@"
+fi
 build_dir="${KATALOG_BUILD_DIR:-/private/tmp/katalog-swift-build}"
 configuration="${KATALOG_CONFIGURATION:-release}"
 sign_identity="${KATALOG_SIGN_IDENTITY:--}"
 output_dir="${KATALOG_DIST_DIR:-$project_dir/dist}"
-version="${KATALOG_VERSION:-0.8.2}"
-build_number="${KATALOG_BUILD_NUMBER:-21}"
+version="${KATALOG_VERSION:-0.8.3}"
+build_number="${KATALOG_BUILD_NUMBER:-22}"
 update_channel="${KATALOG_UPDATE_CHANNEL:-disabled}"
 update_feed_url="${KATALOG_UPDATE_FEED_URL:-}"
 update_public_key="${KATALOG_UPDATE_PUBLIC_KEY:-}"
@@ -162,8 +167,6 @@ cat > "$app_path/Contents/Info.plist" <<'PLIST'
   <key>CFBundleName</key><string>KataLog</string>
   <key>CFBundleDisplayName</key><string>KataLog</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.8.0</string>
-  <key>CFBundleVersion</key><string>18</string>
   <key>KatalogBundledEngineRequired</key><true/>
   <key>CFBundleIconFile</key><string>KataLog</string>
   <key>NSLocalNetworkUsageDescription</key><string>KataLog se connecte à votre GCS pour découvrir votre flotte et récupérer ses logs.</string>
@@ -173,8 +176,9 @@ cat > "$app_path/Contents/Info.plist" <<'PLIST'
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST
-/usr/bin/plutil -replace CFBundleShortVersionString -string "$version" "$app_path/Contents/Info.plist"
-/usr/bin/plutil -replace CFBundleVersion -string "$build_number" "$app_path/Contents/Info.plist"
+# Insert only the validated effective values, with no stale template version.
+/usr/bin/plutil -insert CFBundleShortVersionString -string "$version" "$app_path/Contents/Info.plist"
+/usr/bin/plutil -insert CFBundleVersion -string "$build_number" "$app_path/Contents/Info.plist"
 if [[ "$ui_preview_build" == 1 ]]; then
     /usr/bin/plutil -insert KataLogUIReviewPreview -bool true "$app_path/Contents/Info.plist"
     if [[ "${output_dir%/}" == */preview-staging ]]; then

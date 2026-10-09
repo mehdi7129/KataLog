@@ -58,6 +58,24 @@ class AnalysisRevisionTests(unittest.TestCase):
             self.assertTrue(all(source['state'] == 'missing' for source in value['sourceAvailability']))
         self.assertEqual(self.database.read_bytes(), before)
 
+    def test_revision_and_budget_updates_remain_in_callers_transaction(self):
+        db = analyzer.open_database(self.database)
+        self.addCleanup(db.close)
+        before_count = db.execute('SELECT COUNT(*) FROM analysis_revisions').fetchone()[0]
+        before_budget = db.execute("SELECT value FROM settings WHERE key='analysisRevisionStorageBytes'").fetchone()[0]
+        value = dict(self.old_detail, coverage=['Synthetic rollback revision'])
+        db.execute('BEGIN')
+        revision = analyzer.archive_analysis(db, self.identity, 'detail', 'rollback-test', json.dumps(value),
+                                             created_at='2026-01-01T00:00:00Z')
+        self.assertTrue(db.in_transaction)
+        row = db.execute('SELECT * FROM analysis_revisions WHERE id=?', (revision,)).fetchone()
+        self.assertEqual(analyzer.decoded_revision(row), value)
+        self.assertGreater(int(db.execute("SELECT value FROM settings WHERE key='analysisRevisionStorageBytes'").fetchone()[0]), int(before_budget))
+        db.rollback()
+        self.assertEqual(db.execute('SELECT COUNT(*) FROM analysis_revisions').fetchone()[0], before_count)
+        self.assertEqual(db.execute("SELECT value FROM settings WHERE key='analysisRevisionStorageBytes'").fetchone()[0], before_budget)
+        self.assertIsNone(db.execute('SELECT id FROM analysis_revisions WHERE id=?', (revision,)).fetchone())
+
     def test_repeated_cached_read_and_unchanged_import_do_not_duplicate_revisions(self):
         initial = self.versions()
         analyzer.scan(self.file, self.database, skip_snapshot=True)

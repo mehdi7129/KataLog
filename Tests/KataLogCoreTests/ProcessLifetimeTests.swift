@@ -34,6 +34,27 @@ final class ProcessLifetimeTests: XCTestCase {
         XCTAssertEqual(registry.activeProcessCount, 0)
     }
 
+    func testCancelledQuitReopensLaunchGateOnlyAfterOwnedHelpersHaveDrained() async throws {
+        let registry = EngineOperationRegistry(), process = Process()
+        let control = ProcessLifetime(registry: registry)
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep"); process.arguments = ["5"]
+        try control.run(process)
+        defer { control.cleanup() }
+        registry.beginTermination()
+        XCTAssertFalse(registry.cancelTermination(), "A registered helper still owns the interrupted operation.")
+        let late = Process(); late.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        XCTAssertThrowsError(try ProcessLifetime(registry: registry).run(late)) { XCTAssertTrue($0 is CancellationError) }
+        await Task.detached { ProcessLifetime.wait(for: process) }.value
+        XCTAssertThrowsError(try control.finish()) { XCTAssertTrue($0 is CancellationError) }
+        XCTAssertTrue(registry.cancelTermination())
+        let resumed = ProcessLifetime(registry: registry)
+        try resumed.run(late)
+        await Task.detached { ProcessLifetime.wait(for: late) }.value
+        XCTAssertEqual(late.terminationStatus, 0)
+        try resumed.finish()
+        XCTAssertEqual(registry.activeProcessCount, 0)
+    }
+
     func testFailedLaunchAndExceptionalCleanupReleaseRegistryEntries() throws {
         let registry = EngineOperationRegistry(), failed = Process()
         failed.executableURL = URL(fileURLWithPath: "/nonexistent-katalog-helper")

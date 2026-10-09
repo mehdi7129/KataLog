@@ -33,16 +33,28 @@ jobs:
       - name: Runtime dependencies
         run: |
           python3 -m pip install --only-binary=:all: --require-hashes -r requirements-runtime.txt
+      - name: Record synthetic validation conditions
+        run: python3 tools/write-ci-context.py --output reports/ci/context.json --fixture synthetic-and-loopback
       - name: Python synthetic and loopback suites
-        run: python3 tools/run-python-tests.py --summary /tmp/python-tests.json
+        shell: bash
+        run: python3 tools/run-python-tests.py --summary reports/ci/python-tests.json 2>&1 | tee reports/ci/python-tests.log
       - name: Swift core, stores and WebKit DOM
-        run: python3 tools/run-swift-tests.py --summary /tmp/swift-tests.json -- --disable-sandbox --scratch-path /tmp/katalog-ci
+        run: python3 tools/run-swift-tests.py --summary reports/ci/swift-tests.json --log reports/ci/swift-tests.log -- --disable-sandbox --scratch-path /tmp/katalog-ci
       - name: Report interactions
-        run: node --test Tests/test_report_interaction.cjs
+        shell: bash
+        run: node --test Tests/test_report_interaction.cjs 2>&1 | tee reports/ci/report-tests.log
       - name: Publication guard
         run: python3 tools/check-publication.py --include-untracked
       - name: Patch hygiene
         run: git diff --check
+      - name: Keep synthetic test evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tests-${{ matrix.os }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: reports/ci/
+          retention-days: 14
+          if-no-files-found: warn
   package-smoke:
     name: Package ARM64 / ${{ matrix.os }}
     if: ${{ github.event.repository.visibility == 'public' }}
@@ -66,8 +78,11 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.13'
+      - name: Record packaging conditions
+        run: python3 tools/write-ci-context.py --output reports/ci/context.json --fixture ad-hoc-synthetic-package
       - name: Autonomous engine, embedded Sparkle and synthetic runtime
-        run: bash tools/package-smoke.sh
+        shell: bash
+        run: bash tools/package-smoke.sh 2>&1 | tee reports/ci/package-smoke.log
       - name: Summarize local verification
         if: always()
         run: |
@@ -84,3 +99,13 @@ jobs:
                   summary.write('Build did not reach runtime verification. See job logs.\n')
               summary.write('\nAd hoc build only. No release, notarization, private corpus or live fleet.\n')
           PY
+      - name: Keep packaging evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package-${{ matrix.os }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            reports/ci/
+            reports/package-smoke-verification.json
+          retention-days: 14
+          if-no-files-found: warn
