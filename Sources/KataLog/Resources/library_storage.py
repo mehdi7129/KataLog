@@ -20,7 +20,8 @@ import time
 import uuid
 import zipfile
 
-from local_files import digest_file as digest, require_local_source, stat_signature
+from local_files import (digest_file as digest, require_local_source, stat_signature,
+                         atomic_json as _atomic_json)
 
 BACKUP_VERSION = 1
 CONFIG_NAMES = frozenset(("annotations.json", "views.json", "fleet.json", "settings.json",
@@ -45,17 +46,7 @@ def now():
 
 def atomic_json(path, value):
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix="." + path.name, dir=path.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            json.dump(value, stream, ensure_ascii=False, allow_nan=False)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+    return _atomic_json(path, value, separators=(", ", ": "), prefix="." + path.name)
 
 
 def database_names(root):

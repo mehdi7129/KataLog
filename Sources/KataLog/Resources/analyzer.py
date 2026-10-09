@@ -37,7 +37,8 @@ from analysis_revisions import (ANALYSIS_REVISION_VERSION, MAX_ANALYSIS_BYTES,
                                 validate_analysis_revisions, revision_page)
 from output_paths import validate_outputs
 from local_files import (CLOUD_SOURCE_DETAIL, CloudSourceUnavailableError,
-                         require_local_source, digest_file, stat_signature)
+                         require_local_source, digest_file, stat_signature,
+                         atomic_json as _atomic_json)
 
 SCHEMA_VERSION = 1
 PARSER_VERSION = "1.4.0"
@@ -57,17 +58,7 @@ def utc_now():
 
 def atomic_json(path, value):
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            json.dump(value, stream, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+    return _atomic_json(path, value, separators=(",", ":"), prefix=f".{path.name}.")
 
 
 def open_database(path, read_only=False):
