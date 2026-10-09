@@ -153,6 +153,29 @@ extension GCSStoreTests {
         try await store.finishTermination()
     }
 
+    func testRetryWaitsForAdmittedSaveInsteadOfDiscardingTheCommand() async throws {
+        var state = GCSCollectionState(downloadDirectory: "/private/tmp")
+        state.allowedUUIDs = [first]; state.autoImport = false
+        var job = GCSTransfer(droneUUID: first, remotePath: "/fixture/retry.ulg", size: 64,
+                              host: "localhost", destination: "/private/tmp")
+        job.state = "interrupted"; state.queue = [job]
+        let (store, root) = try fixture(mode: "offline", initialState: state, configure: false)
+        defer { store.stopForTermination(); try? FileManager.default.removeItem(at: root) }
+        try await store.flushPersistedStateForMaintenance()
+        var connection: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(root.appendingPathComponent("gcs-queue.sqlite").path, &connection), SQLITE_OK)
+        defer { sqlite3_close(connection) }
+        XCTAssertEqual(sqlite3_exec(connection, "BEGIN IMMEDIATE", nil, nil, nil), SQLITE_OK)
+        store.autoImport = true
+        let retry = Task { await store.retryFailed() }
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertEqual(sqlite3_exec(connection, "ROLLBACK", nil, nil, nil), SQLITE_OK)
+        await retry.value
+        XCTAssertTrue(store.queue.first?.isPending == true,
+                      "An admitted settings save may replace the retained array without changing the requested job.")
+        try await store.finishTermination()
+    }
+
     func testStopDuringBlockedAdmissionDoesNotStartCollectorAfterWriteCompletes() async throws {
         let (store, root) = try fixture(mode: "normal", configure: false)
         defer { store.stopForTermination(); try? FileManager.default.removeItem(at: root) }
