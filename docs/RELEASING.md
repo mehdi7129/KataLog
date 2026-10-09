@@ -1,12 +1,11 @@
 # Distribution macOS hors App Store
 
-La version **0.8.3 (build 22)** est en préparation. Elle regroupe les corrections
-de fiabilité et de maintenabilité de l’audit, en conservant l’installation
-autonome par DMG et le flux Sparkle stable signé introduit en 0.7.0. Voir
-[la recette 0.8.3](RELEASE-0.8.3.md) pour distinguer les preuves obtenues des
-contrôles restant à exécuter. La stable publique reste **0.8.2 (build 21)**.
-Toute publication exige la validation de l’historique, des métadonnées GitHub
-et des assets ; une CI ad hoc ne qualifie pas la distribution notarisée finale.
+La version **0.8.3 (build 22)** regroupe les corrections de fiabilité et de
+maintenabilité de l’audit. Elle conserve l’installation autonome par DMG et le
+flux Sparkle stable signé introduit en 0.7.0. La [recette 0.8.3](RELEASE-0.8.3.md)
+consigne ses preuves et limites. Toute nouvelle publication exige la validation
+de l’historique, des métadonnées GitHub et des assets ; une CI ad hoc ne
+qualifie pas à elle seule une distribution signée et notarisée.
 
 ## Parcours utilisateur
 
@@ -157,9 +156,9 @@ Construire avec `KATALOG_UPDATE_CHANNEL=stable`, l’URL HTTPS publique et la cl
 publique vérifiée sous `updates/stable/public-key.txt`. Garder la clé privée dans
 le Trousseau, compte `katalog-sparkle-stable`. Notariser et agrafer le bundle,
 puis recréer le ZIP final avant toute signature Sparkle ou calcul de checksum.
-Pour la release 0.8.2 (build 21), le flux a été préparé avec
-`tools/update-feed.py prepare` et `--previous-build 20`. Pour la prochaine
-release, utiliser le dernier build public vérifié, actuellement **21**.
+Pour la release 0.8.3 (build 22), le flux a été préparé avec
+`tools/update-feed.py prepare` et `--previous-build 21`. Pour la prochaine
+release, utiliser le dernier build public vérifié, actuellement **22**.
 Revérifier ce build au moment de publier : il ne doit pas avoir changé entre
 préparation et publication.
 Publier d’abord le ZIP et le DMG vérifiés, puis le flux signé sous

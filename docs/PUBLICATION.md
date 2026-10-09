@@ -2,19 +2,37 @@
 
 ## État
 
-Le dépôt est **public**. La version stable actuelle est **0.8.2 (build 21)**,
-publiée le **7 octobre 2026**. Voir la [release et sa qualification](RELEASE-0.8.2.md)
+Le dépôt est **public**. La version stable actuelle est **0.8.3 (build 22)**,
+publiée le **9 octobre 2026**. Voir la [release et sa qualification](RELEASE-0.8.3.md)
 et le [guide utilisateur](README.md).
-
-Le candidat **0.8.3 (build 22)** est en qualification. Ses corrections et preuves
-logicielles sont décrites dans [RELEASE-0.8.3.md](RELEASE-0.8.3.md). Sa présence
-dans les sources ne signifie pas que ses installateurs, son tag ou son flux
-sont publiés. Les vérifications des distributions 0.8.2 ci-dessous restent
-attribuées à cette version ; elles ne qualifient pas le nouveau package.
 
 Les contrôles de confidentialité couvrent le contenu publié et son historique,
 pas seulement les fichiers de la branche principale. Les rapports détaillés,
 marqueurs privés et preuves opérationnelles restent hors du dépôt.
+
+### Revue de la release du 9 octobre 2026
+
+Les sources qualifiées `caff7eb` comprennent 303 fichiers. La revue de
+157 commits et 845 blobs des refs disponibles ne confirme aucun secret réel
+ni aucune donnée privée non classée. Les auteurs et committers utilisent
+leurs identités GitHub noreply.
+
+Le bundle passe ses **9/9 contrôles de distribution** : 186 fichiers et
+482 payloads inspectés sans signalement, 19 modules Python source vérifiés
+et 22 fichiers natifs ARM64 sans dépendance externe. La signature Developer ID,
+la notarisation, le runtime autonome, Sparkle, l’import synthétique et le
+layout DMG sont contrôlés. Le périmètre source se limite aux refs disponibles
+dans le clone ; ces contrôles ne couvrent pas les refs inaccessibles.
+
+Les logs et annotations CI, 43 fichiers d’artifacts, métadonnées des
+PR #35/#34/#6, notes de release, tag et archive source sont examinés sans
+signalement non classé. Les digests des artifacts concordent avec l’API GitHub.
+Les quatre fichiers publics — DMG, ZIP de mise à jour, archive source et
+SHA256SUMS.txt — sont identiques aux fichiers qualifiés ; empreintes du
+manifeste et digests GitHub concordent.
+
+Les preuves détaillées restent privées ; aucun log de flotte ni capture de
+recette n’est ajouté aux archives publiques.
 
 ### Revue de la release du 7 octobre 2026
 
@@ -75,12 +93,17 @@ par cet audit avec les permissions API disponibles.
 
 ## Périmètre de la distribution actuelle
 
-Les contrôles de la release **0.8.2** sont consignés dans
-[RELEASE-0.8.2.md](RELEASE-0.8.2.md). Ils portent sur le code qualifié, le commit
-final et ses archives ; les [contrôles 0.8.1](RELEASE-0.8.1.md) restent historiques.
-Les quatre assets publics et le flux stable 0.8.2 ont été téléchargés sans
-authentification et vérifiés après publication. Les notes, le tag et les
-métadonnées de release ont également été contrôlés.
+Les contrôles de la release **0.8.3** sont consignés dans
+[RELEASE-0.8.3.md](RELEASE-0.8.3.md). Ils portent sur le code qualifié, le commit
+final et ses archives ; les [contrôles 0.8.2](RELEASE-0.8.2.md) restent historiques.
+Les quatre assets ont été téléchargés sans authentification. Le DMG public,
+avec attribut de quarantaine appliqué, conserve ses octets et passe stapler,
+la signature stricte et Gatekeeper (Notarized Developer ID). La signature
+Sparkle du ZIP public est valide.
+
+Le XML stable signé 0.8.3 build 22 pointe vers le ZIP final de 20 896 937 octets.
+Les signatures EdDSA du flux et du ZIP sont vérifiées localement avec l’outil
+officiel Sparkle.
 
 Les fonctionnalités clients n’introduisent aucun compte distant : noms de clients,
 attributions et bibliothèques restent locaux. Les fixtures utilisent des noms et
@@ -163,9 +186,9 @@ fichiers ; voir [GitHub — visibilité](https://docs.github.com/en/repositories
 
 ## Installation utilisateur
 
-La distribution autonome 0.8.2 se fait **hors App Store** : télécharger le DMG, l'ouvrir,
+La distribution autonome 0.8.3 se fait **hors App Store** : télécharger le DMG, l'ouvrir,
 glisser KataLog dans Applications, éjecter puis lancer. Le moteur est embarqué.
 Un appcast public signé permet les updates Sparkle sans compte GitHub utilisateur
 à partir de la release 0.7.0. Les versions 0.6.x nécessitent une première installation
 par DMG ; leur flux était désactivé.
-Voir la [recette 0.8.2](RELEASE-0.8.2.md) et la [procédure de release](RELEASING.md).
+Voir la [recette 0.8.3](RELEASE-0.8.3.md) et la [procédure de release](RELEASING.md).

@@ -1,17 +1,14 @@
 # KataLog — bibliothèque locale de logs PX4
 
-**Candidat 0.8.3 (build 22)** · macOS 15+ · Apple Silicon · GPL-3.0-only
-
-La stable téléchargeable reste **0.8.2 (build 21)** pendant la
-[qualification de 0.8.3](docs/RELEASE-0.8.3.md).
+**0.8.3 (build 22)** · macOS 15+ · Apple Silicon · GPL-3.0-only
 
 KataLog rassemble les logs ULog de votre flotte sur votre Mac : historique,
 alertes filtrables, trajectoires Apple Maps, courbes et rapports partageables.
 L’app native SwiftUI propose des thèmes clair, sombre et système.
 
-**[Télécharger KataLog 0.8.2 pour Mac Apple Silicon](https://github.com/mehdi7129/KataLog/releases/download/v0.8.2/KataLog-0.8.2-macOS-arm64.dmg)**
+**[Télécharger KataLog 0.8.3 pour Mac Apple Silicon](https://github.com/mehdi7129/KataLog/releases/download/v0.8.3/KataLog-0.8.3-macOS-arm64.dmg)**
 
-[Release et fichiers](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.2) ·
+[Release et fichiers](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.3) ·
 [Guide utilisateur](docs/README.md) · [Changelog](CHANGELOG.md) ·
 [Contribuer](CONTRIBUTING.md)
 
@@ -26,9 +23,9 @@ ARM64 est embarqué : aucun Python séparé, Homebrew ni Terminal n’est néces
 Une nouvelle installation démarre avec une bibliothèque vide ; une installation
 existante retrouve ses données.
 
-**Compatibilité : Mac Apple Silicon, macOS 15 minimum.** La recette locale a été
-exécutée sur macOS 27 ; ses résultats et les limites de qualification figurent
-dans les [notes de release](docs/RELEASE-0.8.2.md). Le package Intel n’est pas fourni.
+**Compatibilité : Mac Apple Silicon, macOS 15 minimum.** La recette native du package a été exécutée sur macOS 27.
+Les résultats et les limites de qualification figurent dans les
+[notes de release](docs/RELEASE-0.8.3.md). Le package Intel n’est pas fourni.
 
 ## Mises à jour
 
@@ -73,17 +70,21 @@ Pour collecter directement sur une GCS, ouvrir **Collecte GCS**, renseigner son
 adresse, se connecter et choisir **Tout collecter**. Le client destinataire et
 le dossier de copie sont explicites. Voir le [guide de collecte](docs/README.md#collecter-depuis-une-gcs).
 
-## Version 0.8.3 en préparation
+## Nouveautés de 0.8.3
 
 Cette version regroupe les 26 corrections de l’[audit de qualité](docs/AUDIT-QUALITE-2026-10-08.md).
 Les fonctions et les parcours restent les mêmes : imports et restaurations plus
 fiables, navigation indépendante entre fenêtres, collecte plus réactive et
 responsabilités internes mieux séparées.
 
-Les tests et packages CI du code corrigé passent. La signature, la notarisation
-et la recette du package 0.8.3 doivent encore être terminées avant publication.
-Sur un banc de 50 000 logs, deux premiers chargements dépassent le budget
-interne de 500 ms ; cette limite est conservée et détaillée dans les
+Le package 0.8.3 est signé Developer ID et notarisé ; neuf contrôles de
+distribution réussissent sur le bundle final. La recette native et les limites sont
+détaillées dans les notes de qualification.
+La release et ses quatre fichiers ont été téléchargés sans authentification ;
+leurs octets et SHA-256 concordent avec les archives qualifiées.
+Le banc final de 50 000 logs respecte le budget interne de 500 ms pour les
+huit requêtes et leurs répétitions. Des essais précédents dépassaient ce budget
+sur les premières lectures ; leur variabilité reste suivie. Les mesures et les limites sont détaillées dans les
 [notes de qualification](docs/RELEASE-0.8.3.md#performance-et-limites).
 
 ## Nouveautés de 0.8.2
@@ -95,10 +96,10 @@ interne de 500 ms ; cette limite est conservée et détaillée dans les
 - Lectures clients arrêtées avant une maintenance ou une restauration, puis
   rechargées lorsque la bibliothèque est disponible.
 
-Le correctif **0.8.2 (build 21)** conserve les analyses et les attributions clients,
+Le correctif **0.8.2 (build 21)** conservait les analyses et les attributions clients,
 sans réimport ni nouvelle migration depuis 0.8.1. Les tests locaux, la CI et la
 recette de l’app installée sont consignés dans les
-[notes de qualification](docs/RELEASE-0.8.2.md). La stable est publiée depuis le
+[notes de qualification](docs/RELEASE-0.8.2.md). Cette version a été publiée le
 **7 octobre 2026** ; le DMG et le flux de mise à jour signés ont été vérifiés
 après publication.
 

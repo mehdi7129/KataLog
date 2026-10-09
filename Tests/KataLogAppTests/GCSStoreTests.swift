@@ -1318,7 +1318,10 @@ else:
         store.autoImport = true
         try await waitUntil { store.canCollectAll }
         await store.collectAll()
-        try await waitUntil { !store.isBusy && store.queue.count == 8 }
+        // Inventory can finish before persistence admits the queued transfers.
+        try await waitUntil {
+            !store.isBusy && store.queue.count == 8 && store.queue.allSatisfy { $0.state == "complete" || $0.state == "failed" }
+        }
         XCTAssertEqual(imports, 8)
         XCTAssertEqual(store.batchProgress.failedCount, 1)
         XCTAssertEqual(store.batchProgress.completedCount, 7)
