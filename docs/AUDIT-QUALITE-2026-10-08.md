@@ -3,9 +3,10 @@
 ## Objectif et périmètre
 
 Rendre KataLog plus fiable, lisible et efficace **en conservant ses fonctions,
-ses parcours et ses résultats métier**. Cette PR contient uniquement cet audit :
-aucun correctif applicatif, changement de format, migration, release ou réglage
-GitHub n'est appliqué.
+ses parcours et ses résultats métier**. Cette PR reste documentaire : les
+correctifs applicatifs sont proposés séparément. Les sections d’analyse décrivent
+la baseline initiale ; les sections « Développement » consignent les corrections
+et leurs preuves. La protection GitHub Q18 est désormais appliquée.
 
 Référence : `main`, commit `6aa9007bcc893e8f213f85c2cba9fd770330be72`,
 version source **0.8.2, build 21**. L'audit utilise un worktree isolé. Le checkout
@@ -22,6 +23,16 @@ auditeurs indépendants et le coordinateur, à nouveau en parallèle : stockage 
 provenance, lifecycle des stores, exports et collecte. Chacun a lu le rapport
 avant de chercher ses omissions et de contredire ses constats. La référence
 applicative est inchangée.
+
+**Suivi du 9 octobre : les 26 points disposent de correctifs proposés dans la
+[PR d’intégration #34](https://github.com/mehdi7129/KataLog/pull/34), head
+`91a392a`.** Les quatre checks CI requis réussissent : 431 tests Swift,
+508 tests Python (un corpus privé absent), 18 tests JavaScript sur chacun des
+deux runners et 6/6 contrôles sur chacun des deux bundles ad hoc. Le banc
+capacity reste **non conforme** : premières requêtes dashboard à 631,1 ms et
+registre à 542,1 ms pour un budget inchangé de 500 ms. Le détail des lots 3 à 5,
+les contre-tests et les limites figurent plus bas. Aucune fusion, release,
+installation ou opération sur une bibliothèque utilisateur.
 
 ## Conclusion
 
@@ -693,8 +704,11 @@ reste distinct du backlog Swift Q09.
 
 ## Ordre de correction sans changement fonctionnel
 
-Les cases sont volontairement ouvertes : fusionner cette PR ne corrige aucun
-de ces points. L'ordre ci-dessous est une proposition d'exécution.
+Les cases suivent l’intégration sur `main` et restent ouvertes : fusionner cette
+PR documentaire n’y intègre aucun correctif applicatif. L’ordre ci-dessous est
+le plan initial ; son exécution est consignée dans les sections suivantes. Q18
+fait exception pour la configuration distante, déjà appliquée ; sa documentation
+reste proposée dans la PR #22.
 
 | Lot | Corrections | Livrable et condition de sortie |
 | --- | --- | --- |
@@ -723,7 +737,7 @@ Suivi proposé :
 - [ ] Q15 — isolation du shell legacy
 - [ ] Q16 — isolation des builds locaux
 - [ ] Q17 — preuves CI et budgets
-- [ ] Q18 — contrôles requis sur main
+- [ ] Q18 — contrôles requis sur main, configuration appliquée, documentation à intégrer
 - [ ] Q19 — métadonnées de build
 - [ ] Q20 — grandes sélections SQLite
 - [ ] Q21 — récupération relançable et startup protégé
@@ -793,7 +807,7 @@ Python 3.13.15, NumPy 2.5.3, pyulog 1.2.4) :
   ni flotte réelle ; les mises à jour de cette copie sont désactivées.
 
 Suivi du 8 octobre : les PR #7, #8, #10, #11 et #12 ont leurs quatre checks CI
-verts aux commits courants. Sur #9, les tests macOS 15 et les deux packages
+verts aux commits alors courants. Sur #9, les tests macOS 15 et les deux packages
 passent ; le job macOS 26 a été annulé deux fois sans exécution, GitHub signalant
 un manque de capacité de runners ARM64. Ce check reste à obtenir avant fusion.
 Un premier run #11 avait dépassé le budget de heartbeat de 500 ms (532 ms) ;
@@ -864,7 +878,8 @@ le dernier delta corrige seulement l’attente d’un test et ajoute sa reproduc
 Mesures ciblées : la préparation/enqueue synthétique de 50 000 tâches prend
 1,792 s, avec une pause maximale du MainActor de 30,32 ms (budget 500 ms) et
 un P95 d’enqueue de 6,62 ms. Ce scénario ne mesure pas les rafales de progression
-ni une flotte réelle. Q06, notamment les I/O hors MainActor, reste à traiter.
+ni une flotte réelle. À ce stade, Q06, notamment les I/O hors MainActor,
+restait à traiter dans le lot suivant.
 Pour Q20, les sélections de 32 767 et 100 000 identifiants ont été exécutées ;
 le microbenchmark synthétique à 100 000 valeurs prend environ 139 ms. La parité
 des résultats et les petites sélections sont vérifiées ; cette mesure ne prédit
@@ -888,6 +903,287 @@ comme indiqué plus haut. Consulter les checks au SHA courant avant fusion.
 Les modifications locales de développement, les bibliothèques utilisateur et
 l’app installée sont préservées. Aucune fusion, release, installation, nouvelle
 qualification matérielle ou connexion à une GCS réelle n’accompagne ce lot.
+
+## Développement des lots 3 à 5 — 8–9 octobre 2026
+
+Les corrections suivantes complètent le plan. Elles sont préparées dans des PR
+séparées et regroupées dans la [PR d’intégration #34](https://github.com/mehdi7129/KataLog/pull/34). Les résultats
+ci-dessous décrivent les commits proposés ; les changements applicatifs ne sont
+pas encore fusionnés sur `main`. La protection GitHub Q18 est, elle, déjà active.
+
+| Point | PR | Dépendance | Changement |
+| --- | --- | --- | --- |
+| Q06 | [#31](https://github.com/mehdi7129/KataLog/pull/31) | #17 | I/O GCS sérialisées hors du MainActor, publication de snapshots et sauvegarde attendue avant fermeture |
+| Q08 | [#19](https://github.com/mehdi7129/KataLog/pull/19) | `main` | Deadline de corps HTTP vérifiée aussi pendant les lectures lentes et le framing chunked |
+| Q09 | [#23](https://github.com/mehdi7129/KataLog/pull/23) | `main` | Lecture JSONL à la demande, backpressure du pipe, annulation et libération du helper |
+| Q10 | [#21](https://github.com/mehdi7129/KataLog/pull/21) | #13 | Contrôle local commun avant hash/copie/lecture d’une source cloud, y compris le preflight CLI |
+| Q23 | [#24](https://github.com/mehdi7129/KataLog/pull/24) | #15 | Réutilisation éphémère de la sélection de proximité exacte entre helpers de pagination |
+| Q26 | [#20](https://github.com/mehdi7129/KataLog/pull/20) | #19 | Validation MQTT avant accumulation et budget en octets du listing |
+| Q11 | [#32](https://github.com/mehdi7129/KataLog/pull/32) | #18 | Qualification et isolation de la navigation de chaque fenêtre principale |
+| Q12 | [#33](https://github.com/mehdi7129/KataLog/pull/33) | #31 | Capacités explicites et extractions Swift par responsabilité |
+| Q13 | [#28](https://github.com/mehdi7129/KataLog/pull/28) | #21 | Révisions et dispatch Python séparés, helpers de pages privés, mêmes façades |
+| Q14 | [#27](https://github.com/mehdi7129/KataLog/pull/27) | `main` | Catégories d’états et phases communes à Swift et SQL, chaînes publiques/legacy conservées |
+| Q15 | [#26](https://github.com/mehdi7129/KataLog/pull/26) | `main` | Shell legacy déplacé, activation SwiftPM et services communs conservés |
+| Q16 | [#29](https://github.com/mehdi7129/KataLog/pull/29) | `main` | Verrou de build réentrant jusqu’à la capture de l’artefact |
+| Q17 | [#25](https://github.com/mehdi7129/KataLog/pull/25) | `main` | Artifacts de preuves CI et benchmark synthétique manuel/hebdomadaire |
+| Q18 | [#22](https://github.com/mehdi7129/KataLog/pull/22) | `main` | Quatre checks requis, branche à jour, protection également appliquée aux admins |
+| Q19 | [#30](https://github.com/mehdi7129/KataLog/pull/30) | Q16 | Contrat automatisé des métadonnées source et du plist final |
+
+### Mesures et contre-tests ciblés
+
+- **Q06 :** avec 50 000 lignes et un verrou SQLite de 1,2 s, la pause MainActor
+  mesurée passe de 1 287,8 à 40,3 ms. Arrêt/sauvegarde : 114,4 ms ; quatre
+  transferts et 50 000 jobs en attente : 457,8 ms. Le budget de 500 ms reste
+  inchangé ; les passages précédents sous contention à 573,8 et 744 ms restent
+  des échecs enregistrés. Le constructeur initial synchrone est conservé.
+  Le suivi final reproduit puis corrige deux courses de déconnexion pendant
+  admission ; un Stop prime aussi sur un Retry suspendu. Dix tests ciblés puis
+  quatre contre-tests passent. Regrouper les champs d’un même événement et
+  d’une même passe de planification réduit les publications du tableau de
+  122 à 50 : heartbeat de 379,1 à 296,8 ms sur la même fixture de 50 000 jobs.
+  Les résultats de l’assemblage ci-dessous priment sur les replays isolés.
+- **Q08 :** trois serveurs loopback lents dépassaient une deadline de test de
+  350 ms (1,419 à 1,873 s). Les cinq nouveaux tests corrigés et les 38 tests
+  collecteur existants passent. Les délais publics et vérifications de copie
+  restent inchangés. Le reader dépend explicitement du socket CPython du runtime
+  embarqué testé ; aucune compatibilité implicite avec tout interpréteur Python.
+- **Q09 :** pour 512 événements de 64 Kio et un consommateur lent, le backlog
+  produit en avance passe de 509 à un événement ; hausse RSS mesurée de
+  42,5 Mio à 0–229 Kio selon le passage. Ce sont des écarts RSS observés, pas un
+  pic d’allocations. Débit rapide similaire (~58 500–58 800 événements/s sur
+  cette fixture). Quinze tests ciblés passent, dont six nouveaux ; les événements
+  restent ordonnés et ne sont pas fusionnés. La lease reste détenue jusqu’à la
+  mort du helper, même si un `break` rend la main auparavant.
+- **Q10 :** les fichiers dataless sont simulés, jamais ouverts ni copiés avant
+  le guard ; les alias locaux restent utilisables et une sauvegarde sans source
+  locale garde son contrat partiel. Onze nouveaux tests couvrent également les
+  preflights CLI et l’ordre du journal de restauration. Aucun iCloud réel testé.
+- **Q23 :** les deux pages de 5 001 trajectoires complètes nécessitent 5 001
+  lectures au total au lieu de 10 002. Le test CLI utilise trois processus ; les
+  données indisponibles restent réévaluées sans changement de révision SQLite.
+  Les caches invalides/incomplets sont ignorés et supprimés après l’opération.
+  Huit tests Python nouveaux et le cycle natif de nettoyage/annulation passent.
+  La mesure établit la diminution de travail, pas une latence GUI générale.
+- **Q26 :** les 24 payloads invalides de 1 Mio ne sont plus tous consommés avant
+  refus (24 → 1) ; pic tracé de 51 406 929 à 3 168 512 octets. Sur 100 000 noms
+  valides, pic de 61 423 809 à 36 678 521 octets, résultats identiques. La mémoire
+  retenue intermédiaire augmente cependant de 6,88 à 11,08 Mo car la structure
+  validée est construite directement. Les limites complètes 100 000 fichiers +
+  4 096 dossiers sont exercées ; 51 tests collecteur/deadline/budget passent.
+- **Q11 :** 34 tests natifs ciblés réussissent sans skip. Deux vraies fenêtres
+  affichent des pages distinctes ; l’annulation d’une lecture lente reste locale.
+  Deux cartes simultanées donnent les mêmes résultats que SQLite read-only,
+  sans engager une maintenance concurrente. Un seul writer est conservé ;
+  le filtre partagé reste partagé, curseur et tri sont propres à chaque fenêtre.
+- **Q12 :** import, rapports et maintenance extraits par responsabilité ; graphique
+  du profil déplacé sans modification du rendu. Les capacités nommées sont
+  comparées sur 8 192 combinaisons de 13 activités, en conservant les exceptions
+  des commandes. Ciblé : 120 cas, zéro skip ; un dépassement heartbeat Q06 à
+  513 ms, toutes les assertions fonctionnelles et celles des cinq pages/profils
+  passent. Ce run reste rouge ; le suivi Q06 et le gate final figurent ci-dessous.
+  La limite de capture des pages qui utilisent le helper de rendu partagé est
+  précisée dans la vérification finale ; les rendus directs des profils ne sont
+  pas concernés.
+- **Q13 :** parité JSON sur 41 cas et 102 pages, 157 littéraux SQL conservés,
+  transactions et limites des révisions identiques. L’écriture JSON atomique
+  est également commune, avec les deux façades, leurs octets et leurs préfixes
+  temporaires conservés ; quatre contrats passent avant/après et 98 cas ciblés
+  passent après extraction. Sur l’assemblage, 41 cas/102 pages restent identiques
+  (229 781 octets JSON, 156 littéraux SQL conservés après Q20). Le gate initial
+  de sa branche passe
+  435 tests sur 436 (un seul corpus privé absent), avant assemblage des autres PR.
+- **Q14 :** 88 combinaisons état/phase comparées entre Swift et SQL ; états
+  inconnus, phase absente, JSON et réouverture conservés. 36 tests ciblés passent.
+  La même matrice vérifie aussi `isRetryable`, partagé par les quatre chemins
+  de comptage et de retry à l’intégration.
+- **Q15 :** déplacement exact du shell après normalisation de son nom/visibilité ;
+  dix tests natifs réussis, dont le rendu legacy clair/sombre sans réseau.
+- **Q16 :** deux builds simulés reproduisent le mélange A/B sur la baseline ;
+  le verrou empêche ce mélange. Douze tests ciblés passent, dont cinq nouveaux
+  (concurrence, overrides, interruption, réentrance et package smoke isolé).
+  Ces tests utilisent des compilateurs/signatures simulés et coordonnent les
+  scripts app/engine qui prennent le verrou ; les builds externes ne sont pas
+  couverts. Le bundle réel est vérifié séparément ci-dessous.
+- **Q19 :** contrat des versions/plists et contrôle effectif des phases Xcode
+  Sources/Resources pour Swift app/Core et Python. Le retrait virtuel d’une
+  entrée dans chacun des trois groupes est détecté malgré les fileRefs présents.
+  Les références manquantes des PR ajoutant des fichiers ont été régénérées.
+  Le nettoyage des fixtures de build suit leurs groupes de processus possédés,
+  même si le parent a quitté : ancien cleanup reproduit en TimeoutExpired,
+  nouveau cleanup ferme les pipes et préserve une invocation voisine.
+  Les 14 tests build/métadonnées passent, délais de 5/30 s inchangés.
+- **Q17 :** artifact macOS 26 téléchargé et relu pour le run `37844274602` :
+  commit de test `0227adef`, contextes de versions, résumés Python/Swift et trois
+  logs non vides. Le run contient la baseline de cette PR indépendante (383
+  Python + 356 Swift), pas l’assemblage final. Le banc suivant échoue réellement
+  au premier dashboard (623,4 ms > 500 ms, sept autres cas conformes, RSS
+  466 419 712 octets < 512 Mio). Ses artifacts sont aussi téléchargés et relus :
+  rapports, logs, mesures GCS et captures conservés malgré l’échec. Les trois
+  tests Swift de ce banc passent ; aucun seuil n’a été relevé. Le chronomètre
+  exclut génération/indexation et compilation ; ce run mesure le code de
+  référence, et sa cause précise n’est pas isolée. Le banc mesure le chemin
+  writer, distinct des lectures read-only de navigation.
+- **Q18 :** configuration GitHub relue après application : les quatre noms de
+  checks et leur application GitHub Actions correspondent, `strict` et protection
+  admin actifs, force-push/suppression interdits. Aucune seconde approbation
+  humaine imposée au mainteneur unique. La PR #9 dont un check manque est bien
+  `BLOCKED` ; aucune tentative de fusion ou de push défaillant sur `main`.
+
+### Répartition des responsabilités après correction
+
+Sur l’assemblage `5e631a0`, le point d’entrée Swift passe de 1 144 à 27 lignes,
+`LibraryStore` de 835 à 356 lignes, et la fonction Python `query()` de 346 à
+119 lignes. Navigation, import, maintenance, rapports, shell legacy et dispatch
+possèdent leurs fichiers dédiés ; les façades utilisées par l’app sont conservées.
+Ces mesures décrivent la concentration du code : le nombre total de lignes n’est
+pas un objectif et les protections ajoutées demandent parfois davantage de code.
+
+### Vérification de l’assemblage
+
+Le regroupement tient compte des dépendances qui ne sont pas visibles dans un
+seul diff : le nouveau dispatcher Python conserve l’argument de cache Q23 et
+les tables temporaires Q20 ; les catégories SQL Q14 conservent les comptes Q07.
+Le premier gate Python (490 cas) a relevé deux erreurs de priorité entre le
+contrôle cloud et le journal de restauration Q21. Le journal est maintenant
+refusé avant consultation d’une autre archive, et le dossier cible n’est créé
+qu’après le preflight local. Les 21 cas ciblés Q10/récupération passent après
+correction. La revue indépendante de l’assemblage vérifie les 45 méthodes
+Swift extraites, les gardes avant `await`, les nettoyages Q25 et la propagation
+d’activité entre fenêtres. Les contre-tests supplémentaires bloquent une
+sauvegarde SQLite pendant la suppression d’un client et vérifient qu’aucune
+écriture suivante ne réintroduit son attribution.
+
+Gates locaux complets, avec attribution au commit effectivement testé :
+
+| Contrôle | Commit testé | Résultat | Portée |
+| --- | --- | --- | --- |
+| Swift | `91a392a` | **431/431 réussis**, 0 échec/skip | 182 Core + 249 App, fenêtres natives, stores, WebKit et contre-tests d’intégration |
+| Python | `5e631a0` | **508/509 réussis**, 0 échec/erreur | Uniquement le corpus privé externe absent ignoré, comme prévu ; code identique dans `91a392a` |
+| JavaScript | `5e631a0` | **18/18 réussis** | Interactions du rapport ; code identique dans `91a392a` |
+| Réactivité GCS | `91a392a` | **50,8 ms / 278,9 ms / 87,9 ms** | Historique 50k sous verrou / 50k pending avec 4 transferts / arrêt-sauvegarde ; budget 500 ms inchangé |
+| Bundle autonome | `5e631a0` | **6/6 contrôles réussis** | Build Release ad hoc isolé, 19 modules Python exacts, aucune publication ; production identique dans `91a392a` |
+| Publication | `5e631a0` | **301 fichiers, 0 signalement** | Sources de l’assemblage, hors historique Git et métadonnées distantes |
+
+Le helper frozen du bundle passe aussi un contrôle de proximité supplémentaire :
+trois ULogs inventés, trois trajectoires persistées, deux pages (2 + 1) lues par
+deux processus, cache de 462 octets réutilisé sans remplacement, totaux et JSON
+identiques aux pages sans cache. Le probe emploie le même Python 3.13 que les
+tests ; une première tentative avec le Python Xcode a échoué dans son inspection
+SQLite hôte et reste distincte des résultats du helper. Aucun seuil ni assertion
+n’a été relâché. Le bundle et le checkout restent inchangés après exécution.
+
+Les premières compilations de tests ont nécessité d’adapter quatre appels aux
+hooks devenus async ; aucun cas n’avait été exécuté lors de ces essais. Le gate
+Swift complet de 431 cas ci-dessus est un seul run vert sur le head final.
+L’ancien gate Python de 502 cas avait échoué dans des fixtures de build sous
+charge ; le cleanup de leurs processus possédés a été corrigé sans modifier leurs délais,
+puis le gate complet de 509 cas ci-dessus a passé.
+
+La CI de la PR Q06 a également révélé deux assertions en échec dans le même
+test de progression FTP/HTTP. Sa fixture temporisée pouvait observer une autre
+paire de transferts, ou lire le snapshot des comptes avant son rafraîchissement.
+Le correctif de test emploie des barrières explicites, attend les comptes frais
+et vérifie les mêmes identifiants avant de libérer le HTTP. Deux ordres de
+progression sont exercés ; les assertions et les seuils restent inchangés.
+Cet échec historique demeure distinct des campagnes réussies.
+
+La première CI consolidée sur `5e631a0` passe ses [quatre checks requis](https://github.com/mehdi7129/KataLog/actions/runs/37896613245)
+et son [banc Synthetic capacity](https://github.com/mehdi7129/KataLog/actions/runs/37896613211).
+Les artifacts relus portent le commit de merge `10219912`, dont l’arbre est
+identique au head `5e631a0` : 430 Swift, 508/509 Python et 18 JavaScript sur
+chacun des deux runners ; 6/6 contrôles sur chacun des deux packages. Les huit
+budgets de requête à 500 ms passent, dont le dashboard à 389,7 ms au maximum ;
+RSS de 489 635 840 octets, inférieur au budget de 512 Mio. Ces résultats ne
+requalifient pas en succès l’ancien banc Q17 à 623,4 ms.
+
+La relecture visuelle des artifacts révèle une limite distincte : les six
+captures de ce premier banc montrent encore un état de chargement. Le helper
+de test attendait la session de navigation par défaut, alors que la fenêtre
+rendue en créait une autre. Ces images prouvent la production de bitmaps, pas
+l’affichage complet des totaux ou de la carte. Le même helper sert aux aperçus
+de pages ; les assertions multi-fenêtres et les rendus directs de profils ne
+sont pas concernés. Les mesures SQL/GCS et les comptes de tests ci-dessus
+restent des résultats d’exécution distincts de cette qualification visuelle.
+
+Le helper de test est corrigé pour injecter et attendre la session effectivement
+rendue. Le défaut de fixture est reproduit par trois assertions rouges avant
+correction. Les six nouvelles captures locales sont ensuite relues : les vues
+d’ensemble affichent bien 180 logs et 1 512,9 min aux deux largeurs et dans les
+deux thèmes ; les cartes ont leur liste peuplée et leur compteur de 180 repères.
+Les assertions natives vérifient les 180 identifiants, les coordonnées remises
+au `MKMapView` et la présence de ses 180 annotations. Le canvas MapKit reste
+toutefois quadrillé dans les bitmaps, y compris après une sonde de fenêtre
+visible ensuite retirée. Ces preuves qualifient le modèle chargé et le layout,
+pas le rendu graphique complet des tuiles et marqueurs. Aucun bug applicatif
+n’est établi par cette limite de capture ; ces ajustements concernent seulement
+les tests. Les anciens PNG de CI ne sont pas requalifiés rétroactivement.
+Les [six captures et leurs états natifs du run `91a392a`](https://github.com/mehdi7129/KataLog/actions/runs/37908235241/artifacts/11606047983),
+également téléchargés et relus, confirment ensuite les totaux et listes chargés ;
+la même limite du canvas MapKit y demeure.
+
+Le head `91a392a` ne diffère de `5e631a0` que dans `GCSStoreTests.swift` et
+`WorkspacePreviewTests.swift`, avec les deux correctifs de fixture décrits
+ci-dessus. Le code de production, les scripts et les formats embarqués sont
+identiques ; la recette du bundle autonome sur `5e631a0` conserve donc cette
+portée, sans prétendre avoir été exécutée à un autre commit.
+
+La [CI finale du head `91a392a`](https://github.com/mehdi7129/KataLog/actions/runs/37908235149)
+passe également les **quatre checks requis**. Ses artifacts téléchargés et
+relus portent le commit de merge `f1eb8ac0`, dont l’arbre est identique au head :
+
+| Check final | Résultat vérifié dans les artifacts |
+| --- | --- |
+| Tests macOS 15.7.9 | 431 Swift, zéro échec/skip ; 508/509 Python, seul corpus privé absent ; 18/18 JavaScript |
+| Tests macOS 26.6.2 | 431 Swift, zéro échec/skip ; 508/509 Python, seul corpus privé absent ; 18/18 JavaScript |
+| Package ARM64 / macOS 15.7.9 | 6/6 catégories, 19 modules source vérifiés, signature ad hoc |
+| Package ARM64 / Xcode 27 | 6/6 catégories sur macOS 27.0, 19 modules source vérifiés, signature ad hoc |
+
+Les deux packages conservent la version 0.8.2 build 21, les mises à jour
+désactivées et les contrôles d’import/restauration/collecte loopback dans un HOME
+isolé. Ces nouveaux packages CI sont construits depuis `91a392a` ; la recette
+locale précédente reste attribuée à son commit propre.
+
+Le [banc capacity suivant sur `91a392a`](https://github.com/mehdi7129/KataLog/actions/runs/37908235241)
+échoue toutefois sur deux premières requêtes : dashboard **631,1 ms** et
+registre **542,1 ms**, au-dessus du même budget de 500 ms. Les six autres
+requêtes passent ; les répétitions suivantes sont à 51–60 ms et 95–122 ms.
+Le RSS reste conforme à 504,94 Mio sur 512 Mio, les oracles d’identité passent,
+ainsi que les sept tests Swift de ce banc. Cet échec reste un échec, malgré
+les répétitions plus rapides et l’ancien passage à 389,7 ms. Ces mesures ne
+suffisent pas à attribuer l’écart au cache ou à une régression applicative.
+
+Un profil local séparé sur le même head et la fixture officielle de 50 000 logs,
+5 millions de messages et 500 identités drone passe les huit budgets inchangés :
+premier dashboard à 161,61 ms, premier registre à 110,74 ms et RSS maximal à
+346,17 Mio. Les réponses des deux modes writer/read-only restent identiques sur
+neuf cas et cinq répétitions. Cette mesure locale ne reproduit donc pas les
+dépassements CI ; la première requête ne signifie pas un cache OS froid garanti.
+L’instrumentation séparée situe l’essentiel du temps dans les grands SELECT,
+sans isoler la cause de la variation entre runners. Aucun patch SQL ni
+changement de seuil ou de benchmark n’est intégré à la suite de ce profil.
+
+Le livrable Q17 est atteint dans son périmètre initial : artifacts conservés et
+relisibles même sur échec, conditions de mesure publiées, banc de surveillance
+et régressions intégrées aux suites. Le résultat capacity final demeure rouge
+et les deux dépassements restent une limite de performance documentée. Les
+quatre checks requis verts ne constituent pas une qualification du budget de
+500 ms sur ce banc ni une garantie de latence sur une bibliothèque réelle.
+
+Les checks exigés et le verdict actuel sont publiés sur la PR #34. Les artifacts
+tests/package sont conservés pendant 14 jours, et capacity pendant 30 jours.
+Les campagnes individuelles de #26, #28 et #33, alors entièrement queued, ont
+été annulées pour concentrer les runners sur cette validation complète. Aucun job déjà actif
+n’a été interrompu. Ces annulations ne sont pas des succès des heads individuels.
+Le check macOS 26 de #9 reste également annulé après ses problèmes antérieurs
+de disponibilité ; les quatre checks requis de #25 sont verts, mais son ancien
+banc capacity reste rouge comme expliqué plus haut.
+
+Les changements sont proposés en PR, sans fusion ni release. Une relecture
+GET finale confirme `main = 6aa9007`, la protection Q18 et aucune nouvelle
+publication. Le démarrage GCS initial conserve ses I/O synchrones ; la recette
+n’inclut ni GCS réel, iCloud réel, panne matérielle, corpus privé ni qualification
+d’une app installée. Les résultats de chaque branche restent datés ; un replay
+isolé ne transforme pas un ancien gate rouge en gate vert.
 
 ## Reproductions minimales des trois P1
 
