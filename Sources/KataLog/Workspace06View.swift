@@ -90,8 +90,13 @@ struct Workspace06View: View {
     private var theme: ColorScheme? { WorkspaceAppearance.colorScheme(for: views.state.theme) }
     private var palette: Palette { Palette(dark: (theme ?? scheme) == .dark) }
     private var themeSelection: Binding<String> { Binding(get: { WorkspaceAppearance.selection(for: views.state.theme) }, set: { value in edit { try views.setTheme(value) } }) }
-    private var busy: Bool { library.isImporting || library.isMaintainingLibrary || navigation.isQuerying || library.isLoading || navigation.isLoadingFlight }
-    private var mutationBusy: Bool { busy || library.isQuerying || library.isLoadingFlight || gcs.isBusy || library.activeDetailLoads > 0 || diagnostics.isExporting || diagnostics.isFetchingGCS }
+    private var commandCapabilities: WorkspaceCommandCapabilities {
+        WorkspaceCommandCapabilities(library: library.commandCapabilities, collecting: gcs.isBusy,
+            diagnosticExporting: diagnostics.isExporting, diagnosticFetching: diagnostics.isFetchingGCS,
+            navigationQuerying: navigation.isQuerying, navigationLoadingFlight: navigation.isLoadingFlight)
+    }
+    private var busy: Bool { !commandCapabilities.canNavigate }
+    private var mutationBusy: Bool { !commandCapabilities.canMutate }
     private var queryResultsUnavailable: Bool {
         switch page {
         case .overview, .history: return !navigation.historyResultsCurrent
@@ -157,7 +162,7 @@ struct Workspace06View: View {
                 if library.usesPagedNavigation { navigation.loadHistory() }
             }
             gcs.attach(library: library)
-            updates.installationAllowed = { !library.isReadOnly && !library.isImporting && !library.isExporting && !library.isMaintainingLibrary && !gcs.isBusy && !library.isQuerying && !library.isLoadingFlight && library.activeDetailLoads == 0 && !diagnostics.isExporting && !diagnostics.isFetchingGCS }
+            updates.installationAllowed = { commandCapabilities.canInstallUpdate }
             if !library.usesPagedNavigation { library.enablePagedNavigation() }
             navigation.loadHistory(cursor: initialHistoryCursor)
         }
@@ -224,7 +229,7 @@ struct Workspace06View: View {
                         Text("Les nouveaux logs seront attribués à ce client. Les logs déjà connus conservent leur attribution.")
                             .font(.caption).foregroundStyle(palette.secondary)
                     }.padding(.horizontal, 24).padding(.top, 24).frame(width: 700, alignment: .leading)
-                    ImportOptions06(source: source, initialState: importOptions, canApply: { !mutationBusy && !library.isReadOnly }) { destination in
+                    ImportOptions06(source: source, initialState: importOptions, canApply: { commandCapabilities.canImport }) { destination in
                         if let destination { importOptions.archiveDirectory = destination.path; try ImportOptionsPersistence.save(importOptions, library: library) }
                         library.importFolder(source, archiveDestination: destination, clientID: importClientID)
                     }
@@ -232,7 +237,7 @@ struct Workspace06View: View {
             }
         }
         .sheet(isPresented: Binding(get: { maskGroup != nil }, set: { if !$0 { maskGroup = nil } }), onDismiss: { focusedControl = selectedGroup == nil ? .scope : .mask(masking) }) {
-            if let group = maskGroup { MaskImpact06(group: group, masked: masking, library: library, canApply: { !mutationBusy && !library.isReadOnly }) { selectedGroup = nil; navigation.loadHistory() } }
+            if let group = maskGroup { MaskImpact06(group: group, masked: masking, library: library, canApply: { commandCapabilities.canEditAnnotations }) { selectedGroup = nil; navigation.loadHistory() } }
         }
     }
     private var header: some View {
@@ -306,7 +311,7 @@ struct Workspace06View: View {
                 .disabled(library.isReadOnly || library.isMaintainingLibrary)
             Button("Importer", systemImage: "plus") { chooseImport() }
                 .buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true))
-                .disabled(mutationBusy || library.isReadOnly).focused($focusedControl, equals: .importFolder)
+                .disabled(!commandCapabilities.canImport).focused($focusedControl, equals: .importFolder)
                 .keyboardShortcut("o", modifiers: .command).help("Importer un dossier de logs")
         }.font(.system(size: 11)).foregroundStyle(palette.secondary)
             .padding(.horizontal, 28).frame(height: 64)
@@ -363,7 +368,7 @@ struct Workspace06View: View {
             notice(error, symbol: "exclamationmark.triangle")
         }
         if library.needsAnalysisRefresh {
-            panel { HStack { Text("Certaines analyses ont été calculées avec un ancien moteur.").font(.callout); Spacer(); Button("Actualiser les analyses") { library.refreshAnalysis() }.disabled(mutationBusy || library.isReadOnly) } }
+            panel { HStack { Text("Certaines analyses ont été calculées avec un ancien moteur.").font(.callout); Spacer(); Button("Actualiser les analyses") { library.refreshAnalysis() }.disabled(!commandCapabilities.canRefreshAnalysis) } }
         }
     }
     private var queryPlaceholder: some View {
@@ -411,7 +416,7 @@ struct Workspace06View: View {
                     Text("Votre flotte commence ici.").font(.system(size: 23, weight: .semibold)).tracking(-0.6)
                     Text("Importez un dossier de logs ou récupérez-les depuis votre GCS. KataLog conserve les analyses et déduplique les copies identiques.").foregroundStyle(palette.secondary)
                     Button("Importer un dossier", systemImage: "folder.badge.plus") { chooseImport() }
-                        .buttonStyle(WorkspaceActionButtonStyle(palette: palette, prominent: true)).disabled(mutationBusy || library.isReadOnly)
+                        .buttonStyle(WorkspaceActionButtonStyle(palette: palette, prominent: true)).disabled(!commandCapabilities.canImport)
                 }
             } else {
                 ViewThatFits(in: .horizontal) {
@@ -1285,7 +1290,7 @@ struct Workspace06View: View {
             Divider()
             Button("Générer le rapport…", systemImage: "doc.badge.plus") { exportReport() }
                 .buttonStyle(WorkspaceActionButtonStyle(palette: palette, prominent: true))
-                .disabled(library.isExporting || mutationBusy || library.isReadOnly || reportPreview.isLoading || (reportPreview.preview?.totals.logs ?? 0) == 0)
+                .disabled(!commandCapabilities.canPrepareReport || reportPreview.isLoading || (reportPreview.preview?.totals.logs ?? 0) == 0)
                 .accessibilityIdentifier("reports.generate")
             if library.isExporting { Button("Arrêter", systemImage: "stop") { library.cancelExport() } }
         }
@@ -1492,7 +1497,7 @@ struct Workspace06View: View {
             Text("Clients, identifications et réglages conservés. Vos fichiers .ulg restent sur le disque.")
                 .font(.caption).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
             Button("Vider la bibliothèque…", systemImage: "trash", role: .destructive) { confirmingClear = true }
-                .disabled(mutationBusy || library.isReadOnly || library.isExporting)
+                .disabled(!commandCapabilities.canResetLibrary)
                 .accessibilityIdentifier("storage.clearLibrary")
         }
     }
@@ -1504,12 +1509,12 @@ struct Workspace06View: View {
             Text("Tous les clients sont concernés. Vos fichiers .ulg restent sur le disque.")
                 .font(.caption).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
             Button("Réinitialiser l’application…", systemImage: "arrow.counterclockwise", role: .destructive) { confirmingReset = true }
-                .disabled(mutationBusy || library.isReadOnly || library.isExporting)
+                .disabled(!commandCapabilities.canResetLibrary)
                 .accessibilityIdentifier("settings.resetApplication")
         }
     }
     private func clearLibrary(reset: Bool) {
-        guard !mutationBusy, !library.isReadOnly, !library.isExporting else { return }
+        guard commandCapabilities.canResetLibrary else { return }
         maintenanceTask = Task {
             let previousReset = library.resetGeneration
             do {
@@ -1530,7 +1535,7 @@ struct Workspace06View: View {
             Text("Restaurer cette sauvegarde ?").font(.title2)
             Text("L’archive a été vérifiée. L’état actuel sera conservé dans un dossier de récupération. Les jobs de collecte actifs restaurés seront interrompus ; aucune collecte ne redémarrera automatiquement.").font(.callout).foregroundStyle(.secondary)
             ScrollView { VStack(alignment: .leading, spacing: 12) { Text("\(restorePreview?["logCount"]?.countValue ?? 0) logs · \(restorePreview?["fileCount"]?.countValue ?? 0) fichiers").font(.headline); Text("\(restorePreview?["missingSourceCount"]?.countValue ?? 0) sources absentes de la sauvegarde"); Text("Taille décompressée : " + bytes(Int64(restorePreview?["uncompressedBytes"]?.countValue ?? 0))); Text("Date : " + (restorePreview?["createdAt"]?.stringValue ?? "inconnue")) }.frame(maxWidth: .infinity, alignment: .leading) }
-            HStack { Button("Annuler") { restorePreview = nil; restoreCandidate = nil }.keyboardShortcut(.cancelAction); Spacer(); Button("Restaurer") { guard let candidate = restoreCandidate else { return }; restorePreview = nil; maintenanceTask = Task { do { _ = try await library.restore(from: candidate); storage.load() } catch { localError = error.localizedDescription }; maintenanceTask = nil } }.disabled(mutationBusy || library.isReadOnly).keyboardShortcut(.defaultAction) }
+            HStack { Button("Annuler") { restorePreview = nil; restoreCandidate = nil }.keyboardShortcut(.cancelAction); Spacer(); Button("Restaurer") { guard let candidate = restoreCandidate else { return }; restorePreview = nil; maintenanceTask = Task { do { _ = try await library.restore(from: candidate); storage.load() } catch { localError = error.localizedDescription }; maintenanceTask = nil } }.disabled(!commandCapabilities.canRestoreLibrary).keyboardShortcut(.defaultAction) }
         }.padding(26).frame(width: 620, height: 500)
     }
     private func panel<Content: View>(height: CGFloat? = nil, @ViewBuilder content: () -> Content) -> some View {
@@ -1662,77 +1667,4 @@ enum RegistryObservationFormat {
         default: "état indéterminé"
         }
     }
-}
-
-enum AlertProfile06 {
-    enum ChartKind: Equatable { case empty, bars, radar }
-    static func chartKind(axisCount: Int) -> ChartKind { axisCount == 0 ? .empty : axisCount < 3 ? .bars : .radar }
-    /// Presentation zoom only. Raw counts and the number of readable logs stay unchanged.
-    static func displayMaximum(counts: [String: Int], denominator: Int) -> Int {
-        guard denominator > 0 else { return 1 }
-        let peak = max(0, counts.values.max() ?? 0)
-        guard peak > 0 else { return 1 }
-        let remainder = peak % 4
-        guard remainder > 0, peak <= Int.max - (4 - remainder) else { return peak }
-        return peak + 4 - remainder
-    }
-    static func moving(_ family: String, in axes: [String], by offset: Int) -> [String] {
-        guard let index = axes.firstIndex(of: family), axes.indices.contains(index + offset) else { return axes }
-        var result = axes; result.swapAt(index, index + offset); return result
-    }
-    static func families(counts: [String: Int], selectedAxes: [String]) -> [String] {
-        Array(Set(counts.keys).union(selectedAxes)).sorted {
-            let lhs = counts[$0] ?? 0, rhs = counts[$1] ?? 0
-            return lhs == rhs ? $0 < $1 : lhs > rhs
-        }
-    }
-}
-
-struct AlertProfileChart06: View {
-    let axes: [String]; let counts: [String: Int]; let denominator: Int
-    @Environment(\.colorScheme) private var scheme
-    private var palette: Palette { Palette(dark: scheme == .dark) }
-    var body: some View {
-        switch AlertProfile06.chartKind(axisCount: axes.count) {
-        case .empty:
-            Text("Aucun axe sélectionné. Choisissez des familles pour afficher leur fréquence.")
-                .font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        case .bars:
-            VStack(alignment: .leading, spacing: 14) {
-                ForEach(axes, id: \.self) { family in
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack { Text(family).font(.caption); Spacer(); Text("\(counts[family] ?? 0) / \(denominator)").font(.caption).monospacedDigit() }
-                        GeometryReader { geometry in
-                            let fraction = denominator > 0 ? min(1, max(0, Double(max(0, counts[family] ?? 0)) / Double(AlertProfile06.displayMaximum(counts: counts, denominator: denominator)))) : 0
-                            ZStack(alignment: .leading) {
-                                Capsule().fill(palette.border)
-                                Capsule().fill(palette.mint.opacity(0.8)).frame(width: geometry.size.width * fraction)
-                            }
-                        }.frame(height: 8)
-                    }
-                }
-            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        case .radar: ProfileRadar06(axes: axes, counts: counts, denominator: denominator)
-        }
-    }
-}
-
-private struct ProfileRadar06: View {
-    let axes: [String]; let counts: [String: Int]; let denominator: Int
-    @Environment(\.colorScheme) private var scheme
-    private var palette: Palette { Palette(dark: scheme == .dark) }
-    var body: some View {
-        GeometryReader { geometry in
-            let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
-            let layoutRadius: CGFloat = min(geometry.size.width / 3, geometry.size.height / 2.6)
-            let radius: Double = Double(layoutRadius)
-            let count = axes.count
-            ZStack {
-                ForEach(1...4, id: \.self) { ring in Path { path in for index in 0..<count { let p = point(index, count, center, radius * Double(ring) / 4); if index == 0 { path.move(to: p) } else { path.addLine(to: p) } }; path.closeSubpath() }.stroke(palette.border, lineWidth: 1) }
-                Path { path in for (index, axis) in axes.enumerated() { let fraction = denominator > 0 ? min(1, Double(max(0, counts[axis] ?? 0)) / Double(AlertProfile06.displayMaximum(counts: counts, denominator: denominator))) : 0; let p = point(index, count, center, radius * fraction); if index == 0 { path.move(to: p) } else { path.addLine(to: p) } }; path.closeSubpath() }.fill(palette.mint.opacity(0.15)).overlay(Path { path in for (index, axis) in axes.enumerated() { let p = point(index, count, center, radius * (denominator > 0 ? min(1, Double(max(0, counts[axis] ?? 0)) / Double(AlertProfile06.displayMaximum(counts: counts, denominator: denominator))) : 0)); if index == 0 { path.move(to: p) } else { path.addLine(to: p) } }; path.closeSubpath() }.stroke(palette.mint, lineWidth: 1.5))
-                ForEach(Array(axes.enumerated()), id: \.element) { index, axis in Text(axis).font(.system(size: 9)).foregroundStyle(palette.secondary).frame(width: 100).position(point(index, count, center, radius + 25)) }
-            }
-        }
-    }
-    private func point(_ index: Int, _ count: Int, _ center: CGPoint, _ radius: Double) -> CGPoint { let angle = Double(index) * .pi * 2 / Double(count) - .pi / 2; return CGPoint(x: center.x + cos(angle) * radius, y: center.y + sin(angle) * radius) }
 }
