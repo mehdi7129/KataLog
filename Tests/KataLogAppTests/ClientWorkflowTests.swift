@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import XCTest
 @testable import KataLog
 import KataLogCore
@@ -96,6 +97,8 @@ final class ClientWorkflowTests: XCTestCase {
         try library.annotations.setStockNumber("123", forKey: "ulog:synthetic-controller")
         let gcs = GCSStore(storageDirectory: base); gcs.attach(library: library)
         defer { gcs.stopForTermination() }
+        try await settle(library)
+        try await gcs.waitForPersistence()
         let collected = base.appendingPathComponent("Collected Logs/preserved.ulg")
         try FileManager.default.createDirectory(at: collected.deletingLastPathComponent(), withIntermediateDirectories: true)
         try original.write(to: collected)
@@ -130,7 +133,83 @@ final class ClientWorkflowTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: source), original)
         XCTAssertEqual(try Data(contentsOf: collected), original)
         XCTAssertTrue(FileManager.default.fileExists(atPath: base.appendingPathComponent(".library-writer.lock").path))
+        try await gcs.finishTermination()
     }
+    func testClientCleanupWaitsForAdmittedWritesAndCannotResurrectAttributions() async throws {
+        for deleting in [false, true] {
+            let root = try directory(), drone = "0102030405060708090A0B0C"
+            let library = LibraryStore(storageDirectory: root, engine: project.appendingPathComponent("Sources/KataLog/Resources/analyzer.py"))
+            defer { library.prepareForTermination() }
+            let client = try await library.clients.create(name: "Ordered cleanup")
+            let gcs = GCSStore(storageDirectory: root)
+            gcs.attach(library: library)
+            defer { gcs.stopForTermination() }
+            try await settle(library)
+            try await gcs.waitForPersistence()
+            gcs.chooseCollectionClient(client.id)
+            gcs.setAllowed(uuid: drone, allowed: true)
+            gcs.isQueuePaused = true
+            _ = try await gcs.enqueue([.init(path: "/fixture/cleanup.ulg", size: 64)], uuid: drone,
+                host: gcs.host, destination: gcs.downloadDirectory.path, clientID: client.id)
+            try await gcs.flushPersistedStateForMaintenance()
+            let id = try XCTUnwrap(gcs.queue.first?.id)
+            var connection: OpaquePointer?
+            XCTAssertEqual(sqlite3_open(root.appendingPathComponent("gcs-queue.sqlite").path, &connection), SQLITE_OK)
+            defer { sqlite3_exec(connection, "ROLLBACK", nil, nil, nil); sqlite3_close(connection) }
+            // Record actual durable writes, including updates performed by cleanup.
+            XCTAssertEqual(sqlite3_exec(connection, """
+                CREATE TABLE cleanup_writes(sequence INTEGER PRIMARY KEY, client_id TEXT);
+                CREATE TRIGGER observe_cleanup AFTER UPDATE ON transfers BEGIN
+                    INSERT INTO cleanup_writes(client_id) VALUES(json_extract(CAST(new.payload AS TEXT),'$.clientID'));
+                END;
+                BEGIN IMMEDIATE;
+                """, nil, nil, nil), SQLITE_OK)
+            gcs.stopCollection()
+            XCTAssertTrue(gcs.hasPendingPersistence)
+            try await Task.sleep(for: .milliseconds(100))
+            var cleanupFinished = false
+            let cleanup = Task {
+                if deleting { try await library.clientDidDelete(client.id) }
+                else { try await library.clientProfilesDidLoad([]) }
+                cleanupFinished = true
+            }
+            let deadline = Date().addingTimeInterval(5)
+            while !library.hasExternalActivity(), Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
+            XCTAssertTrue(library.hasExternalActivity())
+            XCTAssertTrue(gcs.isMaintenanceBlocked)
+            XCTAssertFalse(cleanupFinished, "Cleanup must wait for the already admitted write.")
+            let blockedDrone = "1112131415161718191A1B1C"
+            gcs.setAllowed(uuid: blockedDrone, allowed: true)
+            XCTAssertFalse(gcs.allowedUUIDs.contains(blockedDrone), "New mutations remain gated while cleanup drains.")
+            XCTAssertEqual(sqlite3_exec(connection, "ROLLBACK", nil, nil, nil), SQLITE_OK)
+            try await cleanup.value
+            try await gcs.waitForPersistence()
+            XCTAssertFalse(gcs.isMaintenanceBlocked)
+            XCTAssertNil(gcs.queue.first(where: { $0.id == id })?.clientID)
+            XCTAssertEqual(gcs.collectionClientID, "")
+            // A subsequent ordinary save must not reintroduce an obsolete payload.
+            gcs.pauseQueue()
+            try await gcs.waitForPersistence()
+            let persisted = try GCSQueueRepository(url: root.appendingPathComponent("gcs-queue.sqlite"), readOnly: true)
+            XCTAssertNil(try persisted.transfer(id: id)?.clientID)
+            let settings = try JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: root.appendingPathComponent("gcs-settings.json")))
+            XCTAssertEqual(settings.collectionClientID, "")
+            var statement: OpaquePointer?
+            XCTAssertEqual(sqlite3_prepare_v2(connection, "SELECT client_id FROM cleanup_writes ORDER BY sequence", -1, &statement, nil), SQLITE_OK)
+            var writtenClients: [String?] = []
+            while sqlite3_step(statement) == SQLITE_ROW {
+                writtenClients.append(sqlite3_column_type(statement, 0) == SQLITE_NULL ? nil : String(cString: sqlite3_column_text(statement, 0)))
+            }
+            sqlite3_finalize(statement)
+            XCTAssertEqual(writtenClients.first ?? nil, client.id, "The original admitted write must really have reached SQLite.")
+            XCTAssertTrue(writtenClients.contains(where: { $0 == nil }), "Cleanup must durably clear attribution.")
+            if let cleaned = writtenClients.firstIndex(where: { $0 == nil }) {
+                XCTAssertTrue(writtenClients[cleaned...].allSatisfy { $0 == nil }, "No write may resurrect the client after cleanup.")
+            }
+            try await gcs.finishTermination()
+        }
+    }
+
     func testFullReportPreservesClientWhileRemovingOtherFilters() {
         var scope = SelectionScope(); scope.clientID = "CLIENT-A"; scope.search = "battery"; scope.logIDs = ["one"]
         let request = ReportPreviewStore.request(mode: .full, scope: scope, annotations: .init(), maskedMessageKeys: [], viewRevision: 0, options: .init())
@@ -160,5 +239,6 @@ final class ClientWorkflowTests: XCTestCase {
         XCTAssertEqual(gcs.queue.first?.clientID, "CLIENT-A")
         let decoded = try JSONDecoder().decode(GCSTransfer.self, from: JSONEncoder().encode(XCTUnwrap(gcs.queue.first)))
         XCTAssertEqual(decoded.clientID, "CLIENT-A")
+        try await gcs.finishTermination()
     }
 }

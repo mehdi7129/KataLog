@@ -288,6 +288,49 @@ pathlib.Path(sys.argv[sys.argv.index('--output')+1]).write_text(json.dumps(resul
         XCTAssertEqual(store.clients.profiles.map(\.name), ["Synthetic client"])
     }
 
+    func testMaintenanceGateCoversAwaitedStorageDrainAndItsFailure() async throws {
+        let (root, store) = try blockedQueryFixture()
+        try FileManager.default.removeItem(at: root.appendingPathComponent("block-logs"))
+        try await waitUntil { !store.isQuerying && !store.clients.isLoading }
+        for fails in [false, true] {
+            var release: CheckedContinuation<Void, Never>?
+            defer { release?.resume() }
+            var operationEntered = false
+            store.willMaintainLibrary = {
+                await withCheckedContinuation { release = $0 }
+                if fails { throw AnalysisError.engine("Synthetic durable drain failure") }
+            }
+            let maintenance = Task {
+                try await store.performMaintenance { operationEntered = true }
+            }
+            try await waitUntil { release != nil }
+            XCTAssertTrue(store.isMaintainingLibrary, "Raise the gate before awaiting collection persistence.")
+            XCTAssertFalse(operationEntered)
+            var concurrentOperationEntered = false
+            do {
+                try await store.performMaintenance { concurrentOperationEntered = true }
+                XCTFail("A second operation cannot enter during the storage drain.")
+            } catch {}
+            XCTAssertFalse(concurrentOperationEntered)
+            let calls = clientCallCount(root)
+            store.clients.reload()
+            XCTAssertFalse(store.clients.isLoading)
+            XCTAssertEqual(clientCallCount(root), calls)
+            let continuation = try XCTUnwrap(release)
+            release = nil
+            continuation.resume()
+            do {
+                try await maintenance.value
+                XCTAssertFalse(fails)
+            } catch {
+                XCTAssertTrue(fails)
+                XCTAssertTrue(error.localizedDescription.contains("Synthetic durable drain failure"))
+            }
+            XCTAssertEqual(operationEntered, !fails)
+            XCTAssertFalse(store.isMaintainingLibrary, "A failed drain must also release the gate.")
+        }
+    }
+
     func testFirstIndexCreationRecoversClientReadWithoutExistingDatabase() async throws {
         let (root, store) = try blockedQueryFixture(kind: "ensure-index", createDatabase: false, emptyClients: true)
         store.clients.reload()
