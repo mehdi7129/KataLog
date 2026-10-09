@@ -1,11 +1,11 @@
 # Changelog
 
-Version stable actuelle : [0.8.2](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.2),
-build **21**. [Télécharger le DMG](https://github.com/mehdi7129/KataLog/releases/download/v0.8.2/KataLog-0.8.2-macOS-arm64.dmg)
+Version stable actuelle : [0.8.3](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.3),
+build **22**. [Télécharger le DMG](https://github.com/mehdi7129/KataLog/releases/download/v0.8.3/KataLog-0.8.3-macOS-arm64.dmg)
 ou suivre les [instructions de mise à jour](docs/UPDATING.md).
 Les sections antérieures conservent l’état de leur version au moment de sa livraison.
 
-## 0.8.3 — en préparation
+## 0.8.3 — 2026-10-09
 
 - Imports et réanalyses : rollback cohérent, protection des fichiers de sortie,
   provenance conservée et vérification locale des sources avant leur lecture.
@@ -14,15 +14,22 @@ Les sections antérieures conservent l’état de leur version au moment de sa l
 - Navigation indépendante entre fenêtres, résultats d’alertes cohérents après
   changement de filtres et réutilisation de la recherche de proximité paginée.
 - Collecte : accès disque déplacés hors du thread d’interface, compteurs et
-  états cohérents, délai HTTP complet et flux MQTT/JSONL bornés.
+  états cohérents, délai HTTP complet et flux MQTT/JSONL bornés. Après une
+  sauvegarde, les index des grandes files en attente sont préparés hors du
+  thread d’interface, avec les mêmes gardes et priorités de collecte.
+- Resynchroniser un destinataire de collecte déjà sélectionné ne déclenche
+  plus de fausse erreur de stockage pendant le rechargement des clients.
+  Les changements de destinataire restent bloqués pendant cette opération.
 - Exports et grandes sélections sécurisés ; logique Swift/Python séparée par
   responsabilité, métadonnées de build vérifiées et preuves CI conservées.
 
-Candidat **0.8.3**, build **22**. Les 26 points de l’audit sont intégrés sans
+Version **0.8.3**, build **22**. Les 26 points de l’audit sont intégrés sans
 nouvelle fonction ni changement de parseur ou de projection SQLite. La
-[recette 0.8.3](docs/RELEASE-0.8.3.md) distingue les tests réussis, la limite
-observée sur le banc de capacité et les contrôles de distribution restant à
-exécuter. La stable publique reste 0.8.2 pendant cette préparation.
+[recette 0.8.3](docs/RELEASE-0.8.3.md) distingue les tests réussis, les mesures
+et la variabilité du banc de capacité, et les contrôles de distribution.
+Publiée le **9 octobre 2026** sous le tag **`v0.8.3`** (`97ff13f`), dont
+l’arbre correspond exactement au code qualifié. DMG signé/notarisé, ZIP,
+sources correspondantes et SHA-256 téléchargés et vérifiés sans authentification.
 
 ## 0.8.2 — 2026-10-07
 

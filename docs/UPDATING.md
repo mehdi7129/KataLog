@@ -17,17 +17,18 @@ release une première fois par DMG : leurs builds n’activent pas le flux publi
 Ensuite les mises à jour se font depuis l’app. KataLog Preview reste une app de
 review indépendante.
 
-## Version 0.8.3 en préparation
+## Passage à 0.8.3
 
-Le candidat **0.8.3 (build 22)** apporte des corrections de fiabilité et de
-réactivité sans modifier les fonctions ni les parcours. Il conserve le parseur
-**1.4.0** et la projection SQLite **8** ; depuis 0.8.2, aucun réimport, nouveau
-téléchargement GCS ni nouvelle migration n’est nécessaire. Les données,
+La version **0.8.3 (build 22)** apporte des corrections de fiabilité et de
+réactivité sans modifier les fonctions ni les parcours. Elle conserve le
+parseur **1.4.0** et la projection SQLite **8** ; depuis 0.8.2, aucun réimport,
+nouveau téléchargement GCS ni nouvelle migration n’est nécessaire. Les données,
 attributions, identités, dossiers et réglages restent conservés.
 
-La [recette 0.8.3](RELEASE-0.8.3.md) suit la qualification du nouveau package.
-La stable publiée reste 0.8.2 tant que ces contrôles ne sont pas terminés ;
-le flux public n’est pas modifié par la préparation de cette version.
+La [recette 0.8.3](RELEASE-0.8.3.md) consigne la qualification du package et ses
+limites. Le [DMG 0.8.3](https://github.com/mehdi7129/KataLog/releases/download/v0.8.3/KataLog-0.8.3-macOS-arm64.dmg)
+est disponible. Le XML stable versionné propose le build 22 ; ses signatures
+et celles du ZIP public sont vérifiées localement avec l’outil officiel Sparkle.
 
 ## Passage à 0.8.2
 
@@ -48,7 +49,7 @@ l’arrêt de la lecture des clients avant de remplacer ou modifier la biblioth�
 ## Changements introduits en 0.8.1
 
 Les changements de **0.8.1 (build 20)** sont inclus lors d’une mise à jour directe
-vers 0.8.2. Le [suivi de qualification 0.8.1](RELEASE-0.8.1.md) conserve les
+vers 0.8.3. Le [suivi de qualification 0.8.1](RELEASE-0.8.1.md) conserve les
 résultats de la Preview approuvée et des contrôles de ce package stable.
 
 La bibliothèque stable, les identités, les clients, les réglages et les dossiers
@@ -64,7 +65,7 @@ y compris ceux qui dépassaient l’ancienne limite d’affichage de 80 logs.
 ## Passage depuis une version antérieure à 0.8.0
 
 Les changements introduits en 0.8.0 sont également inclus lors d’une mise à jour
-directe vers 0.8.2. La [recette 0.8.0](RELEASE-0.8.0.md) conserve les résultats
+directe vers 0.8.3. La [recette 0.8.0](RELEASE-0.8.0.md) conserve les résultats
 de cette release.
 
 La mise à jour conserve la bibliothèque stable, les identifications et les dossiers
@@ -215,6 +216,16 @@ Il utilise des apps jetables, une clé de test éphémère et un flux loopback s
 Les fichiers de la bibliothèque et du dossier de collecte synthétiques sont conservés.
 Les archives publiques et leur flux HTTPS sont contrôlés séparément par SHA-256
 et avec l’outil de vérification officiel Sparkle.
+
+Pour la 0.8.3, le [banc SDK du candidat](https://github.com/mehdi7129/KataLog/actions/runs/37923450954)
+réussit à nouveau ces cinq recettes sur macOS 15.7.9 et 27.0.1 : remplacement et
+relancement, feed modifié, archive modifiée, téléchargement interrompu et asset
+absent. Les six fichiers synthétiques restent inchangés dans chaque essai.
+Ce banc utilise des apps ad hoc jetables et une clé éphémère sur HTTP loopback ;
+il ne remplace pas un cycle réel 0.8.2 → 0.8.3 dans KataLog. Les cas de payload
+altéré constatent une erreur SDK et l’absence d’installation, sans asserter un
+code d’erreur de signature précis. Les JSON sont conservés dans les logs du run ;
+ce workflow ne téléverse pas d’artifacts séparés.
 
 Sources : [Sparkle 2.10.0](https://github.com/sparkle-project/Sparkle/releases/tag/2.10.0),
 [sécurité et configuration](https://sparkle-project.org/documentation/customization/),
