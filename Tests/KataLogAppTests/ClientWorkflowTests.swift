@@ -210,6 +210,113 @@ final class ClientWorkflowTests: XCTestCase {
         }
     }
 
+    func testCurrentCollectionClientDoesNotSchedulePersistenceOrNormalizeUnsetState() async throws {
+        let root = try directory()
+        let library = LibraryStore(storageDirectory: root, engine: project.appendingPathComponent("Sources/KataLog/Resources/analyzer.py"))
+        defer { library.prepareForTermination() }
+        let client = try await library.clients.create(name: "Unchanged destination")
+        let gcs = GCSStore(storageDirectory: root)
+        gcs.attach(library: library)
+        defer { gcs.stopForTermination() }
+        try await settle(library)
+        try await gcs.waitForPersistence()
+        XCTAssertNil(gcs.collectionClientID)
+        for destination in ["", client.id, ""] {
+            if !destination.isEmpty || gcs.collectionClientID != nil {
+                gcs.chooseCollectionClient(destination)
+                try await gcs.waitForPersistence()
+                XCTAssertEqual(gcs.collectionClientID, destination)
+            }
+            let previous = gcs.collectionClientID
+            let settingsURL = root.appendingPathComponent("gcs-settings.json")
+            let settings = try Data(contentsOf: settingsURL)
+            let attributes = try FileManager.default.attributesOfItem(atPath: settingsURL.path)
+            gcs.errorMessage = "Existing diagnostic"
+            gcs.chooseCollectionClient(destination)
+            XCTAssertEqual(gcs.collectionClientID, previous)
+            XCTAssertEqual(gcs.errorMessage, "Existing diagnostic", "A no-op must preserve unrelated errors.")
+            XCTAssertFalse(gcs.hasPendingPersistence, "Reselecting the current destination must not schedule I/O.")
+            try await gcs.waitForPersistence()
+            XCTAssertEqual(try Data(contentsOf: settingsURL), settings)
+            XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: settingsURL.path)[.modificationDate] as? Date,
+                attributes[.modificationDate] as? Date)
+            gcs.errorMessage = nil
+        }
+        gcs.chooseCollectionClient("missing-client")
+        XCTAssertEqual(gcs.collectionClientID, "")
+        XCTAssertEqual(gcs.errorMessage, "Ce client n’existe plus. Choisissez un destinataire.")
+        XCTAssertFalse(gcs.hasPendingPersistence)
+        try await gcs.finishTermination()
+
+        let staleRoot = try directory()
+        var stale = GCSCollectionState(downloadDirectory: staleRoot.path)
+        stale.collectionClientID = "missing-client"
+        try JSONEncoder().encode(stale).write(to: staleRoot.appendingPathComponent("gcs-settings.json"))
+        let restored = GCSStore(storageDirectory: staleRoot)
+        defer { restored.stopForTermination() }
+        restored.chooseCollectionClient("missing-client")
+        XCTAssertEqual(restored.errorMessage, "Ce client n’existe plus. Choisissez un destinataire.")
+        XCTAssertFalse(restored.hasPendingPersistence)
+        try await restored.finishTermination()
+    }
+
+    func testCurrentCollectionClientRemainsANoOpDuringStorageAndClientReconciliation() async throws {
+        for flushing in [false, true] {
+            for namedDestination in [false, true] {
+                let root = try directory()
+                let library = LibraryStore(storageDirectory: root, engine: project.appendingPathComponent("Sources/KataLog/Resources/analyzer.py"))
+                defer { library.prepareForTermination() }
+                let current = try await library.clients.create(name: "Current destination")
+                let other = try await library.clients.create(name: "Other destination")
+                let gcs = GCSStore(storageDirectory: root)
+                gcs.attach(library: library)
+                defer { gcs.stopForTermination() }
+                try await settle(library)
+                if namedDestination { gcs.chooseCollectionClient(current.id) }
+                try await gcs.waitForPersistence()
+                let previous = gcs.collectionClientID
+                let settingsURL = root.appendingPathComponent("gcs-settings.json")
+                let settings = try Data(contentsOf: settingsURL)
+                var connection: OpaquePointer?
+                XCTAssertEqual(sqlite3_open(root.appendingPathComponent("gcs-queue.sqlite").path, &connection), SQLITE_OK)
+                defer { sqlite3_exec(connection, "ROLLBACK", nil, nil, nil); sqlite3_close(connection) }
+                // Hold the real storage operation until every assertion has exercised its gate.
+                XCTAssertEqual(sqlite3_exec(connection, "BEGIN IMMEDIATE", nil, nil, nil), SQLITE_OK)
+                var operationFinished = false
+                let operation = Task {
+                    if flushing { try await gcs.flushPersistedStateForMaintenance() }
+                    else { try await library.clientProfilesDidLoad([current.id]) }
+                    operationFinished = true
+                }
+                let deadline = Date().addingTimeInterval(5)
+                while !gcs.isMaintenanceBlocked, Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
+                XCTAssertTrue(gcs.isMaintenanceBlocked)
+                XCTAssertFalse(operationFinished)
+                XCTAssertNil(gcs.errorMessage)
+                gcs.chooseCollectionClient(previous ?? "")
+                XCTAssertNil(gcs.errorMessage, "Synchronizing an unchanged UI destination must not report a storage failure.")
+                XCTAssertEqual(gcs.collectionClientID, previous)
+                XCTAssertFalse(gcs.hasPendingPersistence)
+                gcs.chooseCollectionClient(other.id)
+                XCTAssertEqual(gcs.collectionClientID, previous, "A real destination change must remain gated.")
+                XCTAssertEqual(gcs.errorMessage, "Attendez la fin de l’opération de stockage avant de relancer la collecte.")
+                XCTAssertFalse(gcs.hasPendingPersistence)
+                XCTAssertEqual(try Data(contentsOf: settingsURL), settings)
+                XCTAssertEqual(sqlite3_exec(connection, "ROLLBACK", nil, nil, nil), SQLITE_OK)
+                try await operation.value
+                XCTAssertFalse(gcs.isMaintenanceBlocked)
+                gcs.errorMessage = nil
+                gcs.chooseCollectionClient(other.id)
+                try await gcs.waitForPersistence()
+                XCTAssertEqual(gcs.collectionClientID, other.id, "A valid change must work again after maintenance.")
+                XCTAssertNil(gcs.errorMessage)
+                let saved = try JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: settingsURL))
+                XCTAssertEqual(saved.collectionClientID, other.id)
+                try await gcs.finishTermination()
+            }
+        }
+    }
+
     func testFullReportPreservesClientWhileRemovingOtherFilters() {
         var scope = SelectionScope(); scope.clientID = "CLIENT-A"; scope.search = "battery"; scope.logIDs = ["one"]
         let request = ReportPreviewStore.request(mode: .full, scope: scope, annotations: .init(), maskedMessageKeys: [], viewRevision: 0, options: .init())

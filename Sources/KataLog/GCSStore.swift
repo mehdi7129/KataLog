@@ -347,8 +347,11 @@ final class GCSStore: ObservableObject {
     }
 
     func chooseCollectionClient(_ id: String) {
+        let isValid = id.isEmpty || library?.clients.profiles.contains(where: { $0.id == id }) == true
+        // View synchronization is not a mutation when the destination is unchanged.
+        if isValid, (collectionClientID ?? "") == id { return }
         guard permitMutation(), !isBusy else { return }
-        guard id.isEmpty || library?.clients.profiles.contains(where: { $0.id == id }) == true else {
+        guard isValid else {
             errorMessage = "Ce client n’existe plus. Choisissez un destinataire."; return
         }
         collectionClientID = id; persist()
