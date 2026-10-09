@@ -98,11 +98,11 @@ final class ClientReconciliationTests: XCTestCase {
         XCTAssertNil(library.snapshot.logs.first?.clientID)
         // Restoring a queue invalidates the successful-ID cache even if the
         // current client list is unchanged.
-        try gcs.preparePersistedStorageForRestore()
+        try await gcs.preparePersistedStorageForRestore()
         var restored = try XCTUnwrap(gcs.queue.first { $0.id == ids.0 }); restored.clientID = value.client.id
         let writable = try GCSQueueRepository(url: library.storageDirectory.appendingPathComponent("gcs-queue.sqlite"))
         try writable.saveTransfers([restored])
-        try gcs.reloadPersistedStateAfterRestore()
+        try await gcs.reloadPersistedStateAfterRestore()
         XCTAssertEqual(gcs.queue.first { $0.id == ids.0 }?.clientID, value.client.id)
         library.clients.reload(); try await settle(library)
         XCTAssertNil(gcs.queue.first { $0.id == ids.0 }?.clientID)
@@ -180,7 +180,7 @@ final class ClientReconciliationTests: XCTestCase {
         let deadline = Date().addingTimeInterval(5)
         while gcs.drones.isEmpty || !gcs.isConnected, Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertFalse(gcs.drones.isEmpty); XCTAssertTrue(gcs.isConnected)
-        gcs.selectDrone("0102030405060708090A0B0C")
+        await gcs.selectDrone("0102030405060708090A0B0C")
         XCTAssertTrue(gcs.isBusy)
         do { try await reconcile([value.other.id]); XCTFail("Active collection must block cleanup") } catch {}
         XCTAssertEqual(gcs.queue.first { $0.id == ids.0 }?.clientID, value.client.id)
