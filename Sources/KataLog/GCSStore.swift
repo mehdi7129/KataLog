@@ -1402,6 +1402,12 @@ final class GCSStore: ObservableObject {
             fleet: fleet, registering: registration != nil)
         do {
             let result = try await storageIO.save(request)
+            // Retained pending queues can be large. Build their immutable indexes
+            // off the UI actor, then revalidate before publishing the snapshot.
+            let retainedIndexes: (sources: [GCSTransferSource: Int], ids: [String: Int])?
+            if generation == storageGeneration, revision == queueRevision, !isBusy, let retained = result.retained {
+                retainedIndexes = try await storageIO.perform { Self.makeQueueIndexes(retained) }
+            } else { retainedIndexes = nil }
             guard generation == storageGeneration else { return }
             queueRepository = result.repository; repositoryWritable = true; hasCompleteInMemoryQueue = false
             legacyTransfers = []
@@ -1409,7 +1415,9 @@ final class GCSStore: ObservableObject {
             if configuration == configurationRevision { configurationDirty = false }
             if revision == queueRevision {
                 dirtyTransferIDs.subtract(dirty.map(\.id))
-                if let retained = result.retained, !isBusy { queue = retained; rebuildQueueIndexes() }
+                if let retained = result.retained, let indexes = retainedIndexes, !isBusy {
+                    queue = retained; queueSourceIndex = indexes.sources; queueIDIndex = indexes.ids
+                }
                 let selection = CountsSelection(batchID: state.currentBatchID ?? "", authorizedUUIDs: state.allowedUUIDs)
                 if selection == countsSelection {
                     switch result.counts {
@@ -1435,14 +1443,20 @@ final class GCSStore: ObservableObject {
     }
     private var dirtyTransfers: [GCSTransfer] { dirtyTransferIDs.compactMap { queueIDIndex[$0] }.sorted().map { queue[$0] } }
     private func rebuildQueueIndexes() {
-        queueSourceIndex = [:]; queueIDIndex = [:]
+        let indexes = Self.makeQueueIndexes(queue)
+        queueSourceIndex = indexes.sources; queueIDIndex = indexes.ids
+    }
+    private nonisolated static func makeQueueIndexes(_ queue: [GCSTransfer]) -> (sources: [GCSTransferSource: Int], ids: [String: Int]) {
+        var sources: [GCSTransferSource: Int] = [:], ids: [String: Int] = [:]
+        sources.reserveCapacity(queue.count); ids.reserveCapacity(queue.count)
         for (index, item) in queue.enumerated() {
-            queueIDIndex[item.id] = index
+            ids[item.id] = index
             let source = GCSTransferSource(item)
-            if let previous = queueSourceIndex[source], queue[previous].isPending || queue[previous].isActive,
+            if let previous = sources[source], queue[previous].isPending || queue[previous].isActive,
                !item.isPending && !item.isActive { continue }
-            queueSourceIndex[source] = index
+            sources[source] = index
         }
+        return (sources, ids)
     }
     private func prepareQueueStorage() async throws {
         if !repositoryWritable { try await saveState() }
