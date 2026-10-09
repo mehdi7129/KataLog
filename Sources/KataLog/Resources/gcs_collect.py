@@ -68,6 +68,14 @@ class CloudFileUnavailable(CollectionError):
     """An existing cloud placeholder is neither a cache miss nor a retryable transfer."""
 
 
+class StagingChanged(CollectionError):
+    """A prior HTTP representation is no longer available; request a fresh FTP copy."""
+
+
+class LocalResumeConflict(CollectionError):
+    """A file changed outside the collector; preserve it for explicit resolution."""
+
+
 def require_local_data(path, metadata=None, *, missing_ok=False):
     try:
         metadata = path.stat(follow_symlinks=False) if metadata is None else metadata
@@ -684,6 +692,120 @@ class NoRedirect(HTTPRedirectHandler):
         raise CollectionError("Redirection HTTP GCS refusée.")
 
 
+def strong_etag(value):
+    # Weak validators cannot prove byte identity for combining HTTP ranges.
+    return (isinstance(value, str) and len(value) <= 1024
+            and re.fullmatch(r'"[\x21\x23-\x7e\x80-\xff]*"', value) is not None)
+
+
+def prefix_digest(stream, size):
+    digest = hashlib.sha256()
+    stream.seek(0)
+    remaining = size
+    while remaining:
+        chunk = stream.read(min(1024 * 1024, remaining))
+        if not chunk:
+            raise CollectionError("La copie partielle est incomplète ; fichiers conservés.")
+        digest.update(chunk)
+        remaining -= len(chunk)
+    return digest
+
+
+def partial_digest(path, size):
+    with local_reader(path) as stream:
+        return prefix_digest(stream, size)
+
+
+def remove_http_resume_proof(target, record):
+    journal = target.with_name(target.name + ".katalog.resume.json")
+    require_local_data(journal, missing_ok=True)
+    if journal.is_symlink() or (journal.exists() and read_local_manifest(journal) != record):
+        raise LocalResumeConflict("La preuve de reprise a changé ; fichiers conservés.")
+    journal.unlink(missing_ok=True)
+    sync_directory(target.parent)
+
+
+def discard_http_resume(target, record):
+    """Delete only the owned inode and its unchanged resume proof."""
+    journal = target.with_name(target.name + ".katalog.resume.json")
+    part = target.with_name(record["part"])
+    require_local_data(part, missing_ok=True)
+    require_local_data(journal, missing_ok=True)
+    if journal.is_symlink() or (journal.exists() and read_local_manifest(journal) != record):
+        raise LocalResumeConflict("La preuve de reprise a changé ; fichiers conservés.")
+    if part.exists() or part.is_symlink():
+        if not same_file_identity(part, record):
+            raise CollectionError("La copie partielle a été remplacée ; fichiers conservés.")
+        part.unlink()
+    remove_http_resume_proof(target, record)
+
+
+def load_http_resume(target, source):
+    journal = target.with_name(target.name + ".katalog.resume.json")
+    metadata = require_local_data(journal, missing_ok=True)
+    if metadata is None:
+        return None
+    try:
+        if journal.is_symlink() or not journal.is_file() or metadata.st_size > 16384:
+            raise ValueError("journal")
+        record = read_local_manifest(journal)
+        if (not isinstance(record, dict) or record.get("version") != 1
+                or not isinstance(record.get("source"), dict)
+                or not isinstance(record.get("part"), str)
+                or not re.fullmatch(re.escape(target.name) + r"\.[a-f0-9]{32}\.part", record["part"])
+                or type(record.get("device")) is not int or type(record.get("inode")) is not int
+                or type(record.get("bytes")) is not int or not 0 <= record["bytes"] <= MAX_LOG_BYTES
+                or not strong_etag(record.get("etag"))
+                or not isinstance(record.get("sha256"), str)
+                or not re.fullmatch(r"[a-f0-9]{64}", record["sha256"])):
+            raise ValueError("proof")
+        old_source = record["source"]
+        staging_path(record.get("staging"), valid_uuid(old_source.get("uuid")),
+                     remote_path(old_source.get("path"), file=True))
+        if record["bytes"] > file_size(old_source.get("size")):
+            raise ValueError("size")
+        part = target.with_name(record["part"])
+        part_stat = require_local_data(part)
+        if (not same_file_identity(part, record) or part_stat.st_size < record["bytes"]
+                or partial_digest(part, record["bytes"]).hexdigest() != record["sha256"]):
+            raise ValueError("partial")
+        # Unlike completed cache entries, remote staging is bound to its endpoint.
+        if old_source != source:
+            discard_http_resume(target, record)
+            return None
+        return record
+    except CloudFileUnavailable:
+        raise
+    except (ValueError, TypeError, KeyError, CollectionError, FileNotFoundError) as error:
+        raise CollectionError("Preuve de reprise invalide ; copie partielle conservée.") from error
+
+
+def checkpoint_http_resume(target, record, output, digest, total):
+    output.flush()
+    os.fsync(output.fileno())
+    updated = dict(record, bytes=total, sha256=digest.hexdigest())
+    journal = target.with_name(target.name + ".katalog.resume.json")
+    require_local_data(journal, missing_ok=True)
+    existing = journal.exists() or journal.is_symlink()
+    if existing:
+        if journal.is_symlink() or read_local_manifest(journal) != record:
+            raise CollectionError("Une autre preuve occupe la destination ; fichiers conservés.")
+    temporary = journal.with_name(journal.name + "." + uuid_module.uuid4().hex + ".tmp")
+    try:
+        with temporary.open("x") as stream:
+            json.dump(updated, stream, ensure_ascii=False)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if existing:
+            os.replace(temporary, journal)
+        else:
+            os.link(temporary, journal)
+        record.update(updated)
+        sync_directory(target.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 class HTTPBodyReader:
     """Keep the buffered response, but bound even chunk framing by one deadline."""
 
@@ -733,43 +855,142 @@ class HTTPBodyReader:
         self.stream.flush()
 
 
-def copy_http(host, http_port, staging, part, expected, report):
+def copy_http(host, http_port, staging, part, expected, report, *, target=None, source=None, resume=None):
     http_host = "[" + host.replace("%", "%25") + "]" if ":" in host else host
     url = "http://%s:%s/downloadFile/%s" % (http_host, http_port, quote(PurePosixPath(staging).name, safe=""))
     # Never inherit a workstation's HTTP proxy or follow a server redirect.
     opener = build_opener(ProxyHandler({}), NoRedirect())
-    total = 0
-    digest = hashlib.sha256()
-    with opener.open(Request(url, headers={"Accept-Encoding": "identity"}), timeout=15) as response:
-        if response.status != 200 or response.headers.get("Content-Encoding", "identity") != "identity":
+    resuming = bool(resume)
+    total = min(resume["bytes"], expected - 1) if resuming else 0
+    headers = {"Accept-Encoding": "identity"}
+    if resuming:
+        headers.update({"Range": "bytes=%s-" % total, "If-Range": resume["etag"]})
+    try:
+        response = opener.open(Request(url, headers=headers), timeout=15)
+    except HTTPError as error:
+        if resuming and error.code in (404, 410, 412, 416):
+            error.close()
+            raise StagingChanged("La copie GCS précédente n’est plus disponible.") from error
+        raise
+    with response:
+        if response.headers.get("Content-Encoding", "identity") != "identity":
+            raise CollectionError("Réponse HTTP GCS inattendue.")
+        etag = response.headers.get("ETag")
+        if resuming and etag != resume["etag"]:
+            raise StagingChanged("La copie GCS a changé depuis l’interruption.")
+        if resuming and response.status == 206:
+            if response.headers.get("Content-Range") != "bytes %s-%s/%s" % (total, expected - 1, expected):
+                raise CollectionError("La plage HTTP ne correspond pas à la copie partielle.")
+        elif response.status == 200:
+            # A server may ignore Range. Rebuild this same validated representation.
+            total = 0
+            if resuming:
+                emit("phase", uuid=source["uuid"], path=source["path"], phase="http", bytes=0, total=expected)
+        else:
             raise CollectionError("Réponse HTTP GCS inattendue.")
         length = response.headers.get("Content-Length")
-        if length is not None and (not length.isdigit() or int(length) != expected):
+        if length is not None and (not length.isdigit() or int(length) != expected - total):
             raise CollectionError("La taille HTTP ne correspond pas au listing.")
-        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-        with os.fdopen(os.open(part, flags, 0o600), "wb") as output:
+        digest = hashlib.sha256()
+        if resuming:
+            require_local_data(part)
+            if not same_file_identity(part, resume):
+                raise LocalResumeConflict("La copie partielle a été remplacée ; fichiers conservés.")
+        flags = os.O_RDWR | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+        if not resuming:
+            flags |= os.O_CREAT | os.O_EXCL
+        with os.fdopen(os.open(part, flags, 0o600), "r+b") as output:
+            stat = os.fstat(output.fileno())
+            if resuming and (stat.st_dev, stat.st_ino) != (resume["device"], resume["inode"]):
+                raise LocalResumeConflict("La copie partielle a été remplacée ; fichiers conservés.")
+            if resuming:
+                saved_digest = prefix_digest(output, resume["bytes"])
+                if saved_digest.hexdigest() != resume["sha256"]:
+                    raise LocalResumeConflict("La copie partielle a changé ; fichiers conservés.")
+                digest = saved_digest if total == resume["bytes"] else prefix_digest(output, total)
+            if not resuming and resume is not None and strong_etag(etag):
+                resume.update(version=1, source=source, staging=staging, part=part.name,
+                              device=stat.st_dev, inode=stat.st_ino, bytes=0,
+                              sha256=digest.hexdigest(), etag=etag)
+            if resume:
+                # Commit the smaller verified prefix before truncation. A crash
+                # may leave extra bytes, never a journal longer than its file.
+                checkpoint_http_resume(target, resume, output, digest, total)
+            output.truncate(total)
+            output.seek(total)
             deadline = time.monotonic() + max(HTTP_COPY_MIN_SECONDS, min(900, expected / (64 * 1024)))
             reader = HTTPBodyReader(response.fp, deadline)
             response.fp = reader
-            while True:
-                reader.check_deadline()
-                chunk = response.read1(min(256 * 1024, expected - total + 1))
-                if not chunk:
-                    break
-                total += len(chunk)
-                if total > expected:
-                    raise CollectionError("Le téléchargement dépasse la taille annoncée.")
-                output.write(chunk)
-                digest.update(chunk)
-                report(total)
-            output.flush()
-            os.fsync(output.fileno())
+            checkpoint_at = time.monotonic()
+            try:
+                while True:
+                    reader.check_deadline()
+                    chunk = response.read1(min(256 * 1024, expected - total + 1))
+                    if not chunk:
+                        break
+                    if total + len(chunk) > expected:
+                        raise CollectionError("Le téléchargement dépasse la taille annoncée.")
+                    output.write(chunk)
+                    digest.update(chunk)
+                    total += len(chunk)
+                    report(total)
+                    if resume and time.monotonic() - checkpoint_at >= 1:
+                        checkpoint_http_resume(target, resume, output, digest, total)
+                        checkpoint_at = time.monotonic()
+            finally:
+                output.flush()
+                os.fsync(output.fileno())
+                if resume:
+                    checkpoint_http_resume(target, resume, output, digest, total)
     if total != expected:
         raise CollectionError("Téléchargement incomplet : %s / %s octets." % (total, expected), retryable=True)
-    with local_reader(part) as stream:
-        if stream.read(7) != MAGIC:
-            raise CollectionError("Signature ULog invalide.")
+    if hash_file(part) != digest.hexdigest():
+        raise LocalResumeConflict("La copie locale a changé pendant le téléchargement ; fichiers conservés.")
     return digest.hexdigest()
+
+
+def request_staging(host, port, identity, remote, expected):
+    with MQTT(host, port) as mqtt:
+        mqtt.publish("get_downlad_path", {"uuid": identity, "path": remote})
+        staging = None
+        for topic, data in mqtt.messages(10):
+            if topic == "download_path" and same_drone(data, identity) and data.get("dist_file") == remote:
+                staging = staging_path(data.get("local_file"), identity, remote)
+                break
+        if staging is None:
+            raise CollectionError("La GCS n’a pas fourni de chemin de téléchargement.", retryable=True)
+        transfer_timeout = math.ceil(max(300, min(3600, expected / 8192)))
+        emit("transfer_started", uuid=identity, path=remote, timeoutSeconds=transfer_timeout)
+        mqtt.publish("recv_mqtt_ftp_download_request", {
+            "uuid": identity, "dist_file": remote, "local_file": staging, "filesize": expected})
+        complete = False
+        last_progress = -1
+        for topic, data in mqtt.messages(transfer_timeout):
+            if not same_drone(data, identity) or data.get("opcode") != 2:
+                continue
+            if data.get("filename") not in (remote, staging):
+                continue
+            if topic == "send_mqtt_ftp_end_session":
+                if type(data.get("ret_code")) is not int:
+                    continue
+                emit("transfer_finished", uuid=identity, path=remote,
+                     filename=data["filename"], retCode=data.get("ret_code"))
+                if data.get("ret_code") != 0:
+                    raise CollectionError("Échec du transfert drone → GCS (code %s)." % data.get("ret_code"),
+                                          retryable=data.get("ret_code") in (1, 2, 3))
+                complete = True
+                break
+            if topic == "send_mqtt_ftp_transfer_status":
+                transferred = data.get("bytes_xfer")
+                if (isinstance(transferred, (int, float)) and not isinstance(transferred, bool)
+                        and (isinstance(transferred, int) or math.isfinite(transferred))):
+                    transferred = max(0, min(expected, int(transferred)))
+                    if transferred > last_progress:
+                        emit("progress", uuid=identity, path=remote, bytes=transferred, total=expected, phase="drone")
+                        last_progress = transferred
+        if not complete:
+            raise CollectionError("Le transfert drone → GCS n’a pas été confirmé.", retryable=True)
+    return staging
 
 
 def download(host, port, http_port, identity, remote, expected, destination):
@@ -788,59 +1009,33 @@ def download(host, port, http_port, identity, remote, expected, destination):
         return
     if target.exists():
         raise CollectionError("Un fichier non vérifié existe déjà à la destination ; il est conservé.")
-    part = target.with_name(target.name + "." + uuid_module.uuid4().hex + ".part")
+    resume = load_http_resume(target, source) or {}
+    part = target.with_name(resume["part"] if resume else target.name + "." + uuid_module.uuid4().hex + ".part")
     manifest = target.with_name(target.name + ".katalog.json")
     pending = target.with_name(target.name + ".katalog.pending.json")
     pending_created = False
+    pending_durable = False
     preserve_cloud_files = False
+    preserve_http_resume = False
     transaction = {}
     if manifest.exists() or manifest.is_symlink():
         raise CollectionError("Un manifeste sans fichier associé existe déjà ; il est conservé.")
     verify_remote_size(host, port, identity, remote, expected)
     try:
-        with MQTT(host, port) as mqtt:
-            mqtt.publish("get_downlad_path", {"uuid": identity, "path": remote})
-            staging = None
-            for topic, data in mqtt.messages(10):
-                if topic == "download_path" and same_drone(data, identity) and data.get("dist_file") == remote:
-                    staging = staging_path(data.get("local_file"), identity, remote)
-                    break
-            if staging is None:
-                raise CollectionError("La GCS n’a pas fourni de chemin de téléchargement.", retryable=True)
-            transfer_timeout = math.ceil(max(300, min(3600, expected / 8192)))
-            emit("transfer_started", uuid=identity, path=remote, timeoutSeconds=transfer_timeout)
-            mqtt.publish("recv_mqtt_ftp_download_request", {
-                "uuid": identity, "dist_file": remote, "local_file": staging, "filesize": expected})
-            complete = False
-            last_progress = -1
-            for topic, data in mqtt.messages(transfer_timeout):
-                if not same_drone(data, identity) or data.get("opcode") != 2:
-                    continue
-                if data.get("filename") not in (remote, staging):
-                    continue
-                if topic == "send_mqtt_ftp_end_session":
-                    if type(data.get("ret_code")) is not int:
-                        continue
-                    emit("transfer_finished", uuid=identity, path=remote,
-                         filename=data["filename"], retCode=data.get("ret_code"))
-                    if data.get("ret_code") != 0:
-                        raise CollectionError("Échec du transfert drone → GCS (code %s)." % data.get("ret_code"),
-                                              retryable=data.get("ret_code") in (1, 2, 3))
-                    complete = True
-                    break
-                if topic == "send_mqtt_ftp_transfer_status":
-                    transferred = data.get("bytes_xfer")
-                    if (isinstance(transferred, (int, float)) and not isinstance(transferred, bool)
-                            and (isinstance(transferred, int) or math.isfinite(transferred))):
-                        transferred = max(0, min(expected, int(transferred)))
-                        if transferred > last_progress:
-                            emit("progress", uuid=identity, path=remote, bytes=transferred, total=expected, phase="drone")
-                            last_progress = transferred
-            if not complete:
-                raise CollectionError("Le transfert drone → GCS n’a pas été confirmé.", retryable=True)
-        emit("phase", uuid=identity, path=remote, phase="http", bytes=0, total=expected)
-        digest = copy_http(host, http_port, staging, part, expected, lambda transferred:
-                           emit("progress", uuid=identity, path=remote, bytes=transferred, total=expected, phase="http"))
+        while True:
+            staging = resume["staging"] if resume else request_staging(host, port, identity, remote, expected)
+            emit("phase", uuid=identity, path=remote, phase="http", bytes=resume.get("bytes", 0), total=expected)
+            try:
+                digest = copy_http(host, http_port, staging, part, expected, lambda transferred:
+                    emit("progress", uuid=identity, path=remote, bytes=transferred, total=expected, phase="http"),
+                    target=target, source=source, resume=resume)
+                break
+            except StagingChanged:
+                # The previous path may now contain a different log with the same
+                # basename. Only a fresh MQTT transfer can establish its source.
+                discard_http_resume(target, resume)
+                resume = {}
+                part = target.with_name(target.name + "." + uuid_module.uuid4().hex + ".part")
         emit("phase", uuid=identity, path=remote, phase="verification", bytes=expected, total=expected)
         # An active file can grow after the first check. Never import that copy.
         verify_remote_size(host, port, identity, remote, expected)
@@ -858,6 +1053,12 @@ def download(host, port, http_port, identity, remote, expected, destination):
             stream.flush()
             os.fsync(stream.fileno())
         sync_directory(target.parent)
+        pending_durable = True
+        if resume:
+            # The fully verified commit proof now owns recovery. Do not leave an
+            # obsolete HTTP journal pointing at the part after it is promoted.
+            remove_http_resume_proof(target, resume)
+            resume = {}
         # Hard link creation refuses to overwrite a concurrently created target.
         require_local_data(part)
         require_local_data(pending)
@@ -875,9 +1076,15 @@ def download(host, port, http_port, identity, remote, expected, destination):
     except CloudFileUnavailable:
         preserve_cloud_files = True
         raise
+    except BaseException as error:
+        preserve_http_resume = bool(resume) and (isinstance(error, (Cancelled, LocalResumeConflict)) or retryable_error(error))
+        raise
     finally:
-        if not preserve_cloud_files:
-            part.unlink(missing_ok=True)
+        if not preserve_cloud_files and not preserve_http_resume and not pending_durable:
+            if resume:
+                discard_http_resume(target, resume)
+            else:
+                part.unlink(missing_ok=True)
             if pending_created and not same_file_identity(target, transaction):
                 pending.unlink(missing_ok=True)
 

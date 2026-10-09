@@ -58,22 +58,6 @@ struct GCSCollectionView: View {
                 TimelineView(.periodic(from: .now, by: 2)) { _ in fleetCard }
                 optionsCard
             }
-            if store.selectedUUID != nil {
-                card {
-                    DisclosureGroup(isExpanded: $showInventories) {
-                        inventoryCard.padding(.top, 14)
-                    } label: {
-                        HStack(spacing: 10) {
-                            BentoIcon(symbol: "doc.text.magnifyingglass")
-                            title("Inventaire du drone sélectionné")
-                            Spacer(minLength: 4)
-                            Text("\(store.files.count) logs")
-                                .font(.system(size: 11)).foregroundStyle(palette.secondary)
-                        }
-                    }
-                    .accessibilityIdentifier("gcs.inventories")
-                }
-            }
             HStack(alignment: .top, spacing: 9) {
                 BentoIcon(symbol: "info.circle", size: 14)
                 Text("La collecte copie les logs sans commande de vol. Les originaux restent sur les drones. La destination et la progression sont propres au dossier choisi.")
@@ -82,6 +66,7 @@ struct GCSCollectionView: View {
             .foregroundStyle(palette.secondary)
         }
         .sheet(item: $editingIdentity) { target in DroneNumberEditor(target: target, store: library.annotations) }
+        .sheet(isPresented: $showInventories) { inventorySheet }
         .onAppear { updateClientDestination() }
         .onChange(of: library.views.state.activeScope.clientID) { _, _ in updateClientDestination() }
     }
@@ -144,10 +129,10 @@ struct GCSCollectionView: View {
                 if store.isScanningFleet {
                     ProgressView().controlSize(.small)
                 }
-                Text(store.countsAreCurrent ? "\(Int(fraction * 100))" : "—")
+                Text(store.hasDisplayableProgress ? "\(Int(fraction * 100))" : "—")
                     .font(.system(size: 40, weight: .semibold, design: .rounded))
                     .tracking(-1.5).monospacedDigit()
-                if store.countsAreCurrent {
+                if store.hasDisplayableProgress {
                     Text("%").font(.system(size: 20, weight: .medium)).foregroundStyle(palette.secondary)
                         .padding(.leading, -10)
                 }
@@ -175,6 +160,12 @@ struct GCSCollectionView: View {
                     if progress.totalCount > 0 {
                         Text("\(bytes(progress.completedBytes)) / \(bytes(progress.totalBytes)) reçus sur ce Mac · \(store.cachedFileCount) logs déjà présents")
                             .font(.system(size: 11)).foregroundStyle(palette.secondary)
+                    }
+                    if progress.totalCount > 0 {
+                        Text(store.transferRateText ?? (store.activeTransferCount > 0 ? "Débit en attente de mesure…" : "Aucun transfert réseau en cours"))
+                            .font(.system(size: 11)).foregroundStyle(palette.secondary)
+                            .monospacedDigit().lineLimit(2, reservesSpace: true)
+                            .accessibilityIdentifier("gcs.transferRate")
                     }
                 }
                 Spacer(minLength: 6)
@@ -356,8 +347,9 @@ struct GCSCollectionView: View {
                 .font(.system(size: 10)).foregroundStyle(palette.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             rule.padding(.vertical, 3)
+            transferSettings
+            rule.padding(.vertical, 3)
             collectionFact("Déjà collectés", value: "\(store.cachedFileCount) logs vérifiés")
-            collectionFact("Réessais automatiques", value: "\(GCSQueuePolicy.maxAttempts) tentatives maximum")
             collectionFact("Fichiers originaux", value: "Conservés sur les drones")
             if !store.queue.isEmpty {
                 rule.padding(.vertical, 3)
@@ -373,6 +365,34 @@ struct GCSCollectionView: View {
                 }.padding(20)
             }.frame(height: 540)
         }
+    }
+
+    private var transferSettings: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Picker("Drones simultanés", selection: Binding(
+                get: { store.maxConcurrentDownloads },
+                set: { store.setConcurrentDownloads($0) }
+            )) {
+                ForEach(1...4, id: \.self) { count in
+                    Text("\(count) drone\(count == 1 ? "" : "s")").tag(count)
+                }
+            }
+            .accessibilityIdentifier("gcs.concurrentDownloads")
+            Picker("Tentatives de téléchargement", selection: Binding(
+                get: { store.retryLimit },
+                set: { store.setRetryLimit($0) }
+            )) {
+                Text("Sans limite").tag(0)
+                Text("10 maximum").tag(10)
+                Text("3 maximum").tag(3)
+            }
+            .accessibilityIdentifier("gcs.retryLimit")
+            Text("Réglages conservés. Les transferts en cours se terminent. Les erreurs réseau sont réessayées à la reconnexion.")
+                .font(.system(size: 10)).foregroundStyle(palette.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .font(.system(size: 11)).pickerStyle(.menu).controlSize(.small)
+        .disabled(mutationsBlocked)
     }
 
     private func collectionFact(_ label: String, value: String) -> some View {
@@ -442,7 +462,10 @@ struct GCSCollectionView: View {
 
     private func fleetRow(_ drone: GCSDrone) -> some View {
         let selected = store.selectedUUID == drone.uuid
-        let transfer = store.queue.last { $0.droneUUID == drone.uuid }
+        let transfer = store.queue.first { $0.droneUUID == drone.uuid && $0.state == "downloading" }
+            ?? store.queue.first { $0.droneUUID == drone.uuid && $0.isActive }
+            ?? store.queue.first { $0.droneUUID == drone.uuid && $0.isPending }
+            ?? store.queue.last { $0.droneUUID == drone.uuid }
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 droneBadge
@@ -511,14 +534,45 @@ struct GCSCollectionView: View {
         HStack(spacing: 8) {
             action("Identifier", symbol: "pencil") { editingIdentity = identityTarget(drone.uuid) }
                 .accessibilityIdentifier("gcs.identify.\(drone.uuid)")
-            action(selected ? "Actualiser" : "Voir les logs", symbol: selected ? "arrow.clockwise" : "doc.text.magnifyingglass") {
-                showInventories = true
-                if selected { store.refreshInventory() } else { fileSearch = ""; Task { await store.selectDrone(drone.uuid) } }
+            action("Voir les logs", symbol: "doc.text.magnifyingglass") {
+                if selected {
+                    showInventories = true
+                } else {
+                    fileSearch = ""
+                    Task {
+                        await store.selectDrone(drone.uuid)
+                        if store.selectedUUID == drone.uuid { showInventories = true }
+                    }
+                }
             }
-            .disabled(!store.isConnected || !drone.isOnline || drone.armed == true || store.isBusy || mutationsBlocked)
+            .disabled(!store.canSelectDrone(uuid: drone.uuid))
+            .help("Choisir un log à télécharger ou à faire passer avant les fichiers en attente.")
             .accessibilityIdentifier("gcs.inventory.\(drone.uuid)")
         }
         .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var inventorySheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Téléchargement manuel").font(.system(size: 20, weight: .semibold))
+                    Text("Choisissez un log précis. Il passera avant les fichiers en attente, après les transferts déjà en cours.")
+                        .font(.system(size: 11)).foregroundStyle(palette.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                action("Fermer", symbol: "xmark") { showInventories = false }
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityIdentifier("gcs.closeInventory")
+            }
+            messages
+            ScrollView { inventoryCard }
+        }
+        .padding(24).frame(width: 760, height: 620)
+        .foregroundStyle(palette.primary).background(palette.background)
+        .environment(\.colorScheme, dark ? .dark : .light)
+        .accessibilityIdentifier("gcs.inventories")
     }
 
     private var inventoryCard: some View {
@@ -541,9 +595,9 @@ struct GCSCollectionView: View {
                     .padding(16)
             }
             if store.files.isEmpty {
-                emptyState(symbol: store.isBusy ? "arrow.triangle.2.circlepath" : "doc",
-                           title: store.isBusy ? "Lecture de l’inventaire…" : "Aucun log disponible",
-                           detail: store.isBusy ? "L’inventaire peut prendre quelques instants." : "Actualisez l’inventaire pour rechercher les fichiers ULog.")
+                emptyState(symbol: store.isReadingInventory ? "arrow.triangle.2.circlepath" : "doc",
+                           title: store.isReadingInventory ? "Lecture de l’inventaire…" : "Aucun log disponible",
+                           detail: store.isReadingInventory ? "L’inventaire peut prendre quelques instants." : "Actualisez l’inventaire pour rechercher les fichiers ULog.")
             } else {
                 HStack(spacing: 14) {
                     Button(allNewFilesSelected ? "Désélectionner les affichés" : "Sélectionner les nouveaux affichés") {
@@ -565,25 +619,7 @@ struct GCSCollectionView: View {
                 LazyVStack(spacing: 0) {
                     ForEach(visibleFiles) { file in
                         rule
-                        HStack(spacing: 12) {
-                            Toggle("Sélectionner \(file.path)", isOn: Binding(
-                                get: { store.selectedFileIDs.contains(file.id) },
-                                set: { _ in store.toggleFile(file) }
-                            ))
-                            .toggleStyle(.checkbox).labelsHidden()
-                            .disabled(file.isDownloaded || !canReadSelectedDrone)
-                            .accessibilityIdentifier("gcs.file.\(file.id)")
-                            Image(systemName: "doc.text").foregroundStyle(palette.secondary)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(file.filename).font(.system(size: 12, weight: .medium, design: .monospaced))
-                                Text(file.dateFolder).font(.system(size: 10)).foregroundStyle(palette.secondary)
-                            }
-                            Spacer()
-                            if file.isDownloaded { statusDot("Déjà collecté", color: palette.mint) }
-                            Text(bytes(file.size)).font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(palette.secondary).frame(width: 80, alignment: .trailing)
-                        }
-                        .foregroundStyle(palette.primary).padding(.horizontal, 20).padding(.vertical, 12)
+                        inventoryRow(file)
                     }
                 }
                 if visibleFiles.isEmpty {
@@ -592,6 +628,64 @@ struct GCSCollectionView: View {
                 }
             }
         }
+    }
+
+    private func inventoryRow(_ file: GCSLogFile) -> some View {
+        let transfer = store.transfer(for: file)
+        return HStack(spacing: 12) {
+            Toggle("Sélectionner \(file.path)", isOn: Binding(
+                get: { store.selectedFileIDs.contains(file.id) },
+                set: { _ in store.toggleFile(file) }
+            ))
+            .toggleStyle(.checkbox).labelsHidden()
+            .disabled(file.isDownloaded || !canReadSelectedDrone)
+            .accessibilityIdentifier("gcs.file.\(file.id)")
+            Image(systemName: "doc.text").foregroundStyle(palette.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(file.filename).font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .lineLimit(1).truncationMode(.middle).help(file.path)
+                Text(file.dateFolder).font(.system(size: 10)).foregroundStyle(palette.secondary)
+                    .lineLimit(1).truncationMode(.middle)
+                if let transfer, !file.isDownloaded {
+                    Text(transfer.state == "downloading" ? phaseLabel(transfer.phase) : stateLabel(transfer.state))
+                        .font(.system(size: 10)).foregroundStyle(stateColor(transfer.state))
+                    if transfer.state == "downloading", let progress = transfer.phaseProgress {
+                        HStack(spacing: 8) {
+                            ProgressView(value: min(max(progress, 0), 1)).tint(palette.mint)
+                            Text("\(Int(progress * 100)) %").font(.system(size: 10)).monospacedDigit()
+                        }
+                        .frame(maxWidth: 240)
+                    }
+                    if let error = transfer.error, !error.isEmpty {
+                        Text(error).font(.system(size: 10)).foregroundStyle(palette.amber)
+                            .lineLimit(2).help(error)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .trailing, spacing: 7) {
+                Text(bytes(file.size)).font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(palette.secondary)
+                if file.isDownloaded {
+                    statusDot("Déjà collecté", color: palette.mint)
+                } else if let transfer, transfer.isActive {
+                    statusDot(transfer.state == "importing" ? "Analyse en cours" : "En cours", color: palette.mint)
+                } else if let transfer, transfer.isPending && transfer.manualPriority == true {
+                    statusDot("Prioritaire", color: palette.mint)
+                } else {
+                    action(transfer?.isPending == true ? "Prioriser" : "Télécharger", symbol: "arrow.down.to.line") {
+                        store.downloadFile(file)
+                    }
+                    .disabled(!store.canDownloadFile(file))
+                    .help("Télécharger ce fichier avant les fichiers en attente, sans interrompre les transferts en cours.")
+                    .accessibilityLabel("\(transfer?.isPending == true ? "Prioriser" : "Télécharger") \(file.filename)")
+                    .accessibilityIdentifier("gcs.download.\(file.id)")
+                }
+            }
+        }
+        .foregroundStyle(palette.primary).padding(.horizontal, 20).padding(.vertical, 12)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("gcs.log.\(file.id)")
     }
 
     private var inventoryHeading: some View {
@@ -618,10 +712,11 @@ struct GCSCollectionView: View {
     private var inventoryButtons: some View {
         HStack(spacing: 8) {
             action("Actualiser", symbol: "arrow.clockwise") { store.refreshInventory() }
-                .disabled(!canReadSelectedDrone || store.isBusy)
+                .disabled(!store.canRefreshInventory)
                 .accessibilityIdentifier("gcs.refreshInventory")
             action("Collecter la sélection", symbol: "arrow.down.to.line", primary: true) { store.enqueueSelected() }
-                .disabled(!canReadSelectedDrone || store.selectedFileIDs.isEmpty || store.isScanningFleet || store.isStopping)
+                .disabled(!store.canEnqueueSelected)
+                .help("Donner la priorité aux fichiers sélectionnés après les transferts en cours.")
                 .accessibilityIdentifier("gcs.enqueue")
         }
         .fixedSize(horizontal: true, vertical: false)

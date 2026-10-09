@@ -651,7 +651,7 @@ class SimulatorTests(unittest.TestCase):
             self.assertEqual(list(Path(directory).rglob("*.part")), [])
 
     def test_cancel_after_partial_http_cleans_temporary_file(self):
-        def interrupted(host, port, staging, part, size, callback):
+        def interrupted(host, port, staging, part, size, callback, **unused):
             part.write_bytes(BODY[:20])
             raise gcs.Cancelled("annulé")
         with Simulator() as sim, tempfile.TemporaryDirectory() as directory:
