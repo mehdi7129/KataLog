@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -111,7 +112,7 @@ class BuildFixture:
         (project / 'tools/build-engine.sh').write_text(engine)
         lock = ROOT / 'tools/build-lock.py'
         if lock.exists():
-            (project / 'tools/build-lock.py').write_text(lock.read_text().replace("Path('/private/tmp')", 'Path(' + repr(str(self.root)) + ')'))
+            (project / 'tools/build-lock.py').write_text(self.instrument_lock(lock.read_text()).replace("Path('/private/tmp')", 'Path(' + repr(str(self.root)) + ')'))
         (project / 'tools/sign-bundle.py').write_text('# Synthetic signing boundary.\n')
         return project
 
@@ -123,20 +124,67 @@ class BuildFixture:
         env.update(updates)
         return env
 
-    def start(self, project, **updates):
-        process = subprocess.Popen(['/bin/bash', str(project / 'tools/build-app.sh')],
-                                   env=self.environment(**updates), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    @staticmethod
+    def instrument_lock(source):
+        # Only the fixture copy changes: each newly created session registers
+        # itself before the build can launch descendants.
+        wrapper = ('set -e; printf "%s\\n" "$$" >> "$KATALOG_FIXTURE_GROUP_REGISTRY"; '
+                   '[[ ! -e "$KATALOG_FIXTURE_GROUP_REGISTRY.stopping" ]] || exit 130; '
+                   'exec /bin/bash "$@"')
+        original = "['/bin/bash', script, *args[1:]]"
+        owned = ("(['/bin/bash', '-c', " + repr(wrapper) + ", 'katalog-fixture-group', script, *args[1:]] "
+                 "if os.environ.get('KATALOG_FIXTURE_GROUP_REGISTRY') else " + original + ")")
+        assert original in source, 'The fixture must register the actual build-lock child sessions'
+        return source.replace(original, owned, 1)
+
+    @staticmethod
+    def start_owned(command, environment, registry):
+        process = subprocess.Popen(command,
+            env=dict(environment, KATALOG_FIXTURE_GROUP_REGISTRY=str(registry)),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+        process.katalog_group_registry = Path(registry)
+        return process
+
+    def start_command(self, command, **updates):
+        descriptor, registry = tempfile.mkstemp(prefix='owned-groups-', dir=self.root)
+        os.close(descriptor)
+        process = self.start_owned(command, self.environment(**updates), registry)
         self.case.addCleanup(self.stop, process)
         return process
 
+    def start(self, project, **updates):
+        return self.start_command(['/bin/bash', str(project / 'tools/build-app.sh')], **updates)
+
     @staticmethod
     def stop(process):
-        if process.poll() is None:
-            process.terminate()
+        if process.poll() is not None and process.stdout.closed and process.stderr.closed:
+            return  # A completed capture has already drained and reaped its owner.
+        registry = getattr(process, 'katalog_group_registry', None)
+        if registry is not None:
+            # A session scheduled after cleanup begins must exit before its build.
+            Path(str(registry) + '.stopping').touch()
+
+        def signal_owned(signum):
+            if registry is None:
+                if process.poll() is None:
+                    process.send_signal(signum)
+                return
+            groups = {process.pid}
+            if registry.exists():
+                groups.update(int(value) for value in registry.read_text().splitlines())
+            for group in groups:
+                try:
+                    os.killpg(group, signum)
+                except ProcessLookupError:
+                    pass
+
+        signal_owned(signal.SIGTERM)
         try:
             process.communicate(timeout=5)
         except subprocess.TimeoutExpired:
-            process.kill()
+            # Parent exit does not close a pipe retained by an escaped session.
+            # Re-read ownership because a nested build may have just registered.
+            signal_owned(signal.SIGKILL)
             process.communicate(timeout=5)
 
     def finish(self, process):

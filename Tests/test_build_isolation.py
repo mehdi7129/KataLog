@@ -50,10 +50,7 @@ class BuildInvocationIsolationTests(unittest.TestCase):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({'checks': [{'synthetic': True}]}))
 ''')
-        process = subprocess.Popen(['/bin/bash', str(project / 'tools/package-smoke.sh')],
-                                   env=fixture.environment(KATALOG_UPDATE_CHANNEL='stable'),
-                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        self.addCleanup(BuildFixture.stop, process)
+        process = fixture.start_command(['/bin/bash', str(project / 'tools/package-smoke.sh')], KATALOG_UPDATE_CHANNEL='stable')
         stdout, stderr = process.communicate(timeout=30)
         self.assertEqual(process.returncode, 0, stdout + stderr)
         root = Path(next(line.split(' sous ', 1)[1] for line in stdout.splitlines()
@@ -74,36 +71,82 @@ class BuildInvocationIsolationTests(unittest.TestCase):
         self.assertFalse(info['KatalogUpdatesEnabled'])
 
     def test_termination_releases_lock_and_existing_lock_file_can_be_reused(self):
-        with tempfile.TemporaryDirectory(prefix='katalog-build-lock-test-', dir='/private/tmp') as directory:
-            root = Path(directory)
-            helper = root / 'build-lock.py'
-            helper.write_text((ROOT / 'tools/build-lock.py').read_text().replace("Path('/private/tmp')", 'Path(' + repr(str(root)) + ')'))
-            script = root / 'owner.sh'
-            started = root / 'started'
-            script.write_text('printf started > "$1"\nsleep 30\nprintf unexpected > "$1"\n')
-            env = {key: value for key, value in os.environ.items() if not key.startswith('KATALOG_BUILD_LOCK_')}
-            owner = subprocess.Popen([sys.executable, str(helper), str(script), str(started)], env=env,
-                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            self.addCleanup(BuildFixture.stop, owner)
+        temporary = tempfile.TemporaryDirectory(prefix='katalog-build-lock-test-', dir='/private/tmp')
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        helper = root / 'build-lock.py'
+        helper.write_text(BuildFixture.instrument_lock((ROOT / 'tools/build-lock.py').read_text()).replace("Path('/private/tmp')", 'Path(' + repr(str(root)) + ')'))
+        script = root / 'owner.sh'
+        started = root / 'started'
+        script.write_text('printf started > "$1"\nsleep 30\nprintf unexpected > "$1"\n')
+        env = {key: value for key, value in os.environ.items() if not key.startswith('KATALOG_BUILD_LOCK_')}
+        owner = BuildFixture.start_owned([sys.executable, str(helper), str(script), str(started)], env, root / 'owner-groups')
+        self.addCleanup(BuildFixture.stop, owner)
+        deadline = time.monotonic() + 5
+        while not started.exists() and time.monotonic() < deadline:
+            time.sleep(.01)
+        self.assertTrue(started.exists())
+        next_script = root / 'next.sh'; next_script.write_text('printf acquired\n')
+        next_build = BuildFixture.start_owned([sys.executable, str(helper), str(next_script)], env, root / 'next-groups')
+        self.addCleanup(BuildFixture.stop, next_build)
+        # The first line is emitted immediately on contention, before wait.
+        self.assertIn('attente de sa capture finale', next_build.stderr.readline())
+        owner.send_signal(signal.SIGTERM)
+        owner.communicate(timeout=5)
+        self.assertEqual(owner.returncode, 128 + signal.SIGTERM)
+        stdout, _ = next_build.communicate(timeout=5)
+        self.assertEqual((next_build.returncode, stdout), (0, 'acquired'))
+        self.assertEqual(started.read_text(), 'started')
+        self.assertTrue(list(root.glob('katalog-build-*.lock')))
+        retry = subprocess.run([sys.executable, str(helper), str(next_script)], env=env, capture_output=True, text=True, timeout=5)
+        self.assertEqual((retry.returncode, retry.stdout), (0, 'acquired'))
+
+    def test_fixture_cleanup_kills_owned_descendant_holding_stdout_after_parent_exit(self):
+        fixture = BuildFixture(self)
+        project = fixture.project('B')
+        marker = fixture.root / 'descendant-pid'
+        child = fixture.root / 'hold_stdout.py'
+        child.write_text("import os, pathlib, signal, sys, time\n"
+                         "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+                         "pathlib.Path(sys.argv[1]).write_text(str(os.getpid()))\n"
+                         "while True: time.sleep(.1)\n")
+        script = fixture.root / 'hold_stdout.sh'
+        script.write_text(fixture.quote(sys.executable) + ' ' + fixture.quote(child) + ' ' + fixture.quote(marker) + ' &\nwait\n')
+        process = fixture.start_command([sys.executable, str(project / 'tools/build-lock.py'), str(script)])
+        fixture.wait_for(marker)
+        descendant = int(marker.read_text())
+        groups = {int(value) for value in process.katalog_group_registry.read_text().splitlines()}
+        self.assertTrue(groups)
+        self.assertIn(os.getpgid(descendant), groups)
+        # This sibling belongs to another invocation and must remain untouched.
+        sibling = fixture.start_command([sys.executable, '-c', 'import time; time.sleep(30)'])
+        try:
+            process.kill()
+            process.wait(timeout=5)
+            self.assertIsNotNone(process.returncode)
+            os.kill(descendant, 0)
+            BuildFixture.stop(process)
+            self.assertTrue(process.stdout.closed)
+            self.assertTrue(process.stderr.closed)
+            self.assertIsNone(sibling.poll())
             deadline = time.monotonic() + 5
-            while not started.exists() and time.monotonic() < deadline:
+            while time.monotonic() < deadline:
+                try:
+                    os.kill(descendant, 0)
+                except ProcessLookupError:
+                    break
                 time.sleep(.01)
-            self.assertTrue(started.exists())
-            next_script = root / 'next.sh'; next_script.write_text('printf acquired\n')
-            next_build = subprocess.Popen([sys.executable, str(helper), str(next_script)], env=env,
-                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            self.addCleanup(BuildFixture.stop, next_build)
-            # The first line is emitted immediately on contention, before wait.
-            self.assertIn('attente de sa capture finale', next_build.stderr.readline())
-            owner.send_signal(signal.SIGTERM)
-            owner.communicate(timeout=5)
-            self.assertEqual(owner.returncode, 128 + signal.SIGTERM)
-            stdout, _ = next_build.communicate(timeout=5)
-            self.assertEqual((next_build.returncode, stdout), (0, 'acquired'))
-            self.assertEqual(started.read_text(), 'started')
-            self.assertTrue(list(root.glob('katalog-build-*.lock')))
-            retry = subprocess.run([sys.executable, str(helper), str(next_script)], env=env, capture_output=True, text=True, timeout=5)
-            self.assertEqual((retry.returncode, retry.stdout), (0, 'acquired'))
+            else:
+                self.fail('The owned descendant survived cleanup or was not reaped')
+        finally:
+            # Keep the intentional red replay from leaving its synthetic child.
+            for group in groups:
+                try:
+                    os.killpg(group, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            process.communicate(timeout=5)
+            BuildFixture.stop(sibling)
 
     def test_invalid_inherited_descriptor_fails_before_the_build(self):
         with tempfile.TemporaryDirectory(prefix='katalog-invalid-build-lock-', dir='/private/tmp') as directory:
