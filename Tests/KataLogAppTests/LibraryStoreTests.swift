@@ -126,6 +126,75 @@ pathlib.Path(sys.argv[sys.argv.index('--output')+1]).write_text(json.dumps(resul
         XCTAssertEqual(store.historyPage?.totals.logs, 3); XCTAssertNil(store.queryError)
     }
 
+    func testCancellingOneWindowDoesNotCancelAnotherWindowsIndexPreparation() async throws {
+        let (root, store) = try blockedQueryFixture(kind: "ensure-index")
+        let pid = try await activePID(root, kind: "ensure-index")
+        let other = store.makeNavigationSession()
+        other.loadHistory()
+        XCTAssertTrue(other.isQuerying)
+        let cancellation = Task { await store.cancelQuery() }
+        try await waitUntil { store.isCancellingQuery }
+        XCTAssertEqual(kill(pid, 0), 0, "Another reader still needs the shared index writer.")
+        XCTAssertTrue(store.isMaintainingLibrary)
+        try FileManager.default.removeItem(at: root.appendingPathComponent("block-ensure-index"))
+        await cancellation.value
+        try await waitUntil { !other.isQuerying }
+        XCTAssertTrue(store.queryWasCancelled)
+        XCTAssertNil(store.historyPage)
+        XCTAssertEqual(other.historyPage?.totals.logs, 3)
+        XCTAssertNil(other.queryError)
+        XCTAssertFalse(store.isMaintainingLibrary)
+    }
+
+    func testCancellingEveryWindowDrainsSharedIndexPreparation() async throws {
+        let (root, store) = try blockedQueryFixture(kind: "ensure-index")
+        let pid = try await activePID(root, kind: "ensure-index")
+        let other = store.makeNavigationSession()
+        other.loadHistory()
+        let firstCancellation = Task { await store.cancelQuery() }
+        let secondCancellation = Task { await other.cancelQuery() }
+        await firstCancellation.value; await secondCancellation.value
+        XCTAssertEqual(kill(pid, 0), -1); XCTAssertEqual(errno, ESRCH)
+        XCTAssertFalse(store.hasActiveWork)
+        XCTAssertTrue(store.queryWasCancelled); XCTAssertTrue(other.queryWasCancelled)
+        XCTAssertFalse(store.isMaintainingLibrary)
+    }
+
+    func testClosingNavigationSessionDrainsItsReaderBeforeMaintenance() async throws {
+        let (root, store) = try blockedQueryFixture(kind: "drones")
+        try await waitUntil { !store.isQuerying }
+        let other = store.makeNavigationSession()
+        other.loadAuxiliary(kind: "drones")
+        let pid = try await activePID(root, kind: "drones")
+        other.close()
+        XCTAssertTrue(store.isQuerying)
+        do { _ = try await store.performMaintenance { true }; XCTFail("Reader has not reaped.") } catch { }
+        try await waitUntil { !store.isQuerying }
+        XCTAssertEqual(kill(pid, 0), -1); XCTAssertEqual(errno, ESRCH)
+        let result = try await store.performMaintenance { true }
+        XCTAssertTrue(result)
+        XCTAssertEqual(store.historyPage?.totals.logs, 3)
+    }
+
+    func testSharedFilterChangeDuringAnotherWindowsCancellationReloadsAfterReaping() async throws {
+        let (root, store) = try blockedQueryFixture(kind: "drones")
+        try await waitUntil { !store.isQuerying }
+        let other = store.makeNavigationSession()
+        other.loadHistory(); try await waitUntil { !other.isQuerying }
+        other.loadAuxiliary(kind: "drones")
+        _ = try await activePID(root, kind: "drones")
+        let cancellation = Task { await other.cancelQuery() }
+        try await waitUntil { other.isCancellingQuery }
+        var scope = SelectionScope(); scope.logSearch = "new shared filter"
+        try store.views.chooseScope(scope)
+        await cancellation.value
+        try await waitUntil { !store.isQuerying }
+        XCTAssertTrue(other.historyResultsCurrent)
+        XCTAssertFalse(other.queryWasCancelled, "A new shared filter must replace the cancelled query after its helper drains.")
+        XCTAssertNil(other.queryError)
+        XCTAssertEqual(callCount(root, "logs"), 4, "Both readers reload the new scope once.")
+    }
+
     func testReloadUsesCommittedDatabaseInsteadOfStaleJSONAfterInterruptedImport() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("katalog-db-reload-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

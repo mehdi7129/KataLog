@@ -19,7 +19,8 @@ final class WorkspacePreviewTests: XCTestCase {
             .deletingLastPathComponent().appendingPathComponent("Sources/KataLog/Resources")
     }
 
-    private func fixture(count: Int = 120, blockQueries: Bool = false, flightSeconds: Double? = nil, withMapPoints: Bool = false) async throws -> Fixture {
+    private func fixture(count: Int = 120, blockQueries: Bool = false, flightSeconds: Double? = nil, withMapPoints: Bool = false,
+                         navigationPaging: Bool = false) async throws -> Fixture {
         let environment = ProcessInfo.processInfo.environment
         guard let python = environment["KATALOG_TEST_PYTHON"] ?? environment["KATALOG_PYTHON"],
               FileManager.default.isExecutableFile(atPath: python) else {
@@ -86,6 +87,26 @@ final class WorkspacePreviewTests: XCTestCase {
             runpy.run_path(\(String(reflecting: resources.appendingPathComponent("analyzer.py").path)),run_name='__main__')
             """.write(to: engine, atomically: true, encoding: .utf8)
         }
+        if navigationPaging {
+            engine = root.appendingPathComponent("paged-query.py")
+            try """
+            import sys,time,signal,runpy,json
+            from pathlib import Path
+            root=Path(\(String(reflecting: root.path)))
+            if sys.argv[1]=='query':
+                request_path=Path(sys.argv[sys.argv.index('--request')+1])
+                request=json.loads(request_path.read_text())
+                if request['kind']=='logs':
+                    request['limit']=2
+                    request_path.write_text(json.dumps(request))
+                    if request.get('cursor') and (root/'block-cursor').exists():
+                        signal.signal(signal.SIGTERM,signal.SIG_IGN)
+                        (root/'cursor-blocked').write_text('ready')
+                        while True: time.sleep(.02)
+            sys.path.insert(0,\(String(reflecting: resources.path)))
+            runpy.run_path(\(String(reflecting: resources.appendingPathComponent("analyzer.py").path)),run_name='__main__')
+            """.write(to: engine, atomically: true, encoding: .utf8)
+        }
         let library = LibraryStore(storageDirectory: root, engine: engine, pagedNavigation: true)
         addTeardownBlock { @MainActor in library.prepareForTermination() }
         let gcs = GCSStore(storageDirectory: root, collector: collector, snapshot: { library.snapshot })
@@ -109,6 +130,124 @@ final class WorkspacePreviewTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(20))
         }
         XCTAssertFalse(library.isQuerying || library.isLoading || library.isLoadingFlight, "Isolated library did not settle within 20 seconds.")
+    }
+
+    private func workspaceWindow(_ fixture: Fixture, page: Workspace06View.Page = .history, cursor: String? = nil, navigation: LibraryNavigationStore? = nil) -> NSWindow {
+        _ = NSApplication.shared
+        let controller = NSHostingController(rootView: Workspace06View(library: fixture.library, gcs: fixture.gcs, initialPage: page,
+                                                                      initialHistoryCursor: cursor, navigation: navigation))
+        let window = NSWindow(contentRect: NSRect(x: 40, y: 40, width: 1200, height: 900),
+                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.title = "Synthetic navigation fixture"
+        window.isReleasedWhenClosed = false; window.contentViewController = controller
+        window.orderFront(nil); controller.view.layoutSubtreeIfNeeded()
+        return window
+    }
+
+    private func captureWorkspace(_ window: NSWindow, name: String) throws {
+        guard let output = ProcessInfo.processInfo.environment["KATALOG_UI_ARTIFACTS"] else { return }
+        let host = try XCTUnwrap(window.contentView)
+        host.layoutSubtreeIfNeeded()
+        let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        let folder = URL(fileURLWithPath: output)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: folder.appendingPathComponent(name + ".png"))
+    }
+
+    func testTwoNativeWorkspacesKeepIndependentHistoryPagesAndCursors() async throws {
+        let f = try await fixture(count: 6, navigationPaging: true)
+        try f.library.views.chooseHistorySort("oldest"); try await settle(f.library)
+        let initialRows = f.library.snapshot.logs.map(\.id)
+        let next = try XCTUnwrap(f.library.historyPage?.nextCursor)
+        let firstNavigation = f.library.makeNavigationSession()
+        let secondNavigation = f.library.makeNavigationSession()
+        let first = workspaceWindow(f, navigation: firstNavigation)
+        try await settle(f.library)
+        let second = workspaceWindow(f, cursor: next, navigation: secondNavigation)
+        defer { first.close(); second.close(); f.gcs.stopForTermination() }
+        try await settle(f.library)
+        try captureWorkspace(first, name: "two-windows-first-page")
+        try captureWorkspace(second, name: "two-windows-second-page")
+        XCTAssertEqual(firstNavigation.snapshot.logs.map(\.id), initialRows, "Opening page 2 in the second workspace must preserve page 1 in the first.")
+        XCTAssertEqual(secondNavigation.currentHistoryCursor, next)
+        XCTAssertEqual(secondNavigation.snapshot.logs.map(\.fileName), ["log_demo_002.ulg", "log_demo_003.ulg"])
+        XCTAssertNil(firstNavigation.currentHistoryCursor)
+        XCTAssertEqual(firstNavigation.historyPage?.nextCursor, next)
+        // One blocked page must not cancel or replace another window's read.
+        try Data().write(to: f.root.appendingPathComponent("block-cursor"))
+        secondNavigation.loadHistory(cursor: next)
+        let blocked = f.root.appendingPathComponent("cursor-blocked")
+        let deadline = Date().addingTimeInterval(10)
+        while !FileManager.default.fileExists(atPath: blocked.path), Date() < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: blocked.path))
+        firstNavigation.loadHistory()
+        while firstNavigation.isQuerying, Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertFalse(firstNavigation.isQuerying)
+        XCTAssertTrue(secondNavigation.isQuerying)
+        XCTAssertTrue(f.library.isQuerying)
+        XCTAssertTrue(f.library.hasActiveWork)
+        do {
+            _ = try await f.library.performMaintenance { true }
+            XCTFail("A blocked reader in another window must prevent maintenance.")
+        } catch { }
+        try captureWorkspace(first, name: "two-windows-first-during-slow-second")
+        try captureWorkspace(second, name: "two-windows-second-slow")
+        await secondNavigation.cancelQuery()
+        XCTAssertTrue(secondNavigation.queryWasCancelled)
+        XCTAssertFalse(firstNavigation.queryWasCancelled)
+        XCTAssertFalse(f.library.isQuerying)
+        XCTAssertEqual(firstNavigation.snapshot.logs.map(\.id), initialRows)
+        XCTAssertEqual(secondNavigation.currentHistoryCursor, next)
+        try FileManager.default.removeItem(at: f.root.appendingPathComponent("block-cursor"))
+        secondNavigation.loadHistory(cursor: next)
+        try await settle(f.library)
+        XCTAssertEqual(secondNavigation.snapshot.logs.map(\.fileName), ["log_demo_002.ulg", "log_demo_003.ulg"])
+        // Overview sort is local; the persisted History sort stays unchanged.
+        firstNavigation.historySortOverride = "recent"; firstNavigation.loadHistory()
+        try await settle(f.library)
+        XCTAssertEqual(firstNavigation.snapshot.logs.first?.fileName, "log_demo_005.ulg")
+        XCTAssertEqual(secondNavigation.snapshot.logs.first?.fileName, "log_demo_002.ulg")
+        XCTAssertEqual(f.library.views.state.historySort, "oldest")
+        // Shared filter edits reload both sessions, with their own local sort.
+        var scope = SelectionScope(); scope.logSearch = "log_demo_001"
+        try f.library.views.chooseScope(scope)
+        try await settle(f.library)
+        XCTAssertEqual(firstNavigation.snapshot.logs.map(\.fileName), ["log_demo_001.ulg"])
+        XCTAssertEqual(secondNavigation.snapshot.logs.map(\.fileName), ["log_demo_001.ulg"])
+        XCTAssertNil(secondNavigation.currentHistoryCursor)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: f.noNetworkMarker.path))
+    }
+
+    func testTwoMapSessionsFallBackToReadOnlyWhileAnotherWindowReads() async throws {
+        let f = try await fixture(count: 6, withMapPoints: true)
+        let first = f.library.makeNavigationSession(), second = f.library.makeNavigationSession()
+        let proximity = GeographicProximity(latitude: 51.2, longitude: -1.0, radiusMeters: 100_000)
+        var request = LibraryQueryRequest(kind: "map-overview", scope: f.library.views.state.activeScope,
+                                          annotations: f.library.annotations.state,
+                                          maskedMessageKeys: f.library.views.state.maskedMessageKeys)
+        request.proximity = proximity; request.sortOrder = "recent"; request.limit = 5000
+        let expected = try await LibraryQueryService.page(LibraryMapPage.self, request: request,
+            database: f.library.databaseURL, engine: resources.appendingPathComponent("analyzer.py"), readOnly: true)
+        var maintenanceCalls = 0
+        f.library.willMaintainLibrary = { maintenanceCalls += 1 }
+        first.loadMap(proximity: proximity); second.loadMap(proximity: proximity)
+        try await settle(f.library)
+        XCTAssertNil(first.queryError); XCTAssertNil(second.queryError)
+        XCTAssertEqual(maintenanceCalls, 0, "Concurrent map readers must use the read-only fallback.")
+        for session in [first, second] {
+            let page = try XCTUnwrap(session.mapPage)
+            XCTAssertEqual(page.revision, expected.revision)
+            XCTAssertEqual(page.scopeHash, expected.scopeHash)
+            XCTAssertEqual(page.markers, expected.markers)
+            XCTAssertEqual(page.totalLogs, expected.totalLogs)
+            XCTAssertEqual(page.locatedLogs, expected.locatedLogs)
+            XCTAssertEqual(page.proximityUnavailableLogs, expected.proximityUnavailableLogs)
+        }
+        XCTAssertFalse(f.library.isMaintainingLibrary)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: f.noNetworkMarker.path))
     }
 
     private func render<V: View>(_ content: V, name: String, width: CGFloat, height: CGFloat, scheme: ColorScheme,
@@ -211,17 +350,25 @@ final class WorkspacePreviewTests: XCTestCase {
 
     func testBlockedReadAndCancellationRenderRecoverableStatesAtMinimumWindow() async throws {
         let f = try await fixture(count: 1, blockQueries: true)
-        try f.library.views.setTheme("dark")
-        let waiting = try await render(Workspace06View(library: f.library, gcs: f.gcs),
-            name: "query-waiting-dark", width: 900, height: 620, scheme: .dark, settleDelay: .seconds(13))
-        XCTAssertTrue(f.library.isQuerying, "The delayed hint must not time out a long-running query.")
-        XCTAssertNil(f.library.historyPage, "Pending results are not an established empty selection.")
-        XCTAssertLessThanOrEqual(waiting.width, 900.5); XCTAssertLessThanOrEqual(waiting.height, 620.5)
         await f.library.cancelQuery()
-        XCTAssertTrue(f.library.queryWasCancelled); XCTAssertFalse(f.library.hasActiveWork)
+        let navigation = f.library.makeNavigationSession()
+        try f.library.views.setTheme("dark")
+        let window = workspaceWindow(f, page: .overview, navigation: navigation)
+        defer { window.close(); f.gcs.stopForTermination() }
+        window.setContentSize(NSSize(width: 900, height: 620))
+        try await Task.sleep(for: .seconds(13))
+        XCTAssertTrue(navigation.isQuerying, "The delayed hint must not time out a long-running query.")
+        XCTAssertNil(navigation.historyPage, "Pending results are not an established empty selection.")
+        let controller = try XCTUnwrap(window.contentViewController as? NSHostingController<Workspace06View>)
+        let waiting = controller.sizeThatFits(in: CGSize(width: 900, height: 620))
+        try captureWorkspace(window, name: "query-waiting-dark")
+        XCTAssertLessThanOrEqual(waiting.width, 900.5); XCTAssertLessThanOrEqual(waiting.height, 620.5)
+        await navigation.cancelQuery()
+        XCTAssertTrue(navigation.queryWasCancelled); XCTAssertFalse(f.library.hasActiveWork)
         try f.library.views.setTheme("light")
-        let cancelled = try await render(Workspace06View(library: f.library, gcs: f.gcs),
-            name: "query-cancelled-light", width: 900, height: 620, scheme: .light)
+        try await Task.sleep(for: .milliseconds(100))
+        let cancelled = controller.sizeThatFits(in: CGSize(width: 900, height: 620))
+        try captureWorkspace(window, name: "query-cancelled-light")
         XCTAssertLessThanOrEqual(cancelled.width, 900.5); XCTAssertLessThanOrEqual(cancelled.height, 620.5)
         XCTAssertFalse(FileManager.default.fileExists(atPath: f.noNetworkMarker.path))
         for scheme in [ColorScheme.dark, .light] {
