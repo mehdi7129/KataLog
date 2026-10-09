@@ -5,6 +5,25 @@ build **21**. [Télécharger le DMG](https://github.com/mehdi7129/KataLog/releas
 ou suivre les [instructions de mise à jour](docs/UPDATING.md).
 Les sections antérieures conservent l’état de leur version au moment de sa livraison.
 
+## 0.8.3 — en préparation
+
+- Imports et réanalyses : rollback cohérent, protection des fichiers de sortie,
+  provenance conservée et vérification locale des sources avant leur lecture.
+- Restauration et maintenance : reprise après interruption, traitement d’une
+  bibliothèque endommagée, clients et collecte réconciliés avant reprise.
+- Navigation indépendante entre fenêtres, résultats d’alertes cohérents après
+  changement de filtres et réutilisation de la recherche de proximité paginée.
+- Collecte : accès disque déplacés hors du thread d’interface, compteurs et
+  états cohérents, délai HTTP complet et flux MQTT/JSONL bornés.
+- Exports et grandes sélections sécurisés ; logique Swift/Python séparée par
+  responsabilité, métadonnées de build vérifiées et preuves CI conservées.
+
+Candidat **0.8.3**, build **22**. Les 26 points de l’audit sont intégrés sans
+nouvelle fonction ni changement de parseur ou de projection SQLite. La
+[recette 0.8.3](docs/RELEASE-0.8.3.md) distingue les tests réussis, la limite
+observée sur le banc de capacité et les contrôles de distribution restant à
+exécuter. La stable publique reste 0.8.2 pendant cette préparation.
+
 ## 0.8.2 — 2026-10-07
 
 - Pagination de l’historique : la liste des sources et les statistiques d’import

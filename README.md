@@ -1,6 +1,9 @@
 # KataLog — bibliothèque locale de logs PX4
 
-**0.8.2 (build 21)** · macOS 15+ · Apple Silicon · GPL-3.0-only
+**Candidat 0.8.3 (build 22)** · macOS 15+ · Apple Silicon · GPL-3.0-only
+
+La stable téléchargeable reste **0.8.2 (build 21)** pendant la
+[qualification de 0.8.3](docs/RELEASE-0.8.3.md).
 
 KataLog rassemble les logs ULog de votre flotte sur votre Mac : historique,
 alertes filtrables, trajectoires Apple Maps, courbes et rapports partageables.
@@ -69,6 +72,19 @@ Les outils PX4 spécialisés sont accessibles via le **mode avancé** des régla
 Pour collecter directement sur une GCS, ouvrir **Collecte GCS**, renseigner son
 adresse, se connecter et choisir **Tout collecter**. Le client destinataire et
 le dossier de copie sont explicites. Voir le [guide de collecte](docs/README.md#collecter-depuis-une-gcs).
+
+## Version 0.8.3 en préparation
+
+Cette version regroupe les 26 corrections de l’[audit de qualité](docs/AUDIT-QUALITE-2026-10-08.md).
+Les fonctions et les parcours restent les mêmes : imports et restaurations plus
+fiables, navigation indépendante entre fenêtres, collecte plus réactive et
+responsabilités internes mieux séparées.
+
+Les tests et packages CI du code corrigé passent. La signature, la notarisation
+et la recette du package 0.8.3 doivent encore être terminées avant publication.
+Sur un banc de 50 000 logs, deux premiers chargements dépassent le budget
+interne de 500 ms ; cette limite est conservée et détaillée dans les
+[notes de qualification](docs/RELEASE-0.8.3.md#performance-et-limites).
 
 ## Nouveautés de 0.8.2
 

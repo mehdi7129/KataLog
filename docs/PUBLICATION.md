@@ -6,6 +6,12 @@ Le dépôt est **public**. La version stable actuelle est **0.8.2 (build 21)**,
 publiée le **7 octobre 2026**. Voir la [release et sa qualification](RELEASE-0.8.2.md)
 et le [guide utilisateur](README.md).
 
+Le candidat **0.8.3 (build 22)** est en qualification. Ses corrections et preuves
+logicielles sont décrites dans [RELEASE-0.8.3.md](RELEASE-0.8.3.md). Sa présence
+dans les sources ne signifie pas que ses installateurs, son tag ou son flux
+sont publiés. Les vérifications des distributions 0.8.2 ci-dessous restent
+attribuées à cette version ; elles ne qualifient pas le nouveau package.
+
 Les contrôles de confidentialité couvrent le contenu publié et son historique,
 pas seulement les fichiers de la branche principale. Les rapports détaillés,
 marqueurs privés et preuves opérationnelles restent hors du dépôt.

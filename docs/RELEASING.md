@@ -1,10 +1,12 @@
 # Distribution macOS hors App Store
 
-La version **0.8.2 (build 21)** livre un correctif de lecture de l’historique
-et des clients. Elle conserve l’installation autonome par DMG et le flux
-Sparkle stable signé introduit en 0.7.0. Voir
-[la recette 0.8.2](RELEASE-0.8.2.md). Toute publication
-exige la validation de l’historique, des métadonnées GitHub et des assets.
+La version **0.8.3 (build 22)** est en préparation. Elle regroupe les corrections
+de fiabilité et de maintenabilité de l’audit, en conservant l’installation
+autonome par DMG et le flux Sparkle stable signé introduit en 0.7.0. Voir
+[la recette 0.8.3](RELEASE-0.8.3.md) pour distinguer les preuves obtenues des
+contrôles restant à exécuter. La stable publique reste **0.8.2 (build 21)**.
+Toute publication exige la validation de l’historique, des métadonnées GitHub
+et des assets ; une CI ad hoc ne qualifie pas la distribution notarisée finale.
 
 ## Parcours utilisateur
 
@@ -17,8 +19,8 @@ sur toutes les versions de macOS.
 ## Préparer et tester
 
 1. Fixer version et build dans `tools/build-app.sh`, `tools/package-smoke.sh` et
-   `project.yml`, puis `xcodegen generate`. Le build 21 succède au build
-   stable 20 de 0.8.1.
+   `project.yml`, puis `xcodegen generate`. Le build 22 succède au build
+   stable 21 de 0.8.2.
    Conserver l’identité stable de l’app ; la Preview utilise son identité séparée.
 2. Exécuter les suites Swift, Python et Node du README. `KATALOG_PRIVATE_FIXTURES`
    désigne uniquement le corpus local ; les ULog et résultats privés restent hors Git.

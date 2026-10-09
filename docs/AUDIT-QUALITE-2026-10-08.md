@@ -12,6 +12,8 @@ Référence : `main`, commit `6aa9007bcc893e8f213f85c2cba9fd770330be72`,
 version source **0.8.2, build 21**. L'audit utilise un worktree isolé. Le checkout
 de développement ancien et ses modifications locales sont hors de cette
 baseline et ont été conservés.
+Les liens de preuves de cette analyse ciblent ce commit immuable afin de rester
+exacts après déplacement ou découpage des fichiers.
 
 Quatre agents ont travaillé en parallèle : interface/stores SwiftUI,
 moteur/persistance Python, services Core/collecte/CLI, puis coordination,
@@ -174,8 +176,8 @@ correctifs, et ne sont pas présentés comme déjà existants.
 **Reproduit.** Le `SAVEPOINT` de `remember_log()` peut être le premier niveau
 de transaction ; son `RELEASE` publie alors l'analyse avant que `scan()` vérifie
 que la source n'a pas changé. Le `rollback()` de l'erreur arrive trop tard.
-Preuves : [publication](../Sources/KataLog/Resources/analyzer.py#L838-L851),
-[ordre du scan et rollback](../Sources/KataLog/Resources/analyzer.py#L1002-L1065).
+Preuves : [publication](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/analyzer.py#L838-L851),
+[ordre du scan et rollback](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/analyzer.py#L1002-L1065).
 
 Une fixture remplacée entre hash et parsing laisse une analyse `status=ok`
 sous l'ancien SHA, avec les données du contenu remplacé et sa révision
@@ -194,9 +196,9 @@ archivée, alors que le bilan annonce `failed=1`.
 
 **Reproduit au niveau moteur utilisé par la CLI.** `--output` est transmis sans
 contrôle de collision, puis écrit par remplacement atomique.
-Preuves : [CLI](../Sources/KataLogCLI/main.swift#L17-L40),
-[sortie du scan](../Sources/KataLog/Resources/analyzer.py#L1089-L1090),
-[écriture atomique](../Sources/KataLog/Resources/analyzer.py#L76-L85).
+Preuves : [CLI](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLogCLI/main.swift#L17-L40),
+[sortie du scan](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/analyzer.py#L1089-L1090),
+[écriture atomique](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/analyzer.py#L76-L85).
 
 Avec `output=database` sur une base temporaire, le scan retourne un succès mais
 l'en-tête SQLite est remplacé par du JSON ; une lecture SQL échoue ensuite.
@@ -216,19 +218,19 @@ base n'a été reproduit.
 
 **Reproduit.** `refresh_analysis()` reparse le chemin réassocié et conserve
 explicitement l'identité, mais reprend d'autres métadonnées du nouveau chemin.
-Preuve : [réanalyse](../Sources/KataLog/Resources/analyzer.py#L1245-L1280).
+Preuve : [réanalyse](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/analyzer.py#L1245-L1280).
 Pour un ULog sans date GPS exploitable, le même SHA peut ainsi passer d'une date
 historique à celle du dossier de copie ; le nom de fichier change aussi.
 
 **Complément reproduit au contre-audit, sans faux analyseur :** `scan()` retrouve
 le SHA mais reparcourt le fichier après un changement de version du parseur,
 sans réappliquer la provenance précédente.
-Preuves : [branche réimport](../Sources/KataLog/Resources/analyzer.py#L1007-L1017),
-[métadonnées de chemin](../Sources/KataLog/Resources/analyzer.py#L357-L407).
+Preuves : [branche réimport](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/analyzer.py#L1007-L1017),
+[métadonnées de chemin](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/analyzer.py#L357-L407).
 Une copie identique d'un ULog sans UUID ni date GPS, déplacée de `card-A` vers
 `card-B` sous une autre date, change aussi d'identité **provisoire** et de nom
 de drone. Le doublon au même parseur réutilise au contraire l'analyse existante.
-La lecture [detail](../Sources/KataLog/Resources/analyzer.py#L1191-L1211) réapplique
+La lecture [detail](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/analyzer.py#L1191-L1211) réapplique
 déjà les champs canoniques : ne pas généraliser ce défaut à toutes les lectures.
 
 - **Correction minimale :** réutiliser la provenance canonique enregistrée pour
@@ -246,9 +248,9 @@ déjà les champs canoniques : ne pas généraliser ce défaut à toutes les lec
 **Reproduit sur le store isolé avec faux services.** Le client est supprimé
 dans la bibliothèque avant le nettoyage de ses attributions GCS. Si ce callback
 échoue, profils et scope UI ne sont pas réconciliés.
-Preuves : [ClientStore](../Sources/KataLog/ClientStore.swift#L87-L94),
-[enchaînement des mutations](../Sources/KataLog/ClientStore.swift#L117-L127),
-[nettoyage GCS](../Sources/KataLog/GCSStore.swift#L294-L303).
+Preuves : [ClientStore](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/ClientStore.swift#L87-L94),
+[enchaînement des mutations](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/ClientStore.swift#L117-L127),
+[nettoyage GCS](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/GCSStore.swift#L294-L303).
 La probe obtient une suppression backend réussie et un client encore présent
 dans `profiles` et dans le scope actif, avec une erreur globale.
 
@@ -262,8 +264,8 @@ dans `profiles` et dans le scope actif, avec une erreur globale.
 
 **Reproduit sur le store isolé.** Une requête B échouée laisse `page` issue de A,
 alors que les filtres et le numéro de page affichés ont déjà changé.
-Preuves : [chargement](../Sources/KataLog/EventBrowserView.swift#L12-L30),
-[affichage et pagination](../Sources/KataLog/EventBrowserView.swift#L94-L131).
+Preuves : [chargement](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/EventBrowserView.swift#L12-L30),
+[affichage et pagination](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/EventBrowserView.swift#L94-L131).
 La fixture charge les événements de A puis fait échouer B : les données A
 restent accessibles sous le nouveau contexte, à côté du message d'erreur.
 
@@ -278,9 +280,9 @@ restent accessibles sous le nouveau contexte, à côté du message d'erreur.
 **Risque étayé, gel utilisateur non mesuré.** `batchProgress` et `retryableCount`
 effectuent des requêtes SQLite synchrones dans le store `@MainActor` ;
 `saveState()` y écrit également la file et le JSON.
-Preuves : [compteurs](../Sources/KataLog/GCSStore.swift#L87-L100),
-[persistance](../Sources/KataLog/GCSStore.swift#L1080-L1104),
-[repository](../Sources/KataLogCore/GCSQueueRepository.swift#L18-L30).
+Preuves : [compteurs](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/GCSStore.swift#L87-L100),
+[persistance](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/GCSStore.swift#L1080-L1104),
+[repository](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLogCore/GCSQueueRepository.swift#L18-L30).
 Le timeout SQLite de cinq secondes peut donc aussi retarder les commandes UI.
 Le rendu recalcule certains agrégats déjà capturés ; le benchmark existant de
 préparation de file déporte sa grosse écriture et ne mesure pas tout ce chemin.
@@ -297,8 +299,8 @@ préparation de file déporte sa grosse écriture et ne mesure pas tout ce chemi
 **Risque étayé sur erreur de lecture.** Les `try?` des compteurs retombent sur
 `queue` si SQLite échoue, alors que cette liste ne conserve normalement que les
 travaux actifs et 200 terminaux récents.
-Preuves : [fallbacks](../Sources/KataLog/GCSStore.swift#L87-L98),
-[rétention](../Sources/KataLogCore/GCSQueueRepository.swift#L111-L117).
+Preuves : [fallbacks](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/GCSStore.swift#L87-L98),
+[rétention](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLogCore/GCSQueueRepository.swift#L111-L117).
 Avec un historique plus grand, compte de relances et progression ne décrivent
 plus le même ensemble, sans signal d'indisponibilité du total.
 
@@ -313,7 +315,7 @@ plus le même ensemble, sans signal d'indisponibilité du total.
 **Reproduit sur loopback avec horloge de deadline accélérée.** La deadline est
 vérifiée avant `HTTPResponse.read(n)`, qui peut attendre le remplissage du bloc.
 Un flux régulier lent évite le timeout socket d'inactivité.
-Preuve : [boucle de copie](../Sources/KataLog/Resources/gcs_collect.py#L659-L678).
+Preuve : [boucle de copie](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/gcs_collect.py#L659-L678).
 
 Fixture de 32 Kio livrant 1 Kio toutes les 80 ms ; horloge du collecteur ×100 :
 budget effectif 0,6 s, retour après **2,618 s**, premier progrès après **2,617 s**.
@@ -330,7 +332,7 @@ protégée ; le constat concerne le délai automatique et la progression.
 **Risque structurel, pas d'OOM de l'app reproduit.** La frame JSONL est bornée,
 mais `AsyncThrowingStream` est créé avec son buffer non borné et `yield` n'attend
 pas le consommateur.
-Preuve : [stream et yield](../Sources/KataLogCore/GCSProcessService.swift#L11-L55).
+Preuve : [stream et yield](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLogCore/GCSProcessService.swift#L11-L55).
 Une probe du même constructeur accepte 100 000 événements sans consommateur.
 Un consommateur ralenti peut donc accumuler mémoire et événements périmés.
 Cette probe démontre la propriété du constructeur, pas le backlog effectif de
@@ -348,10 +350,10 @@ service réel avec un helper synthétique et un consommateur ralenti.
 **Divergence reproduite avec `UF_DATALESS` simulé ; iCloud réel non testé.**
 `analyzer.digest_file()` refuse une source évincée, mais les copies/hashes de
 stockage utilisent d'autres helpers sans ce contrôle.
-Preuves : [garde existante](../Sources/KataLog/Resources/analyzer.py#L62-L68),
-[copie](../Sources/KataLog/Resources/library_archives.py#L50-L64),
-[réassociation](../Sources/KataLog/Resources/library_archives.py#L294-L302),
-[backup](../Sources/KataLog/Resources/library_storage.py#L154-L157).
+Preuves : [garde existante](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/analyzer.py#L62-L68),
+[copie](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/library_archives.py#L50-L64),
+[réassociation](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/library_archives.py#L294-L302),
+[backup](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/library_storage.py#L154-L157).
 La fixture marquée dataless est refusée par le premier chemin mais copiée par
 le second. Une hydratation lente pendant la maintenance reste un risque,
 pas un blocage cloud effectivement observé.
@@ -367,9 +369,9 @@ pas un blocage cloud effectivement observé.
 **Risque étayé, scénario GUI non reproduit.** Le `WindowGroup` partage un seul
 `LibraryStore`, tandis que chaque workspace conserve sa page et ses curseurs.
 Les résultats, le tri de requête et la tâche annulable restent partagés.
-Preuves : [ownership App](../Sources/KataLog/main.swift#L6-L16),
-[workspace](../Sources/KataLog/Workspace06View.swift#L7-L30),
-[chargement](../Sources/KataLog/LibraryStore.swift#L570-L580).
+Preuves : [ownership App](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/main.swift#L6-L16),
+[workspace](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Workspace06View.swift#L7-L30),
+[chargement](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/LibraryStore.swift#L570-L580).
 Une fenêtre peut donc remplacer ou annuler la lecture utilisée par l'autre.
 
 - **Avant correction :** reproduire avec deux fenêtres et préciser le contrat
@@ -384,9 +386,9 @@ Une fenêtre peut donc remplacer ou annuler la lecture utilisée par l'autre.
 **Dette constatée.** `LibraryStore`, `GCSStore` et `Workspace06View` concentrent
 plusieurs cycles de vie. Les gardes `busy`, `hasActiveWork`, `canMutate` et
 `installationAllowed` répètent des combinaisons différentes de flags.
-Preuves : [activité bibliothèque](../Sources/KataLog/LibraryStore.swift#L271-L318),
-[maintenance](../Sources/KataLog/LibraryStore.swift#L710-L720),
-[commandes dans la vue](../Sources/KataLog/Workspace06View.swift#L1503-L1589).
+Preuves : [activité bibliothèque](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/LibraryStore.swift#L271-L318),
+[maintenance](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/LibraryStore.swift#L710-L720),
+[commandes dans la vue](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Workspace06View.swift#L1503-L1589).
 Le coût principal est de devoir modifier plusieurs endroits éloignés quand une
 opération apparaît, pas seulement la longueur des fichiers.
 
@@ -404,9 +406,9 @@ opération apparaît, pas seulement la longueur des fichiers.
 révisions, import et dispatch CLI ; `query()` regroupe plusieurs familles de
 requêtes. Les hashes, écritures atomiques et réapplication de provenance sont
 réimplémentés avec des protections différentes.
-Preuves : [dispatch](../Sources/KataLog/Resources/analyzer.py#L1403),
-[query](../Sources/KataLog/Resources/library_repository.py#L827),
-[helpers stockage](../Sources/KataLog/Resources/library_storage.py#L40-L57).
+Preuves : [dispatch](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/analyzer.py#L1403),
+[query](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/library_repository.py#L827),
+[helpers stockage](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/library_storage.py#L40-L57).
 
 - **Correction minimale après les bugs :** extraire I/O locale et signatures,
   transactions/révisions puis dispatch ; fonctions privées par type de requête,
@@ -419,9 +421,9 @@ Preuves : [dispatch](../Sources/KataLog/Resources/analyzer.py#L1403),
 
 **Dette constatée, divergence actuelle non affirmée.** États/phases sont des
 chaînes libres et leurs catégories/progressions sont répétées en Swift et SQL.
-Preuves : [modèles](../Sources/KataLogCore/GCSModels.swift#L78-L136),
-[requêtes](../Sources/KataLogCore/GCSQueueRepository.swift#L125-L207).
-Les [tests de parité existants](../Tests/KataLogCoreTests/GCSQueueRepositoryTests.swift#L52-L111)
+Preuves : [modèles](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLogCore/GCSModels.swift#L78-L136),
+[requêtes](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLogCore/GCSQueueRepository.swift#L125-L207).
+Les [tests de parité existants](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Tests/KataLogCoreTests/GCSQueueRepositoryTests.swift#L52-L111)
 couvrent déjà les phases, des états legacy et les compteurs malformés ou très
 grands. Aucun écart actuel Swift/SQL n'a été trouvé au contre-audit ; le typage
 proposé est une simplification de maintenance, sans migration imposée.
@@ -437,9 +439,9 @@ proposé est une simplification de maintenance, sans migration imposée.
 **Dette constatée ; ce code n'est pas mort dans tous les lancements.** La stable
 0.8.2 utilise `Workspace06View`, mais un exécutable SwiftPM sans version de bundle
 ni flag peut atteindre `WorkspaceView` et son ancien chemin de fiche.
-Preuves : [branche de lancement](../Sources/KataLog/main.swift#L6-L16),
-[configuration](../Sources/KataLog/AppPreviewConfiguration.swift#L19-L31),
-[ancien chargement](../Sources/KataLog/LibraryStore.swift#L247-L268).
+Preuves : [branche de lancement](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/main.swift#L6-L16),
+[configuration](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/AppPreviewConfiguration.swift#L19-L31),
+[ancien chargement](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/LibraryStore.swift#L247-L268).
 
 - **Correction minimale :** sortir ce shell de `main.swift`, documenter les
   conditions d'activation et éviter que les corrections de services divergent.
@@ -454,13 +456,13 @@ Preuves : [branche de lancement](../Sources/KataLog/main.swift#L6-L16),
 scripts utilisent des répertoires de travail globaux par défaut ; le moteur
 déplace/réécrit ses inputs et ses sorties sans verrou global. Le build Swift et
 la copie des deux exécutables sont des étapes distinctes.
-Preuves : [defaults et copie](../tools/build-app.sh#L5-L17),
-[compilation/copie](../tools/build-app.sh#L120-L138),
-[mutation des inputs](../tools/build-engine.sh#L16-L24),
-[compilation moteur](../tools/build-engine.sh#L66-L83).
+Preuves : [defaults et copie](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/tools/build-app.sh#L5-L17),
+[compilation/copie](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/tools/build-app.sh#L120-L138),
+[mutation des inputs](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/tools/build-engine.sh#L16-L24),
+[compilation moteur](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/tools/build-engine.sh#L66-L83).
 Deux worktrees peuvent se gêner ; les contrôles de hash du moteur limitent le
 risque mais ne sérialisent pas toute la chaîne. Le smoke CI utilise déjà un
-[root unique](../tools/package-smoke.sh#L15-L27), à préserver.
+[root unique](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/tools/package-smoke.sh#L15-L27), à préserver.
 
 - **Correction minimale :** root par invocation ou verrou couvrant build jusqu'à
   la capture de l'artefact, avec caches réutilisables séparés des sorties mutables.
@@ -473,8 +475,8 @@ risque mais ne sérialisent pas toute la chaîne. Le smoke CI utilise déjà un
 JSON de tests restent dans `/tmp` et les benchmarks de capacité complets ne sont
 pas rejoués par ce workflow. Les tests GCS de performance existants ne couvrent
 pas toutes les I/O UI de Q06.
-Preuves : [workflow](../.github/workflows/ci.yml#L33-L45),
-[budgets du benchmark](../Tests/benchmark_library_repository.py#L117-L135).
+Preuves : [workflow](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/.github/workflows/ci.yml#L33-L45),
+[budgets du benchmark](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Tests/benchmark_library_repository.py#L117-L135).
 
 - **Correction minimale :** conserver les résumés/logs synthétiques, y compris
   sur échec ; un banc périodique ou manuel reproductible pour requêtes, mémoire,
@@ -505,10 +507,10 @@ une intégration. Aucun réglage distant n'a été modifié pendant l'audit.
 Version/build et réglages d'update se retrouvent dans le projet généré, son YAML,
 le script de build et le smoke. Le template plist contient même d'anciennes
 valeurs, correctement remplacées plus bas aujourd'hui.
-Preuves : [projet](../project.yml#L35-L55),
-[defaults](../tools/build-app.sh#L10-L14),
-[template et remplacement](../tools/build-app.sh#L158-L180),
-[smoke](../tools/package-smoke.sh#L22-L26).
+Preuves : [projet](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/project.yml#L35-L55),
+[defaults](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/tools/build-app.sh#L10-L14),
+[template et remplacement](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/tools/build-app.sh#L158-L180),
+[smoke](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/tools/package-smoke.sh#L22-L26).
 
 - **Correction minimale :** contrôle automatique de cohérence des entrées et du
   plist final ; supprimer les valeurs intermédiaires trompeuses. Une source
@@ -521,9 +523,9 @@ Preuves : [projet](../project.yml#L35-L55),
 **Reproduit sur le runtime exact ; sélection GUI de cette taille non observée.**
 Le contrat accepte jusqu'à 100 000 chaînes par liste, puis construit un paramètre
 SQL par élément, parfois répété.
-Preuves : [validation](../Sources/KataLog/Resources/library_repository.py#L443-L448),
-[construction SQL](../Sources/KataLog/Resources/library_repository.py#L583-L610),
-[budget requête](../Sources/KataLog/Resources/analyzer.py#L1623-L1626).
+Preuves : [validation](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/library_repository.py#L443-L448),
+[construction SQL](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/library_repository.py#L583-L610),
+[budget requête](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/analyzer.py#L1623-L1626).
 Sur SQLite 3.53.1, une requête de **32 767 SHA**, **2 228 226 octets**, est acceptée
 puis échoue avec `too many SQL variables` ; limite runtime **32 766**, requête
 pourtant inférieure aux 16 Mio autorisés. Les combinaisons de filtres peuvent
@@ -541,8 +543,8 @@ consommer le budget plus tôt.
 **Deux scénarios reproduits.** La reprise déplace les entrants puis remet les
 originaux, sans journaliser son propre avancement. À la relance, elle peut donc
 déplacer un original qu'elle venait de réinstaller.
-Preuves : [reprise](../Sources/KataLog/Resources/library_storage.py#L515-L550),
-[rollback automatique similaire](../Sources/KataLog/Resources/library_storage.py#L497-L507).
+Preuves : [reprise](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/library_storage.py#L515-L550),
+[rollback automatique similaire](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/library_storage.py#L497-L507).
 
 Une interruption injectée après remise de `library.sqlite`, avant celle
 d'`annotations.json`, laisse le journal présent. Le deuxième appel retourne
@@ -557,11 +559,11 @@ et aucun entrant installé, les vrais `LibraryStore` et `GCSStore` recréent une
 base vide, les réglages et la file GCS. Le journal reste présent, aucune erreur
 n'est signalée, les résultats sont marqués courants et la création d'un client
 est acceptée. Aucun appel de `recover-restore` n'a été trouvé en Swift.
-Preuves : [chargement initial](../Sources/KataLog/LibraryStore.swift#L88-L140),
-[ensure-index](../Sources/KataLog/LibraryStore.swift#L579-L616),
-[ouverture créatrice](../Sources/KataLog/Resources/analyzer.py#L91-L121),
-[attachement GCS](../Sources/KataLog/GCSStore.swift#L256-L279),
-[écritures GCS](../Sources/KataLog/GCSStore.swift#L1080-L1129).
+Preuves : [chargement initial](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/LibraryStore.swift#L88-L140),
+[ensure-index](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/LibraryStore.swift#L579-L616),
+[ouverture créatrice](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/analyzer.py#L91-L121),
+[attachement GCS](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/GCSStore.swift#L256-L279),
+[écritures GCS](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/GCSStore.swift#L1080-L1129).
 Les probes portent sur moteur/stores réels, pas sur un sinistre physique ni sur
 une répétition automatique observée dans l'app installée.
 
@@ -582,15 +584,15 @@ une répétition automatique observée dans l'app installée.
 
 **Reproduit au niveau moteur.** Après validation de l'archive entrante, la
 restauration exige un backup cohérent de la bibliothèque actuelle avant le swap.
-Preuves : [ordre des opérations](../Sources/KataLog/Resources/library_storage.py#L448-L462),
-[lecture SQLite](../Sources/KataLog/Resources/library_storage.py#L67-L79),
-[lecture JSON](../Sources/KataLog/Resources/library_storage.py#L120-L127).
+Preuves : [ordre des opérations](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/library_storage.py#L448-L462),
+[lecture SQLite](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/library_storage.py#L67-L79),
+[lecture JSON](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/library_storage.py#L120-L127).
 
 Une archive synthétique validée contenant 1 log est refusée si la cible contient
 une base illisible (`file is not a database`) ou un `annotations.json` tronqué
 (`JSONDecodeError`). Les octets actifs restent inchangés et aucun swap n'a lieu :
 c'est un blocage du moyen de réparation, pas une nouvelle perte de données.
-La chaîne GUI [maintenance/restauration](../Sources/KataLog/LibraryStore.swift#L710-L750)
+La chaîne GUI [maintenance/restauration](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/LibraryStore.swift#L710-L750)
 permet l'appel après une erreur de lecture, mais ce parcours n'a pas été exécuté
 dans l'app installée. Une corruption de la file GCS n'est pas couverte ici.
 
@@ -609,9 +611,9 @@ dans l'app installée. Une corruption de la file GCS n'est pas couverte ici.
 les marqueurs par pages de 5 000. Chaque page recrée la sélection de proximité
 et reparcourt toutes les trajectoires candidates ; les trajectoires présentes
 en cache sont tout de même relues, décompressées et décodées.
-Preuves : [pagination carte](../Sources/KataLog/LibraryStore.swift#L647-L677),
-[préparation par requête](../Sources/KataLog/Resources/library_repository.py#L859-L865),
-[boucle et cache complet](../Sources/KataLog/Resources/library_proximity.py#L111-L163).
+Preuves : [pagination carte](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/LibraryStore.swift#L647-L677),
+[préparation par requête](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/library_repository.py#L859-L865),
+[boucle et cache complet](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/library_proximity.py#L111-L163).
 
 Sur 5 001 trajectoires synthétiques déjà en cache, la vraie requête retourne
 5 000 puis 1 marqueur. L'instrumentation de `complete_track()` compte **5 001
@@ -633,8 +635,8 @@ connexion en lecture seule. Il ne s'agit pas de 10 002 reparses de fichiers ULog
 **Reproduit avec vrai exporteur et vrai store.** Le service publie atomiquement
 le ZIP puis retourne son résultat. Le store vérifie encore l'annulation après
 ce retour, et peut transformer ce commit réussi en échec annoncé.
-Preuves : [commit ZIP](../Sources/KataLogCore/DiagnosticBundle.swift#L240-L248),
-[contrôle tardif et annulation](../Sources/KataLog/DiagnosticStore.swift#L152-L172).
+Preuves : [commit ZIP](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLogCore/DiagnosticBundle.swift#L240-L248),
+[contrôle tardif et annulation](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/DiagnosticStore.swift#L152-L172).
 
 Une suspension contrôlée juste après le retour du vrai exporteur agrandit la
 fenêtre d'ordonnancement. Annuler puis reprendre produit un **nouveau ZIP valide
@@ -654,9 +656,9 @@ La fréquence dans la GUI n'a pas été mesurée.
 
 **Reproduit avec vrai store et vrai moteur.** Le reset SQL précède plusieurs
 nettoyages fallibles ; les pages et clients ne sont purgés/rechargés qu'ensuite.
-Preuves : [ordre du reset](../Sources/KataLog/LibraryStore.swift#L780-L807),
-[defer de maintenance](../Sources/KataLog/LibraryStore.swift#L710-L720),
-[traitement de l'erreur](../Sources/KataLog/Workspace06View.swift#L1503-L1512).
+Preuves : [ordre du reset](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/LibraryStore.swift#L780-L807),
+[defer de maintenance](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/LibraryStore.swift#L710-L720),
+[traitement de l'erreur](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Workspace06View.swift#L1503-L1512).
 
 Fixture à 1 log et 1 client, réinitialisée par `resetApplication()` en mode
 paginé, avec un dossier occupant `views.json`. Le moteur vide la base, puis la
@@ -681,9 +683,9 @@ distincte du cas de suppression de client Q04.
 MQTT sont limités à 8 Mio, mais leurs lignes brutes sont retenues jusqu'à
 `end_session`. Seul le nombre de lignes est limité avant la validation des
 chemins, qui refuse pourtant les chemins dépassant 1 024 caractères.
-Preuves : [paquets](../Sources/KataLog/Resources/gcs_collect.py#L259-L269),
-[accumulation et validation finale](../Sources/KataLog/Resources/gcs_collect.py#L405-L426),
-[validation des chemins](../Sources/KataLog/Resources/gcs_collect.py#L161-L179).
+Preuves : [paquets](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/gcs_collect.py#L259-L269),
+[accumulation et validation finale](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/gcs_collect.py#L405-L426),
+[validation des chemins](https://github.com/mehdi7129/KataLog/blob/6aa9007bcc893e8f213f85c2cba9fd770330be72/Sources/KataLog/Resources/gcs_collect.py#L161-L179).
 
 24 payloads distincts d'environ 1 Mio, chacun avec un seul nom trop long,
 sont retenus avant le refus final. `tracemalloc` mesure **25 169 750 octets
