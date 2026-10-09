@@ -1,8 +1,10 @@
 """Keep checked-in build metadata and packaged plist contracts consistent."""
 import base64
+import copy
 import importlib.util
 import json
 import plistlib
+from pathlib import PurePosixPath
 import re
 import subprocess
 import unittest
@@ -12,6 +14,40 @@ from build_fixture import BuildFixture, ROOT
 SPEC = importlib.util.spec_from_file_location('katalog_metadata_update_policy', ROOT / 'tools/update-feed.py')
 updates = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(updates)
+
+
+def xcode_project():
+    return json.loads(subprocess.check_output(['/usr/bin/plutil', '-convert', 'json', '-o', '-', str(ROOT / 'KataLog.xcodeproj/project.pbxproj')]))
+
+
+def xcode_phase_files(project, target_name, phase_type):
+    objects = project['objects']
+    paths = {}
+
+    def visit(reference, parent):
+        value = objects[reference]
+        source_tree = value.get('sourceTree', '<group>')
+        if source_tree not in ('<group>', 'SOURCE_ROOT'):
+            return  # SDK/framework/products are not project source inputs.
+        base = PurePosixPath() if source_tree == 'SOURCE_ROOT' else parent
+        path = base / value.get('path', '')
+        if value['isa'] == 'PBXFileReference':
+            paths[reference] = path.as_posix()
+        else:
+            for child in value.get('children', []):
+                visit(child, path)
+
+    visit(objects[project['rootObject']]['mainGroup'], PurePosixPath())
+    target = next(value for value in objects.values() if value.get('isa') == 'PBXNativeTarget' and value.get('name') == target_name)
+    phase = next(objects[key] for key in target['buildPhases'] if objects[key]['isa'] == phase_type)
+    return {build_file: paths[objects[build_file]['fileRef']] for build_file in phase['files']}, phase
+
+
+SOURCE_PHASES = (
+    ('KataLog', 'PBXSourcesBuildPhase', 'Sources/KataLog', '.swift'),
+    ('KataLogCore', 'PBXSourcesBuildPhase', 'Sources/KataLogCore', '.swift'),
+    ('KataLog', 'PBXResourcesBuildPhase', 'Sources/KataLog/Resources', '.py'),
+)
 
 
 def project_settings():
@@ -40,7 +76,7 @@ class BuildMetadataContractTests(unittest.TestCase):
         smoke = dict(re.findall(r"^export (KATALOG_[A-Z_]+)='([^']*)'$", (ROOT / 'tools/package-smoke.sh').read_text(), re.MULTILINE))
         for name in ('VERSION', 'BUILD_NUMBER', 'UPDATE_CHANNEL', 'UPDATE_FEED_URL', 'UPDATE_PUBLIC_KEY'):
             self.assertEqual(smoke['KATALOG_' + name], script_default('KATALOG_' + name), name)
-        project = json.loads(subprocess.check_output(['/usr/bin/plutil', '-convert', 'json', '-o', '-', str(ROOT / 'KataLog.xcodeproj/project.pbxproj')]))
+        project = xcode_project()
         objects = project['objects']
         target = next(value for value in objects.values() if value.get('isa') == 'PBXNativeTarget' and value.get('name') == 'KataLog')
         configurations = [objects[key] for key in objects[target['buildConfigurationList']]['buildConfigurations']]
@@ -55,6 +91,32 @@ class BuildMetadataContractTests(unittest.TestCase):
         actual_policy = {key.removeprefix('INFOPLIST_KEY_'): plist_setting(value)
                          for key, value in settings.items() if key.startswith(('INFOPLIST_KEY_Katalog', 'INFOPLIST_KEY_SU'))}
         self.assertEqual(actual_policy, expected_policy)
+
+    def assert_source_membership(self, project, target, phase_type, folder, suffix):
+        expected = {path.relative_to(ROOT).as_posix() for path in (ROOT / folder).rglob('*' + suffix)}
+        self.assertTrue(expected, 'The contract must check real source inputs')
+        files, _ = xcode_phase_files(project, target, phase_type)
+        actual = {path for path in files.values() if path.endswith(suffix)}
+        self.assertEqual(actual, expected, target + ' ' + phase_type + ': regenerate the checked-in Xcode project with xcodegen generate')
+
+    def test_xcode_build_phases_include_current_swift_and_python_sources(self):
+        project = xcode_project()
+        for target, phase_type, folder, suffix in SOURCE_PHASES:
+            with self.subTest(target=target, phase=phase_type):
+                self.assert_source_membership(project, target, phase_type, folder, suffix)
+
+    def test_xcode_membership_contract_rejects_a_file_reference_without_phase_entry(self):
+        project = xcode_project()
+        for target, phase_type, folder, suffix in SOURCE_PHASES:
+            with self.subTest(target=target, phase=phase_type):
+                broken = copy.deepcopy(project)
+                files, phase = xcode_phase_files(broken, target, phase_type)
+                omitted = next(key for key, path in files.items() if path.endswith(suffix))
+                phase['files'].remove(omitted)
+                # The PBXBuildFile and PBXFileReference remain in the project.
+                # Presence in the file is insufficient without phase membership.
+                with self.assertRaisesRegex(AssertionError, 'regenerate the checked-in Xcode project'):
+                    self.assert_source_membership(broken, target, phase_type, folder, suffix)
 
     def test_plist_template_has_no_obsolete_intermediate_version(self):
         template = (ROOT / 'tools/build-app.sh').read_text().split("<<'PLIST'\n", 1)[1].split('\nPLIST', 1)[0]
