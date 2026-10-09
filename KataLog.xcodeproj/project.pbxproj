@@ -44,6 +44,7 @@
 		4F67B7410FF75722B6A99E25 /* library_storage.py in Resources */ = {isa = PBXBuildFile; fileRef = B1EE23A87F76652BFFAF41B7 /* library_storage.py */; };
 		5165BFA8B0EC7811C04BEF1F /* WorkspaceDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE95C4D29AE5477B63160E3E /* WorkspaceDesign.swift */; };
 		51E4581E0EA61CBBAA869F52 /* Clients.swift in Sources */ = {isa = PBXBuildFile; fileRef = 973B3986662CFA9BD3A110AD /* Clients.swift */; };
+		53479272FE1F4FB68D40883D /* LegacyWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A050EC123336047ED0A688 /* LegacyWorkspaceView.swift */; };
 		54EDE7EFFC2FA19C752E51E3 /* AppPreviewConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = E98860FD022BF7F7428184D5 /* AppPreviewConfiguration.swift */; };
 		5D12BF6935FEAD642769DDE6 /* ClientViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0599D5E86D6285A89C955827 /* ClientViews.swift */; };
 		5D14506D8BC4FE82BE58A739 /* FlightDetailSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 580DA0C78AE7B2EF804C501C /* FlightDetailSession.swift */; };
@@ -192,6 +193,7 @@
 		DC36BEBC525C10247219C76B /* UpdatePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdatePolicy.swift; sourceTree = "<group>"; };
 		DCD4A15E86B6498D3120066A /* SelectionScope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionScope.swift; sourceTree = "<group>"; };
 		E16084A02D7AC8C706706D48 /* LibraryQuery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryQuery.swift; sourceTree = "<group>"; };
+		E1A050EC123336047ED0A688 /* LegacyWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyWorkspaceView.swift; sourceTree = "<group>"; };
 		E1FDB937BBB983BCB1B98625 /* DiagnosticView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticView.swift; sourceTree = "<group>"; };
 		E2E283DB8D687AB07D82F948 /* RecordedMetadataView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordedMetadataView.swift; sourceTree = "<group>"; };
 		E7EE405B99CA1977F2472FB4 /* ParameterComparison.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParameterComparison.swift; sourceTree = "<group>"; };
@@ -247,6 +249,7 @@
 				B4C54501883F0A480DCA8EBB /* GCSFleetObservationStore.swift */,
 				44288B5CAF3F1AFD2A1B24A7 /* GCSStore.swift */,
 				D2C120A7ADD1771A31CA7DFE /* ImportOptions06.swift */,
+				E1A050EC123336047ED0A688 /* LegacyWorkspaceView.swift */,
 				C5EB0EE7CFDB8B5DE1DDBE53 /* LibraryHelpViews.swift */,
 				446E8DF7AE87B41A4CA8284C /* LibraryNavigationCache.swift */,
 				53B41688D88BD65000BB0B41 /* LibraryStorageStore.swift */,
@@ -552,6 +555,7 @@
 				028F506545A2CC000DC10FF8 /* GCSFleetObservationStore.swift in Sources */,
 				AFC4E1BC00350A4426AD22E7 /* GCSStore.swift in Sources */,
 				0B2871C810BAEDD6AD60B155 /* ImportOptions06.swift in Sources */,
+				53479272FE1F4FB68D40883D /* LegacyWorkspaceView.swift in Sources */,
 				3898E772B1A14F8BC289D101 /* LibraryHelpViews.swift in Sources */,
 				14219B5E54D24A178496A931 /* LibraryNavigationCache.swift in Sources */,
 				1E5EA08A906E690DDCE90454 /* LibraryStorageStore.swift in Sources */,
