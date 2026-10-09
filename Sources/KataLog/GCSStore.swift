@@ -117,6 +117,40 @@ final class GCSStore: ObservableObject {
     @Published private(set) var expectedInventoryUUIDs: Set<String> = []
     @Published private(set) var completedInventoryUUIDs: Set<String> = []
     private var inventoryFailures: [String: String] = [:]
+    private struct InventoryRetryRequest: Sendable {
+        let uuid: String
+        let host: String
+        let destination: String
+        var clientID: String
+        let batchID: String
+        let controlRevision: UInt64
+        var attempts = 0
+        var nextRetryAt: Date = .distantPast
+    }
+    private struct InventoryReadFailure: LocalizedError {
+        let underlying: Error
+        let retryable: Bool
+        var errorDescription: String? { underlying.localizedDescription }
+    }
+    @Published private var inventoryRetries: [String: InventoryRetryRequest] = [:] {
+        didSet { updateCollectionActivity() }
+    }
+    @Published private var activeInventoryRetryUUID: String?
+    private let inventoryRetryClock: () -> Date
+    var pendingInventoryRetryCount: Int { inventoryRetries.count }
+    var isRetryingInventory: Bool { activeInventoryRetryUUID != nil }
+    var inventoryRetryMessage: String? {
+        guard !inventoryRetries.isEmpty else { return nil }
+        let count = inventoryRetries.count
+        let scope = "\(count) inventaire\(count == 1 ? "" : "s")"
+        if isQueuePaused { return "Inventaires en pause · \(scope) à reprendre." }
+        if isRetryingInventory { return "Nouvelle lecture d’inventaire · \(scope) restant\(count == 1 ? "" : "s")." }
+        let available = Set(collectableDrones.map(\.uuid))
+        if !isConnected || !inventoryRetries.keys.contains(where: { available.contains($0) }) {
+            return "Attente du réseau ou d’un drone disponible · reprise automatique de \(scope)."
+        }
+        return "Nouvel essai d’inventaire programmé · \(scope) à récupérer."
+    }
     @Published private(set) var cachedFileCount = 0
     @Published private(set) var destinationPreviewFileCount: Int?
     private var currentBatchID: String
@@ -131,7 +165,7 @@ final class GCSStore: ObservableObject {
     var preventsIdleSystemSleep: Bool { collectionActivity.isActive }
     private func updateCollectionActivity() {
         collectionActivity.update(needed: !terminationRequested && !isReadOnly
-            && (isBusy || (!isQueuePaused && queue.contains(where: \.isPending))))
+            && (isBusy || (!isQueuePaused && (!inventoryRetries.isEmpty || queue.contains(where: \.isPending)))))
     }
     var transferRateText: String? {
         let now = ProcessInfo.processInfo.systemUptime
@@ -160,6 +194,10 @@ final class GCSStore: ObservableObject {
                 dirtyTransferIDs.insert(updated[index].id); changed = true
             }
             if changed { queue = updated; refreshQueueCounts() }
+            for request in inventoryRetries.values where request.attempts >= retryLimit && request.uuid != activeInventoryRetryUUID {
+                inventoryRetries[request.uuid] = nil
+                recordInventory(uuid: request.uuid, error: "Limite de \(retryLimit) tentatives d’inventaire atteinte. Relancez Tout collecter pour réessayer.")
+            }
         }
         persist()
     }
@@ -235,7 +273,7 @@ final class GCSStore: ObservableObject {
     func overallFraction(for progress: GCSBatchProgress) -> Double {
         guard hasDisplayableProgress else { return 0 }
         // A new job can invalidate a completed snapshot before SQLite catches up.
-        let ceiling = countsAreCurrent ? 1.0 : 0.99
+        let ceiling = countsAreCurrent && !hasIncompleteInventory ? 1.0 : 0.99
         if progress.totalCount > 0 { return min(ceiling, progress.fraction) }
         let allPreviewFilesPresent = destinationPreviewFileCount.map { $0 > 0 && cachedFileCount == $0 } ?? true
         return cachedFileCount > 0 && allPreviewFilesPresent && !isScanningFleet && !hasIncompleteInventory ? ceiling : 0
@@ -246,8 +284,8 @@ final class GCSStore: ObservableObject {
     /// registers its new UUIDs; assigning a stock number is a separate operation.
     var collectableDrones: [GCSDrone] { drones.filter { GCSIdentity.isValid($0.uuid) && $0.isOnline && $0.armed != true } }
     var newCollectableDroneCount: Int { collectableDrones.filter { !allowedUUIDs.contains($0.uuid) }.count }
-    var canCollectAll: Bool { !isReadOnly && !isMaintenanceBlocked && queueStorageIssue == nil && downloadDirectoryIssue == nil && isConnected && !isBusy && !collectableDrones.isEmpty }
-    var hasIncompleteInventory: Bool { !expectedInventoryUUIDs.isSubset(of: completedInventoryUUIDs) || !inventoryFailures.isEmpty }
+    var canCollectAll: Bool { !isReadOnly && !isMaintenanceBlocked && queueStorageIssue == nil && downloadDirectoryIssue == nil && isConnected && !isBusy && inventoryRetries.isEmpty && !collectableDrones.isEmpty }
+    var hasIncompleteInventory: Bool { !inventoryRetries.isEmpty || !expectedInventoryUUIDs.isSubset(of: completedInventoryUUIDs) || !inventoryFailures.isEmpty }
     var inventoryCoverageLabel: String { "\(completedInventoryUUIDs.intersection(expectedInventoryUUIDs).count) / \(expectedInventoryUUIDs.count) drones recensés" }
     var batchStatusMessage: String {
         if let countsReadMessage { return countsReadMessage }
@@ -257,6 +295,7 @@ final class GCSStore: ObservableObject {
             return "Actualisation des totaux de collecte…"
         }
         if isScanningFleet { return "Lecture des inventaires de la flotte · \(inventoryCoverageLabel)" }
+        if let inventoryRetryMessage { return inventoryRetryMessage }
         if isBusy && progress.totalCount == 0 && selectedUUID != nil && files.isEmpty {
             return "Lecture de l’inventaire du drone sélectionné…"
         }
@@ -304,7 +343,7 @@ final class GCSStore: ObservableObject {
         }
         return snapshot.issue
     }
-    var canStopCollection: Bool { isBusy || queue.contains(where: \.isPending) }
+    var canStopCollection: Bool { isBusy || !inventoryRetries.isEmpty || queue.contains(where: \.isPending) }
     private func updateBusy() { isBusy = inventoryTask != nil || !transferTasks.isEmpty || analysisTask != nil || bufferedAnalysisCount > 0 }
     private func isRemoteBusy(_ uuid: String) -> Bool {
         (inventoryBusyUntil[uuid] ?? .distantPast) > Date() || queue.contains { $0.droneUUID == uuid && ($0.remoteBusyUntil ?? .distantPast) > Date() }
@@ -324,7 +363,9 @@ final class GCSStore: ObservableObject {
          importer: ((URL, String?) async throws -> FleetSnapshot)? = nil,
          directoryIssue: (@Sendable (URL) -> String?)? = nil,
          previewConfiguration: AppPreviewConfiguration = AppPreviewConfiguration(),
-         applicationSupportDirectory: URL? = nil) {
+         applicationSupportDirectory: URL? = nil,
+         inventoryRetryClock: @escaping () -> Date = Date.init) {
+        self.inventoryRetryClock = inventoryRetryClock
         collectorOverride = collector
         snapshotOverride = snapshot
         importOverride = importer
@@ -411,6 +452,7 @@ final class GCSStore: ObservableObject {
         guard !isBusy else { throw AnalysisError.engine("Arrêtez la collecte avant la réinitialisation.") }
         discoveryTask?.cancel(); discoveryTask = nil
         inventoryTask?.cancel(); inventoryTask = nil
+        inventoryRetries.removeAll()
         pendingAttachmentReconnect = false; reconnect = false; isQueuePaused = true; configurationDirty = true
         isConnected = false; isConnecting = false; connectedHost = nil
         try await validateResetForApplication()
@@ -441,7 +483,7 @@ final class GCSStore: ObservableObject {
         guard self.library == nil else { return }
         self.library = library
         updateCollectionActivity()
-        library.hasExternalActivity = { [weak self] in self?.isBusy == true || self?.isReconcilingClients == true || self?.isStorageTransitioning == true }
+        library.hasExternalActivity = { [weak self] in self?.isBusy == true || (self?.pendingInventoryRetryCount ?? 0) > 0 || self?.isReconcilingClients == true || self?.isStorageTransitioning == true }
         library.willMaintainLibrary = { [weak self] in try await self?.flushPersistedStateForMaintenance() }
         library.willRestoreLibrary = { [weak self] in try await self?.preparePersistedStorageForRestore() }
         library.didRestoreLibrary = { [weak self] in try await self?.reloadPersistedStateAfterRestore() }
@@ -512,6 +554,9 @@ final class GCSStore: ObservableObject {
         for index in queue.indices where queue[index].clientID == id {
             queue[index].clientID = nil; dirtyTransferIDs.insert(queue[index].id)
         }
+        for uuid in inventoryRetries.keys where inventoryRetries[uuid]?.clientID == id {
+            inventoryRetries[uuid]?.clientID = ""
+        }
         if collectionClientID == id { collectionClientID = ""; configurationDirty = true }
         try await saveState(duringMaintenance: true)
     }
@@ -532,6 +577,11 @@ final class GCSStore: ObservableObject {
         for index in queue.indices {
             if let id = queue[index].clientID, !validIDs.contains(id) {
                 queue[index].clientID = nil; dirtyTransferIDs.insert(queue[index].id)
+            }
+        }
+        for uuid in inventoryRetries.keys {
+            if let id = inventoryRetries[uuid]?.clientID, !id.isEmpty, !validIDs.contains(id) {
+                inventoryRetries[uuid]?.clientID = ""
             }
         }
         if let id = collectionClientID, !id.isEmpty, !validIDs.contains(id) {
@@ -573,6 +623,7 @@ final class GCSStore: ObservableObject {
         guard !isReadOnly, !isBusy else { throw AnalysisError.unavailable("Arrêtez la collecte avant de restaurer la bibliothèque.") }
         try await preparePersistedStorageForRestore()
         queueStorageIssue = "La file de collecte restaurée n’a pas encore été vérifiée."
+        inventoryRetries.removeAll()
         queue = []; rebuildQueueIndexes(); legacyTransfers = []; dirtyTransferIDs = []; configurationDirty = false
         isQueuePaused = true
         defer { refreshQueueCounts() }
@@ -727,6 +778,7 @@ final class GCSStore: ObservableObject {
         controlRevision &+= 1
         pendingAttachmentReconnect = false
         reconnect = false; isQueuePaused = true
+        inventoryRetries.removeAll()
         if let uuid = activeInventoryUUID { inventoryBusyUntil[uuid] = Date().addingTimeInterval(21) }
         discoveryTask?.cancel(); inventoryTask?.cancel()
         isConnected = false; isConnecting = false; connectedHost = nil
@@ -744,11 +796,15 @@ final class GCSStore: ObservableObject {
         else {
             guard !queue.contains(where: { $0.droneUUID == uuid && $0.isActive }) else { return }
             allowedUUIDs.remove(uuid)
+            inventoryRetries[uuid] = nil
             for i in queue.indices where queue[i].droneUUID == uuid && queue[i].isPending {
                 queue[i].state = "interrupted"; queue[i].error = "Drone retiré de la flotte."
                 dirtyTransferIDs.insert(queue[i].id)
             }
-            if selectedUUID == uuid { inventoryTask?.cancel(); selectedUUID = nil; files = []; selectedFileIDs = [] }
+            if selectedUUID == uuid {
+                if activeInventoryUUID == uuid || readingInventoryUUID == uuid { inventoryTask?.cancel() }
+                selectedUUID = nil; files = []; selectedFileIDs = []
+            }
         }
         recordFleetObservations(drones)
         persist()
@@ -906,12 +962,13 @@ final class GCSStore: ObservableObject {
         }
     }
 
-    private func readInventory(uuid: String, host: String, destination: String) async throws -> [GCSLogFile] {
+    private func readInventory(uuid: String, host: String, destination: String,
+                               attemptLimit: Int = GCSQueuePolicy.maxAttempts) async throws -> [GCSLogFile] {
         library?.diagnostics.record(.inventoryStarted, correlation: currentBatchID + uuid)
         var inventorySucceeded = false
         defer { if !inventorySucceeded { library?.diagnostics.record(.inventoryCompleted, code: Task.isCancelled ? .cancelled : .connectionUnavailable, correlation: currentBatchID + uuid) } }
         guard let script else { throw AnalysisError.unavailable("Le collecteur GCS est absent de l’app.") }
-        for attempt in 1...GCSQueuePolicy.maxAttempts {
+        for attempt in 1...max(1, attemptLimit) {
             try Task.checkCancellation()
             // A cancelled download may still be finishing on the GCS. Never overlap FTP for that drone.
             while isRemoteBusy(uuid) {
@@ -920,7 +977,9 @@ final class GCSStore: ObservableObject {
             }
             try await requireDestination(URL(fileURLWithPath: destination, isDirectory: true))
             try Task.checkCancellation()
-            var retryable = true
+            // Only an explicit transport error (or an empty legacy response)
+            // may schedule another read. Runtime/JSON/storage failures stop.
+            var retryable = false
             activeInventoryUUID = uuid
             defer { activeInventoryUUID = nil }
             do {
@@ -984,8 +1043,10 @@ final class GCSStore: ObservableObject {
                 return items
             } catch {
                 if Task.isCancelled { throw CancellationError() }
-                guard retryable, let retry = GCSQueuePolicy.retryDate(attempt: attempt, limit: GCSQueuePolicy.maxAttempts) else { throw error }
-                statusMessage = "Inventaire : nouvelle tentative \(attempt + 1)/3…"
+                guard retryable, let retry = GCSQueuePolicy.retryDate(attempt: attempt, limit: attemptLimit) else {
+                    throw InventoryReadFailure(underlying: error, retryable: retryable)
+                }
+                statusMessage = "Inventaire : nouvelle tentative \(attempt + 1)/\(attemptLimit)…"
                 try await Task.sleep(for: .seconds(max(0, retry.timeIntervalSinceNow)))
             }
         }
@@ -1004,7 +1065,7 @@ final class GCSStore: ObservableObject {
     }
     private func beginBatchIfNeeded(preserveInventories: Bool = false) {
         destinationPreviewFileCount = nil
-        if !queue.contains(where: { $0.isPending || $0.isActive }) {
+        if inventoryRetries.isEmpty && !queue.contains(where: { $0.isPending || $0.isActive }) {
             currentBatchID = UUID().uuidString; cachedFileCount = 0
             if !preserveInventories {
                 expectedInventoryUUIDs = []; completedInventoryUUIDs = []; inventoryFailures = [:]; inventoryErrors = []
@@ -1019,6 +1080,100 @@ final class GCSStore: ObservableObject {
             completedInventoryUUIDs.insert(uuid); inventoryFailures[uuid] = nil
         }
         inventoryErrors = inventoryFailures.sorted { $0.key < $1.key }.map { "\($0.key.prefix(8))… : \($0.value)" }
+    }
+
+    private func inventoryRequestIsCurrent(_ request: InventoryRetryRequest) -> Bool {
+        request.controlRevision == controlRevision && request.batchID == currentBatchID
+            && request.host == connectedHost && request.destination == downloadDirectory.path
+            && allowedUUIDs.contains(request.uuid) && !terminationRequested && !isReadOnly
+    }
+
+    private func postponeInventory(_ request: InventoryRetryRequest, message: String) {
+        guard inventoryRequestIsCurrent(request) else { return }
+        inventoryRetries[request.uuid] = request
+        recordInventory(uuid: request.uuid, error: message)
+    }
+
+    private func inventoryAttemptFailed(_ request: InventoryRetryRequest, error: Error) {
+        guard inventoryRequestIsCurrent(request) else { return }
+        // Attribution cleanup updates the pending request. Never restore an old
+        // captured client when this task publishes its result after an await.
+        let clientID = inventoryRetries[request.uuid]?.clientID ?? request.clientID
+        inventoryRetries[request.uuid] = nil
+        var message = error.localizedDescription
+        if (error as? InventoryReadFailure)?.retryable == true {
+            if let next = GCSQueuePolicy.retryDate(attempt: request.attempts, limit: retryLimit, now: inventoryRetryClock()) {
+                var retry = request; retry.clientID = clientID; retry.nextRetryAt = next
+                inventoryRetries[request.uuid] = retry
+            } else {
+                message += " · limite de \(retryLimit) tentatives atteinte. Relancez Tout collecter pour réessayer."
+            }
+        }
+        recordInventory(uuid: request.uuid, error: message)
+    }
+
+    private func collectInventory(_ request: InventoryRetryRequest) async throws {
+        let items = try await readInventory(uuid: request.uuid, host: request.host,
+                                            destination: request.destination, attemptLimit: 1)
+        try Task.checkCancellation()
+        guard inventoryRequestIsCurrent(request) else { return }
+        let cached = Set(items.filter(\.isDownloaded).map {
+            GCSTransferSource(uuid: request.uuid, file: $0, destination: request.destination).cacheIdentity
+        })
+        try await prepareQueueStorage()
+        let repository = queueRepository
+        let cachedCount = try await storageIO.perform {
+            try repository?.recordCachedFiles(batchID: request.batchID, identities: cached) ?? 0
+        }
+        try Task.checkCancellation()
+        guard inventoryRequestIsCurrent(request) else { return }
+        let clientID = inventoryRetries[request.uuid]?.clientID ?? request.clientID
+        try await enqueue(items, uuid: request.uuid, host: request.host, destination: request.destination, clientID: clientID)
+        try Task.checkCancellation()
+        guard inventoryRequestIsCurrent(request) else { return }
+        cachedFileCount = cachedCount
+        recordInventory(uuid: request.uuid)
+        inventoryRetries[request.uuid] = nil
+        if selectedUUID == request.uuid { files = items; selectedFileIDs = [] }
+    }
+
+    private func runInventoryRetryIfNeeded() {
+        guard !isReadOnly, !isMaintenanceBlocked, !terminationRequested, !isQueuePaused,
+              persistenceTask == nil, persistenceError == nil, queueStorageIssue == nil,
+              inventoryTask == nil, isConnected else { return }
+        if retryLimit > 0 {
+            let exhausted = inventoryRetries.values.filter { $0.attempts >= retryLimit }
+            if !exhausted.isEmpty {
+                for request in exhausted {
+                    inventoryRetries[request.uuid] = nil
+                    recordInventory(uuid: request.uuid, error: "Limite de \(retryLimit) tentatives d’inventaire atteinte. Relancez Tout collecter pour réessayer.")
+                }
+                persist()
+                return
+            }
+        }
+        let available = Set(collectableDrones.map(\.uuid))
+        let occupied = Set(transferTasks.keys.compactMap { queueIDIndex[$0].map { queue[$0].droneUUID } })
+        let now = inventoryRetryClock()
+        guard var request = inventoryRetries.values.filter({
+            inventoryRequestIsCurrent($0) && $0.nextRetryAt <= now && available.contains($0.uuid)
+                && !occupied.contains($0.uuid) && !isRemoteBusy($0.uuid)
+        }).min(by: { ($0.nextRetryAt, $0.uuid) < ($1.nextRetryAt, $1.uuid) }) else { return }
+        request.attempts += 1
+        inventoryRetries[request.uuid] = request
+        activeInventoryRetryUUID = request.uuid
+        // Reserve before yielding. Existing workers on other drones continue;
+        // runQueue cannot admit a competing FTP command until this read ends.
+        inventoryTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                inventoryTask = nil; activeInventoryRetryUUID = nil
+                updateBusy(); persist(); runQueue()
+            }
+            do { try await collectInventory(request) }
+            catch { if !Task.isCancelled { inventoryAttemptFailed(request, error: error) } }
+        }
+        updateBusy()
     }
     @discardableResult
     func enqueue(_ candidates: [GCSLogFile], uuid: String, host: String, destination: String, clientID: String? = nil,
@@ -1110,7 +1265,9 @@ final class GCSStore: ObservableObject {
     private func enqueueManually(_ candidates: [GCSLogFile], uuid: String) {
         guard !candidates.isEmpty else { return }
         beginBatchIfNeeded()
-        recordInventory(uuid: uuid)
+        // Selecting a known file does not complete a newer, interrupted fleet
+        // inventory. Its missing files still belong to the automatic retry.
+        if inventoryRetries[uuid] == nil { recordInventory(uuid: uuid) }
         let currentHost = connectedHost ?? host, destination = downloadDirectory.path
         let clientID = collectionClientID ?? ""
         let selection = Set(candidates.map(\.id))
@@ -1165,22 +1322,21 @@ final class GCSStore: ObservableObject {
             for (offset, uuid) in fleet.enumerated() {
                 if Task.isCancelled { return }
                 self.statusMessage = "Inventaire de la flotte · drone \(offset + 1)/\(fleet.count)"
+                var request = InventoryRetryRequest(uuid: uuid, host: currentHost, destination: destination,
+                    clientID: clientID, batchID: self.currentBatchID, controlRevision: control)
+                // Pause lets the already-started inventory pass drain, as it
+                // does for active files. Deferred retries wait for Resume.
+                guard self.isConnected, self.collectableDrones.contains(where: { $0.uuid == uuid }) else {
+                    self.postponeInventory(request, message: "Inventaire en attente d’un drone disponible.")
+                    continue
+                }
+                request.attempts = 1
                 do {
-                    guard self.canRead(uuid) else { throw AnalysisError.engine(self.errorMessage ?? "Drone indisponible.") }
-                    let items = try await self.readInventory(uuid: uuid, host: currentHost, destination: destination)
-                    try Task.checkCancellation()
-                    guard self.allowedUUIDs.contains(uuid) else { continue }
-                    self.recordInventory(uuid: uuid)
-                    let cached = Set(items.filter(\.isDownloaded).map { GCSTransferSource(uuid: uuid, file: $0, destination: destination).cacheIdentity })
-                    try await self.prepareQueueStorage()
-                    let repository = self.queueRepository, batch = self.currentBatchID
-                    self.cachedFileCount = try await self.storageIO.perform { try repository?.recordCachedFiles(batchID: batch, identities: cached) ?? 0 }
-                    try await self.enqueue(items, uuid: uuid, host: currentHost, destination: destination, clientID: clientID)
-                    if self.selectedUUID == uuid { self.files = items; self.selectedFileIDs = [] }
+                    try await self.collectInventory(request)
                     self.persist()
                 } catch {
                     if Task.isCancelled { return }
-                    self.recordInventory(uuid: uuid, error: error.localizedDescription)
+                    self.inventoryAttemptFailed(request, error: error)
                     self.persist()
                 }
             }
@@ -1200,6 +1356,7 @@ final class GCSStore: ObservableObject {
         controlRevision &+= 1
         library?.diagnostics.record(.collectionStopped, code: .cancelled, correlation: currentBatchID)
         isQueuePaused = true
+        inventoryRetries.removeAll()
         if let uuid = activeInventoryUUID { inventoryBusyUntil[uuid] = Date().addingTimeInterval(21) }
         inventoryTask?.cancel()
         for task in transferTasks.values { task.cancel() }
@@ -1258,6 +1415,7 @@ final class GCSStore: ObservableObject {
     }
     private func runQueue() {
         runAnalysisQueue()
+        defer { runInventoryRetryIfNeeded() }
         guard !isReadOnly, !isMaintenanceBlocked, !terminationRequested, persistenceTask == nil, queueStorageIssue == nil, persistenceError == nil, inventoryTask == nil, !isQueuePaused, isConnected, let currentHost = connectedHost, let script else { return }
         let available = Set(drones.filter { allowedUUIDs.contains($0.uuid) && $0.isOnline && $0.armed != true && (inventoryBusyUntil[$0.uuid] ?? .distantPast) <= Date() }.map(\.uuid))
         // One publication per scheduling pass avoids repeated array updates and
@@ -1437,7 +1595,7 @@ final class GCSStore: ObservableObject {
         library?.diagnostics.record(.transferCompleted, correlation: (job.batchID ?? currentBatchID) + job.id,
                                     metrics: [.bytes: job.size, .totalBytes: job.size])
         let completed = batchProgress
-        if countsAreCurrent && completed.totalCount > 0 && completed.completedCount == completed.totalCount {
+        if countsAreCurrent && !hasIncompleteInventory && completed.totalCount > 0 && completed.completedCount == completed.totalCount {
             library?.diagnostics.record(.collectionCompleted, correlation: currentBatchID, metrics: [.items: Int64(completed.totalCount)])
         }
         if let index = queueIDIndex[job.id] {
@@ -1467,12 +1625,12 @@ final class GCSStore: ObservableObject {
     }
     func setDownloadDirectory(_ url: URL) async throws {
         guard permitMutation() else { throw AnalysisError.unavailable(errorMessage ?? "La bibliothèque est en lecture seule.") }
-        guard !isBusy, !queue.contains(where: \.isPending) else {
+        guard !isBusy, inventoryRetries.isEmpty, !queue.contains(where: \.isPending) else {
             throw AnalysisError.unavailable("Arrêtez la collecte et les transferts en attente avant de changer de dossier.")
         }
         let destination = url.standardizedFileURL
         try await requireDestination(destination)
-        guard permitMutation(), !isBusy, !queue.contains(where: \.isPending) else {
+        guard permitMutation(), !isBusy, inventoryRetries.isEmpty, !queue.contains(where: \.isPending) else {
             throw AnalysisError.unavailable("La collecte ne permet plus de changer de dossier.")
         }
         guard destination.path != downloadDirectory.standardizedFileURL.path else { return }
@@ -1679,6 +1837,7 @@ final class GCSStore: ObservableObject {
     func stopForTermination() {
         guard !terminationRequested else { return }
         terminationRequested = true; controlRevision &+= 1
+        inventoryRetries.removeAll()
         pendingAttachmentReconnect = false
         isQueuePaused = true
         if let uuid = activeInventoryUUID { inventoryBusyUntil[uuid] = Date().addingTimeInterval(21) }

@@ -44,6 +44,9 @@ struct GCSCollectionView: View {
     }
     private var pendingCount: Int { store.queue.filter { ["queued", "retrying"].contains($0.state) }.count }
     private var retryCount: Int { store.retryableCount }
+    private var hasPausableWork: Bool {
+        pendingCount > 0 || activeTransfer != nil || store.pendingInventoryRetryCount > 0 || store.isRetryingInventory
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -102,7 +105,7 @@ struct GCSCollectionView: View {
         HStack(spacing: 10) {
             action("Arrêter", symbol: "stop") { store.stopCollection() }
                 .disabled(!store.canStopCollection)
-                .help("Arrêter immédiatement la collecte sur ce Mac et annuler les transferts en attente.")
+                .help("Arrêter immédiatement la collecte sur ce Mac et annuler les inventaires et transferts en attente.")
                 .accessibilityIdentifier("gcs.stop")
             action("Tout collecter", symbol: "arrow.down.to.line", primary: true) {
                 Task { await store.collectAll() }
@@ -126,7 +129,7 @@ struct GCSCollectionView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                if store.isScanningFleet {
+                if store.isScanningFleet || store.isRetryingInventory {
                     ProgressView().controlSize(.small)
                 }
                 Text(store.hasDisplayableProgress ? "\(Int(fraction * 100))" : "—")
@@ -169,11 +172,11 @@ struct GCSCollectionView: View {
                     }
                 }
                 Spacer(minLength: 6)
-                if store.isQueuePaused && (pendingCount > 0 || activeTransfer != nil) {
+                if store.isQueuePaused && hasPausableWork {
                     action("Reprendre", symbol: "play.fill") { store.resumeQueue() }
                         .disabled(!store.isConnected || mutationsBlocked)
                         .accessibilityIdentifier("gcs.resume")
-                } else if pendingCount > 0 || activeTransfer != nil {
+                } else if hasPausableWork {
                     action("Mettre en pause", symbol: "pause.fill") { store.pauseQueue() }
                         .disabled(mutationsBlocked)
                         .accessibilityIdentifier("gcs.pause")
@@ -223,7 +226,11 @@ struct GCSCollectionView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     if store.inventoryErrors.count > 3 {
-                        Text("Et \(store.inventoryErrors.count - 3) autre(s). Relancez « Tout collecter » pour réessayer les inventaires manquants.")
+                        Text("Et \(store.inventoryErrors.count - 3) autre(s).")
+                            .font(.system(size: 11)).foregroundStyle(palette.secondary)
+                    }
+                    if store.pendingInventoryRetryCount == 0 && !store.isRetryingInventory && !store.isScanningFleet {
+                        Text("Relancez « Tout collecter » pour réessayer les inventaires manquants.")
                             .font(.system(size: 11)).foregroundStyle(palette.secondary)
                     }
                 }
@@ -378,7 +385,7 @@ struct GCSCollectionView: View {
                 }
             }
             .accessibilityIdentifier("gcs.concurrentDownloads")
-            Picker("Tentatives de téléchargement", selection: Binding(
+            Picker("Tentatives de collecte", selection: Binding(
                 get: { store.retryLimit },
                 set: { store.setRetryLimit($0) }
             )) {
@@ -387,7 +394,8 @@ struct GCSCollectionView: View {
                 Text("3 maximum").tag(3)
             }
             .accessibilityIdentifier("gcs.retryLimit")
-            Text("Réglages conservés. Les transferts en cours se terminent. Les erreurs réseau sont réessayées à la reconnexion.")
+            .help("Limite de tentatives pour les inventaires de collecte et les téléchargements. Sans limite maintient la reprise automatique jusqu’à l’arrêt de la collecte. La lecture manuelle « Voir les logs » reste limitée à 3 tentatives.")
+            Text("Réglages conservés. Les transferts en cours se terminent. Les erreurs réseau sont réessayées automatiquement, dans la limite choisie.")
                 .font(.system(size: 10)).foregroundStyle(palette.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

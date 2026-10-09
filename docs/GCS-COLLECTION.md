@@ -26,6 +26,7 @@ modifie ni firmware, paramètres ni fichiers distants.
   les fichiers encore en attente, sans interrompre les transferts actifs ni changer
   le client associé aux jobs déjà préparés. Pendant la collecte, les inventaires
   déjà lus restent consultables ; une nouvelle lecture attend la fin de l’activité.
+  Une lecture manuelle hors collecte garde trois essais, puis propose de réessayer.
 - Deux transferts réseau en parallèle par défaut, réglables de **1 à 4 drones**
   dans les options. Toujours un fichier à la fois par UUID. Réduire la limite
   laisse finir les fichiers actifs avant d’en admettre d’autres.
@@ -33,14 +34,18 @@ modifie ni firmware, paramètres ni fichiers distants.
   suivants. Au plus quatre fichiers sont en transfert ou en analyse/en attente
   d’analyse. Une erreur d’analyse conserve la copie vérifiée.
 - Pause après les fichiers actifs ; arrêt immédiat sur le Mac et reprise manuelle.
-- Téléchargements : **réessais sans limite par défaut** pour les erreurs réseau
+- Collecte : **réessais sans limite par défaut** pour les erreurs réseau
   transitoires, avec choix de 3 ou 10 tentatives au total. Délais de 5, 15, 30 puis
   60 secondes, prolongés si une session distante reste en attente de fin. Un drone
   hors ligne attend de redevenir disponible. Les erreurs permanentes de destination,
   d’intégrité ou d’analyse demandent une intervention. Pause et Arrêter restent disponibles.
+- Un inventaire de **Tout collecter** interrompu par une erreur réseau est retenté automatiquement
+  pendant la session, avec la même limite de tentatives par drone que pour chaque
+  fichier. L’attente ne bloque pas les autres drones et conserve le client et le
+  dossier choisis au départ. Les erreurs permanentes restent signalées.
 - Le parallélisme et la limite de tentatives sont conservés au redémarrage.
-  Les inventaires gardent leurs trois essais bornés ; leur échec est signalé dans
-  la couverture de flotte et ne bloque pas les autres inventaires.
+  Après fermeture de l’app, les inventaires incomplets restent signalés :
+  **Tout collecter** relance leur recensement explicitement.
 - Une collecte active ou attendant une reconnexion empêche la veille automatique
   du Mac, sans empêcher celle de l’écran. La pause libère cette activité après les
   fichiers actifs ; Arrêter et la fin de la collecte la libèrent aussi. Cela ne
@@ -52,7 +57,8 @@ modifie ni firmware, paramètres ni fichiers distants.
   transferts actifs ou en attente doivent être arrêtés avant le changement.
 - Progression globale pondérée par la taille des logs : première moitié pour
   Drone → GCS, deuxième moitié pour GCS → Mac. La fin reste sous 100 % jusqu’à
-  vérification et, si activée, analyse. Le compteur d’octets désigne seulement
+  vérification et, si activée, analyse, ainsi que recensement de tous les drones
+  attendus. Le compteur d’octets désigne seulement
   les données reçues sur le Mac. Les copies déjà présentes sont revérifiées.
 - Le recalcul des totaux conserve le dernier affichage connu du même lot ; il
   n’efface plus momentanément la barre et le pourcentage. Une erreur de lecture
