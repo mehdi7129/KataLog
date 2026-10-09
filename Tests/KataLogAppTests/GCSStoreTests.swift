@@ -174,6 +174,11 @@ mode=(root/'mode').read_text()
 cmd=sys.argv[1]
 def arg(name): return sys.argv[sys.argv.index(name)+1]
 def emit(event,**kw): print(json.dumps(dict(event=event,**kw)),flush=True)
+def wait_phase(phase,uuid):
+    if mode!='phases-gated': return
+    while not (root/(phase+'-'+uuid)).exists():
+        if not root.exists(): sys.exit(0)
+        time.sleep(.01)
 ids=['0102030405060708090A0B0C','1112131415161718191A1B1C']
 if cmd=='discover':
     emit('connection',connected=True)
@@ -211,12 +216,15 @@ else:
     fd=os.open(root/'trace.jsonl',os.O_WRONLY|os.O_CREAT|os.O_APPEND,0o600)
     os.write(fd,(json.dumps(dict(uuid=u,path=p,attempt=attempt,time=time.time(),host=arg('--host'),destination=arg('--destination')))+'\n').encode());os.close(fd)
     emit('transfer_started',uuid=u,path=p,timeoutSeconds=300)
-    emit('progress',uuid=u,path=p,bytes=64 if mode=='phases' else 16,total=64,phase='drone')
-    time.sleep(.15 if mode=='pipeline-benchmark' else (2 if mode=='stop' else .6))
+    wait_phase('drone',u)
+    emit('progress',uuid=u,path=p,bytes=64 if mode in ('phases','phases-gated') else 16,total=64,phase='drone')
+    if mode=='phases-gated': wait_phase('http',u)
+    else: time.sleep(.15 if mode=='pipeline-benchmark' else (2 if mode=='stop' else .6))
     emit('transfer_finished',uuid=u,path=p)
     emit('phase',uuid=u,path=p,bytes=0,total=64,phase='http')
     emit('progress',uuid=u,path=p,bytes=8,total=64,phase='http')
     if mode=='phases': time.sleep(1.5)
+    wait_phase('complete',u)
     if mode=='retry' and u==ids[0] and p==paths[0] and attempt==1:
         emit('error',message='simulated transient timeout',retryable=True);sys.exit(1)
     if mode=='permanent':
@@ -544,22 +552,55 @@ else:
     }
 
     func testFTPCompletionDoesNotFinishMacProgressDuringSlowHTTP() async throws {
-        let (store, root) = try fixture(mode: "phases")
+        try await assertFTPCompletionDoesNotFinishMacProgress(droneOrder: [first, second], httpOrder: [second, first])
+    }
+
+    func testFTPCompletionDoesNotFinishMacProgressWithReversedDroneResponses() async throws {
+        try await assertFTPCompletionDoesNotFinishMacProgress(droneOrder: [second, first], httpOrder: [first, second])
+    }
+
+    private func assertFTPCompletionDoesNotFinishMacProgress(droneOrder: [String], httpOrder: [String]) async throws {
+        let (store, root) = try fixture(mode: "phases-gated")
         defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        func release(_ phase: String, uuid: String) throws {
+            try Data().write(to: root.appendingPathComponent("\(phase)-\(uuid)"), options: .atomic)
+        }
         try await waitUntil { store.canCollectAll }
         await store.collectAll()
+        try await waitUntil { store.activeTransferCount == 2 }
+        let initialIDs = Set(store.queue.filter(\.isActive).map(\.id))
+        XCTAssertEqual(initialIDs.count, 2)
+        for uuid in droneOrder {
+            try release("drone", uuid: uuid)
+            try await waitUntil { store.queue.contains { initialIDs.contains($0.id) && $0.droneUUID == uuid && $0.phase == "drone" && $0.phaseBytes == 64 } }
+        }
         try await waitUntil { store.queue.filter { $0.phase == "drone" && $0.phaseBytes == 64 }.count == 2 }
+        // These same two helpers remain blocked until their phase is inspected.
+        // Queue events and repository count publication complete independently.
+        await store.waitForQueueCounts()
+        XCTAssertTrue(store.countsAreCurrent)
+        XCTAssertEqual(Set(store.queue.filter(\.isActive).map(\.id)), initialIDs)
         let droneFraction = store.batchProgress.fraction
         XCTAssertGreaterThan(droneFraction, 0, "Global progress must move while logs transfer from the drones to the GCS.")
         XCTAssertEqual(store.batchProgress.completedBytes, 0, "Drone transport must not count as bytes received on the Mac.")
+        for uuid in httpOrder {
+            try release("http", uuid: uuid)
+            try await waitUntil { store.queue.contains { initialIDs.contains($0.id) && $0.droneUUID == uuid && $0.phase == "http" && $0.phaseBytes == 8 } }
+        }
         try await waitUntil { store.queue.filter { $0.phase == "http" && $0.phaseBytes == 8 }.count == 2 }
+        await store.waitForQueueCounts()
+        XCTAssertTrue(store.countsAreCurrent)
+        XCTAssertEqual(Set(store.queue.filter(\.isActive).map(\.id)), initialIDs)
         XCTAssertGreaterThan(store.batchProgress.fraction, droneFraction, "Moving to the Mac transport must advance global progress.")
         XCTAssertEqual(store.activeTransferCount, 2)
         XCTAssertEqual(store.batchProgress.completedCount, 0)
         XCTAssertLessThan(store.batchProgress.fraction, 1)
         XCTAssertEqual(store.queue.filter(\.isActive).map(\.completedBytes), [8, 8])
         XCTAssertFalse(store.batchStatusMessage.contains("terminée"))
+        for uuid in droneOrder { try release("complete", uuid: uuid) }
         try await waitUntil { !store.isBusy && store.queue.allSatisfy(\.isSuccessful) }
+        await store.waitForQueueCounts()
+        XCTAssertTrue(store.countsAreCurrent)
         XCTAssertEqual(store.batchProgress.completedCount, 4)
         XCTAssertEqual(store.batchProgress.fraction, 1)
         XCTAssertTrue(store.batchStatusMessage.contains("Collecte terminée"))
