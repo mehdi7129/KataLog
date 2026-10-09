@@ -145,7 +145,7 @@ final class GCSStore: ObservableObject {
             } else {
                 guard hasCompleteInMemoryQueue else { throw AnalysisError.unavailable("La file complète ne peut pas être lue.") }
                 progress = GCSBatchProgress(transfers: queue.filter { $0.batchID == currentBatchID })
-                retryable = queue.filter { ["failed", "interrupted", "stopped"].contains($0.state) && allowedUUIDs.contains($0.droneUUID) }.count
+                retryable = queue.filter { $0.isRetryable && allowedUUIDs.contains($0.droneUUID) }.count
                 total = queue.count
             }
             countsSnapshot = CountsSnapshot(selection: countsSelection, queueRevision: queueRevision,
@@ -172,7 +172,7 @@ final class GCSStore: ObservableObject {
                         if let repository { return try repository.counts(batchID: selection.batchID, authorizedUUIDs: selection.authorizedUUIDs, overlay: overlay) }
                         guard complete else { throw AnalysisError.unavailable("La file complète ne peut pas être lue.") }
                         return GCSQueueCounts(progress: GCSBatchProgress(transfers: all.filter { $0.batchID == selection.batchID }),
-                            retryable: all.filter { ["failed", "interrupted", "stopped"].contains($0.state) && selection.authorizedUUIDs.contains($0.droneUUID) }.count,
+                            retryable: all.filter { $0.isRetryable && selection.authorizedUUIDs.contains($0.droneUUID) }.count,
                             total: all.count)
                     }
                     guard generation == storageGeneration, !isMaintenanceBlocked else { continue }
@@ -1069,7 +1069,7 @@ final class GCSStore: ObservableObject {
             queue.append(contentsOf: stored.filter { !existing.contains($0.id) && allowedUUIDs.contains($0.droneUUID) })
             rebuildQueueIndexes()
         } catch { errorMessage = error.localizedDescription; return }
-        let candidates = queue.indices.filter { ["failed", "interrupted", "stopped"].contains(queue[$0].state) && allowedUUIDs.contains(queue[$0].droneUUID) }
+        let candidates = queue.indices.filter { queue[$0].isRetryable && allowedUUIDs.contains(queue[$0].droneUUID) }
         guard !candidates.isEmpty else { return }
         beginBatchIfNeeded(preserveInventories: true)
         var identities = Set(queue.filter { $0.isPending || $0.isActive }.map { GCSTransferSource($0) })

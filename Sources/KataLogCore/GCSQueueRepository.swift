@@ -162,7 +162,7 @@ public final class GCSQueueRepository: @unchecked Sendable {
         guard sqlite3_step(statement) == SQLITE_ROW else { throw AnalysisError.engine("Impossible de compter les fichiers à relancer.") }
         var count = Int(sqlite3_column_int64(statement, 0))
         func retryable(_ item: GCSTransfer) -> Bool {
-            authorizedUUIDs.contains(item.droneUUID) && ["failed", "interrupted", "stopped"].contains(item.state)
+            authorizedUUIDs.contains(item.droneUUID) && item.isRetryable
         }
         let latest = overlay.reduce(into: [String: GCSTransfer]()) { $0[$1.id] = $1 }
         for item in latest.values {

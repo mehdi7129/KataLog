@@ -124,6 +124,7 @@ public struct GCSTransfer: Codable, Identifiable, Sendable {
     public var isPending: Bool { stateCategory == .pending }
     public var isActive: Bool { stateCategory == .active }
     public var isSuccessful: Bool { stateCategory == .successful }
+    public var isRetryable: Bool { stateCategory == .failed || stateCategory == .stopped }
     public var progress: Double { size > 0 ? min(1, max(0, Double(completedBytes) / Double(size))) : 0 }
     /// Overall collection work, distinct from the bytes received on this Mac.
     /// Drone → GCS and GCS → Mac each contribute half; 100% requires success.

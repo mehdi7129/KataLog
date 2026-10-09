@@ -159,6 +159,7 @@ final class GCSQueueRepositoryTests: XCTestCase {
                 XCTAssertEqual(item.isPending, category == "pending")
                 XCTAssertEqual(item.isActive, category == "active")
                 XCTAssertEqual(item.isSuccessful, category == "success")
+                XCTAssertEqual(item.isRetryable, ["failed", "interrupted", "stopped"].contains(state))
                 XCTAssertEqual(memory.completedCount, category == "success" ? 1 : 0)
                 XCTAssertEqual(memory.failedCount, category == "failed" ? 1 : 0)
                 XCTAssertEqual(memory.stoppedCount, category == "stopped" ? 1 : 0)
