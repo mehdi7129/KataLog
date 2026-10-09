@@ -167,8 +167,6 @@ cat > "$app_path/Contents/Info.plist" <<'PLIST'
   <key>CFBundleName</key><string>KataLog</string>
   <key>CFBundleDisplayName</key><string>KataLog</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.8.0</string>
-  <key>CFBundleVersion</key><string>18</string>
   <key>KatalogBundledEngineRequired</key><true/>
   <key>CFBundleIconFile</key><string>KataLog</string>
   <key>NSLocalNetworkUsageDescription</key><string>KataLog se connecte à votre GCS pour découvrir votre flotte et récupérer ses logs.</string>
@@ -178,8 +176,9 @@ cat > "$app_path/Contents/Info.plist" <<'PLIST'
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST
-/usr/bin/plutil -replace CFBundleShortVersionString -string "$version" "$app_path/Contents/Info.plist"
-/usr/bin/plutil -replace CFBundleVersion -string "$build_number" "$app_path/Contents/Info.plist"
+# Insert only the validated effective values, with no stale template version.
+/usr/bin/plutil -insert CFBundleShortVersionString -string "$version" "$app_path/Contents/Info.plist"
+/usr/bin/plutil -insert CFBundleVersion -string "$build_number" "$app_path/Contents/Info.plist"
 if [[ "$ui_preview_build" == 1 ]]; then
     /usr/bin/plutil -insert KataLogUIReviewPreview -bool true "$app_path/Contents/Info.plist"
     if [[ "${output_dir%/}" == */preview-staging ]]; then
