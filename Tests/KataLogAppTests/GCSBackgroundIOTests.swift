@@ -154,6 +154,12 @@ extension GCSStoreTests {
     }
 
     func testRetryWaitsForAdmittedSaveInsteadOfDiscardingTheCommand() async throws {
+        try await exerciseRetryDuringAdmittedSave(stopDuringRetry: false)
+    }
+    func testStopDuringAdmittedSaveWinsOverWaitingRetry() async throws {
+        try await exerciseRetryDuringAdmittedSave(stopDuringRetry: true)
+    }
+    private func exerciseRetryDuringAdmittedSave(stopDuringRetry: Bool) async throws {
         var state = GCSCollectionState(downloadDirectory: "/private/tmp")
         state.allowedUUIDs = [first]; state.autoImport = false
         var job = GCSTransfer(droneUUID: first, remotePath: "/fixture/retry.ulg", size: 64,
@@ -169,14 +175,29 @@ extension GCSStoreTests {
         store.autoImport = true
         let retry = Task { await store.retryFailed() }
         try await Task.sleep(for: .milliseconds(80))
+        if stopDuringRetry { store.stopCollection() }
         XCTAssertEqual(sqlite3_exec(connection, "ROLLBACK", nil, nil, nil), SQLITE_OK)
         await retry.value
-        XCTAssertTrue(store.queue.first?.isPending == true,
-                      "An admitted settings save may replace the retained array without changing the requested job.")
+        if stopDuringRetry {
+            XCTAssertFalse(store.queue.first?.isPending == true)
+            XCTAssertTrue(store.isQueuePaused, "A later stop must supersede the retry waiting for storage.")
+        } else {
+            XCTAssertTrue(store.queue.first?.isPending == true,
+                          "An admitted settings save may replace the retained array without changing the requested job.")
+        }
         try await store.finishTermination()
     }
 
     func testStopDuringBlockedAdmissionDoesNotStartCollectorAfterWriteCompletes() async throws {
+        try await exerciseBlockedAdmission(disconnect: false, selecting: false)
+    }
+    func testDisconnectDuringBlockedAdmissionDoesNotRestartCollection() async throws {
+        try await exerciseBlockedAdmission(disconnect: true, selecting: false)
+    }
+    func testDisconnectDuringBlockedAdmissionDoesNotRepublishSelection() async throws {
+        try await exerciseBlockedAdmission(disconnect: true, selecting: true)
+    }
+    private func exerciseBlockedAdmission(disconnect: Bool, selecting: Bool) async throws {
         let (store, root) = try fixture(mode: "normal", configure: false)
         defer { store.stopForTermination(); try? FileManager.default.removeItem(at: root) }
         store.host = "localhost"; store.autoImport = false; store.connect()
@@ -186,13 +207,21 @@ extension GCSStoreTests {
         XCTAssertEqual(sqlite3_open(root.appendingPathComponent("gcs-queue.sqlite").path, &connection), SQLITE_OK)
         defer { sqlite3_close(connection) }
         XCTAssertEqual(sqlite3_exec(connection, "BEGIN IMMEDIATE", nil, nil, nil), SQLITE_OK)
-        let admission = Task { await store.collectAll() }
+        let admission = Task {
+            if selecting { await store.selectDrone(first) }
+            else { await store.collectAll() }
+        }
         try await Task.sleep(for: .milliseconds(350))
-        store.stopCollection()
+        XCTAssertTrue(store.isMaintenanceBlocked, "Admission must be waiting on the SQLite writer lock.")
+        if disconnect { store.disconnect() } else { store.stopCollection() }
         XCTAssertEqual(sqlite3_exec(connection, "ROLLBACK", nil, nil, nil), SQLITE_OK)
         await admission.value
         try await store.waitForPersistence()
         XCTAssertTrue(store.queue.isEmpty); XCTAssertTrue(store.isQueuePaused)
+        if disconnect {
+            XCTAssertFalse(store.isConnected)
+            XCTAssertNil(store.selectedUUID, "A completed admission cannot undo a later disconnect.")
+        }
         XCTAssertFalse(store.isBusy)
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("trace.jsonl").path))
         let fleet = try JSONDecoder().decode(GCSFleetObservationState.self, from: Data(contentsOf: root.appendingPathComponent("fleet.json")))
@@ -240,8 +269,9 @@ extension GCSStoreTests {
             lock.rollback();lock.close()
         """)
         try source.write(to: script, atomically: true, encoding: .utf8)
-        var gaps: [Double] = [], sawDronePhase = false, sawHTTPPhase = false
+        var gaps: [Double] = [], sawDronePhase = false, sawHTTPPhase = false, publications = 0
         let observation = store.$queue.sink { items in
+            publications += 1
             sawDronePhase = sawDronePhase || items.suffix(4).contains { $0.phase == "drone" }
             sawHTTPPhase = sawHTTPPhase || items.suffix(4).contains { $0.phase == "http" }
         }
@@ -264,7 +294,7 @@ extension GCSStoreTests {
         try await Task.sleep(for: .milliseconds(10))
         heartbeat.cancel(); await heartbeat.value
         let elapsed = ProcessInfo.processInfo.systemUptime - started, gap = gaps.max() ?? 0
-        print("GCS_REAL_PROGRESS stored=50000 pending=\(queued ? 50000 : 0) jobs=4 sqliteLockSeconds=1.2 seconds=\(elapsed) heartbeatMaxMs=\(gap * 1000)")
+        print("GCS_REAL_PROGRESS stored=50000 pending=\(queued ? 50000 : 0) jobs=4 sqliteLockSeconds=1.2 seconds=\(elapsed) heartbeatMaxMs=\(gap * 1000) queuePublications=\(publications)")
         XCTAssertTrue(sawDronePhase); XCTAssertTrue(sawHTTPPhase)
         XCTAssertLessThan(gap, 0.5, "Real transfer progress and durable saves must not run SQLite on MainActor.")
         let repository = try GCSQueueRepository(url: root.appendingPathComponent("gcs-queue.sqlite"), readOnly: true)
