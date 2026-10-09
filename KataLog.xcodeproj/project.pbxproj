@@ -67,6 +67,7 @@
 		9E8B88AC99D42CB8A7CF9A23 /* ReportInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = A212A8CC9F08D187462D8ACB /* ReportInteraction.swift */; };
 		9FE53A4AB01CA1A65997F1F3 /* FlightAnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 250C21DF8E49488C594D7485 /* FlightAnalysisView.swift */; };
 		A8733E5DE8EE1895DF681CF7 /* library_repository.py in Resources */ = {isa = PBXBuildFile; fileRef = F3E6103FEB3E5830E8AFE8BB /* library_repository.py */; };
+		A880EE29B8F6179441949718 /* output_paths.py in Resources */ = {isa = PBXBuildFile; fileRef = 68BF3D5A5EAA0C8D1FDDBC8B /* output_paths.py */; };
 		AD703E61D8DD32144C991593 /* RecordedMetadataView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2E283DB8D687AB07D82F948 /* RecordedMetadataView.swift */; };
 		AD99079BA035AFD388F3DD67 /* signal_assessment.py in Resources */ = {isa = PBXBuildFile; fileRef = 293BF69519EAB96FA6E8F777 /* signal_assessment.py */; };
 		AFC4E1BC00350A4426AD22E7 /* GCSStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44288B5CAF3F1AFD2A1B24A7 /* GCSStore.swift */; };
@@ -147,6 +148,7 @@
 		5D490EED808F6F284E88FEA6 /* GCSServiceDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GCSServiceDiagnostics.swift; sourceTree = "<group>"; };
 		64C389996F4E1F97EA8457ED /* DiagnosticJournal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticJournal.swift; sourceTree = "<group>"; };
 		67CA2340F1A10C83ADAB2077 /* KataLog.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KataLog.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		68BF3D5A5EAA0C8D1FDDBC8B /* output_paths.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = output_paths.py; sourceTree = "<group>"; };
 		6C74BC6513FA9237CC8CF2AA /* EventDictionaryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventDictionaryService.swift; sourceTree = "<group>"; };
 		6FD04F510482B3719AD7CD79 /* EngineOperations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineOperations.swift; sourceTree = "<group>"; };
 		7075CAFA2CC4FEBAA301301C /* SourcesImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcesImportView.swift; sourceTree = "<group>"; };
@@ -333,6 +335,7 @@
 				F3E6103FEB3E5830E8AFE8BB /* library_repository.py */,
 				4EAE586501564398DAC80B69 /* library_sources.py */,
 				B1EE23A87F76652BFFAF41B7 /* library_storage.py */,
+				68BF3D5A5EAA0C8D1FDDBC8B /* output_paths.py */,
 				B7B81D6550EFCFC9AB10269F /* px4_events.py */,
 				293BF69519EAB96FA6E8F777 /* signal_assessment.py */,
 				34AD89AA23F72FC6283E90E9 /* telemetry_extractor.py */,
@@ -454,6 +457,7 @@
 				A8733E5DE8EE1895DF681CF7 /* library_repository.py in Resources */,
 				2C65A8F9F63417D88CC74C2F /* library_sources.py in Resources */,
 				4F67B7410FF75722B6A99E25 /* library_storage.py in Resources */,
+				A880EE29B8F6179441949718 /* output_paths.py in Resources */,
 				01FAD357C747066DFEAB7B90 /* px4_events.py in Resources */,
 				AD99079BA035AFD388F3DD67 /* signal_assessment.py in Resources */,
 				CA5280482EA82FEC2B0460D6 /* telemetry_extractor.py in Resources */,
