@@ -14,12 +14,12 @@ final class OperationalJournalTests: XCTestCase {
         return folder
     }
 
-    func testRealStoreActionsRecordLifecycleDestinationAndStopWithoutPrivatePaths() throws {
+    func testRealStoreActionsRecordLifecycleDestinationAndStopWithoutPrivatePaths() async throws {
         let root = try root(), library = LibraryStore(storageDirectory: root)
         let gcs = GCSStore(storageDirectory: root); gcs.attach(library: library)
         try FileManager.default.createDirectory(at: root.appendingPathComponent("B"), withIntermediateDirectories: true)
         gcs.pauseQueue(); gcs.stopCollection()
-        try gcs.setDownloadDirectory(root.appendingPathComponent("B"))
+        try await gcs.setDownloadDirectory(root.appendingPathComponent("B"))
         library.prepareForTermination()
         let capture = try library.diagnostics.snapshot()
         XCTAssertEqual(capture.events.first?.kind, .appStarted)
@@ -47,7 +47,7 @@ final class OperationalJournalTests: XCTestCase {
         XCTAssertFalse(String(decoding: try capture.jsonLines(), as: UTF8.self).contains(root.path))
     }
 
-    func testSecondInstanceDoesNotWriteToPersistentJournal() throws {
+    func testSecondInstanceDoesNotWriteToPersistentJournal() async throws {
         let root = try root(), first = LibraryStore(storageDirectory: root)
         defer { first.prepareForTermination() }
         let before = try first.diagnostics.snapshot().jsonLines()

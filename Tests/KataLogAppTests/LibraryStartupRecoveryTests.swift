@@ -134,6 +134,7 @@ final class LibraryStartupRecoveryTests: XCTestCase {
             let gcs = earlyCollector ?? GCSStore(storageDirectory: root)
             defer { store.prepareForTermination(); gcs.stopForTermination() }
             gcs.attach(library: store)
+            await gcs.waitForStorageLoad()
             XCTAssertFalse(store.isStartupBlocked); XCTAssertFalse(gcs.isMaintenanceBlocked)
             XCTAssertEqual(gcs.host, "restored.invalid")
             XCTAssertTrue(gcs.isQueuePaused); XCTAssertFalse(gcs.isConnected)

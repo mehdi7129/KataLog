@@ -34,9 +34,9 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var queryToken = UUID()
     private var viewSubscription: AnyCancellable?
     var hasExternalActivity: () -> Bool = { false }
-    var willMaintainLibrary: () throws -> Void = {}
-    var willRestoreLibrary: () throws -> Void = {}
-    var didRestoreLibrary: () throws -> Void = {}
+    var willMaintainLibrary: () async throws -> Void = {}
+    var willRestoreLibrary: () async throws -> Void = {}
+    var didRestoreLibrary: () async throws -> Void = {}
     private var writerLease: LibraryWriterLease?
     let storageDirectory: URL
     let diagnostics: DiagnosticJournal
@@ -65,7 +65,7 @@ final class LibraryStore: ObservableObject {
     let views: LibraryViewStore
     lazy var clients = ClientStore(library: self)
     @Published private(set) var mapProximity: GeographicProximity?
-    var resetCollectionState: () throws -> Void = {}
+    var resetCollectionState: () async throws -> Void = {}
     var clientDidDelete: (String) async throws -> Void = { _ in }
     private var annotationSubscription: AnyCancellable?
     private let engineOverride: URL?
@@ -165,7 +165,7 @@ final class LibraryStore: ObservableObject {
                     throw AnalysisError.engine("La récupération n’a pas confirmé un état complet.")
                 }
                 annotations.reload(); views.reload()
-                try didRestoreLibrary()
+                try await didRestoreLibrary()
                 recoveredAtStartup = true; isStartupBlocked = false
                 diagnostics.record(.appStarted)
                 statusMessage = "Bibliothèque récupérée après une restauration interrompue. Les fichiers de récupération sont conservés."
@@ -759,9 +759,9 @@ final class LibraryStore: ObservableObject {
               !isLoading, (!isQuerying || allowOwnedQuery), !isLoadingFlight, activeDetailLoads == 0, !hasExternalActivity() else {
             throw AnalysisError.engine("Terminez ou arrêtez les opérations en cours avant de modifier ou sauvegarder la bibliothèque.")
         }
-        try willMaintainLibrary()
         isMaintainingLibrary = true
         defer { isMaintainingLibrary = false; invalidateNavigationCache() }
+        try await willMaintainLibrary()
         await clients.cancelReadAndWait()
         try Task.checkCancellation()
         return try await operation()
@@ -783,17 +783,17 @@ final class LibraryStore: ObservableObject {
         let result = try await performMaintenance {
             statusMessage = "Restauration vérifiée…"
             FlightWindowCoordinator.shared.closeAll(library: self)
-            try willRestoreLibrary()
+            try await willRestoreLibrary()
             do {
                 let result = try await LibraryStorageService.restore(archive: archive, library: storageDirectory, engine: engine)
                 annotations.reload(); views.reload()
                 indexPrepared = false
                 closeFlight()
-                do { try didRestoreLibrary() }
+                do { try await didRestoreLibrary() }
                 catch { postRestoreIssue = error.localizedDescription }
                 return result
             } catch {
-                try? didRestoreLibrary()
+                try? await didRestoreLibrary()
                 throw error
             }
         }
@@ -832,7 +832,7 @@ final class LibraryStore: ObservableObject {
                 throw AnalysisError.engine("Le moteur n’a pas confirmé la conservation des fichiers originaux.")
             }
             if allSettings {
-                try resetCollectionState()
+                try await resetCollectionState()
                 try Self.removeConfigurationFiles(in: storageDirectory,
                     names: ["views.json", "annotations.json", "import-options.json"])
                 annotations.reload(); views.reload()
@@ -857,7 +857,7 @@ final class LibraryStore: ObservableObject {
     }
 
     /// Only known regular configuration files can be removed. Never recurse into a directory.
-    static func removeConfigurationFiles(in directory: URL, names: [String]) throws {
+    nonisolated static func removeConfigurationFiles(in directory: URL, names: [String]) throws {
         for name in names {
             guard !name.contains("/"), !name.lowercased().hasSuffix(".ulg") else {
                 throw AnalysisError.engine("Nom de configuration inattendu.")
