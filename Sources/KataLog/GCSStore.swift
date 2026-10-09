@@ -623,6 +623,7 @@ final class GCSStore: ObservableObject {
 
     func disconnect() {
         guard !isBusy else { pauseQueue(); return }
+        controlRevision &+= 1
         pendingAttachmentReconnect = false
         reconnect = false; isQueuePaused = true
         if let uuid = activeInventoryUUID { inventoryBusyUntil[uuid] = Date().addingTimeInterval(21) }
@@ -1011,16 +1012,17 @@ final class GCSStore: ObservableObject {
         defer { refreshQueueCounts() }
         guard permitMutation() else { return }
         guard !isBusy, !isScanningFleet else { return }
+        let control = controlRevision
         // A save admitted before this command may replace the retained array.
         // Drain it before capturing the revision, so this harmless replacement
         // does not silently discard an explicit retry.
         await persistenceTask?.value
-        guard permitMutation(), !isBusy, !isScanningFleet else { return }
+        guard control == controlRevision, permitMutation(), !isBusy, !isScanningFleet else { return }
         do {
             let existing = Set(queue.map(\.id)), revision = queueRevision, selection = countsSelection
             let repository = queueRepository, authorized = allowedUUIDs
             let stored = try await storageIO.perform { try repository?.retryableTransfers(authorizedUUIDs: authorized) ?? [] }
-            guard permitMutation(), !isBusy, revision == queueRevision, selection == countsSelection else { return }
+            guard control == controlRevision, permitMutation(), !isBusy, revision == queueRevision, selection == countsSelection else { return }
             queue.append(contentsOf: stored.filter { !existing.contains($0.id) && allowedUUIDs.contains($0.droneUUID) })
             rebuildQueueIndexes()
         } catch { errorMessage = error.localizedDescription; return }
@@ -1052,25 +1054,28 @@ final class GCSStore: ObservableObject {
         runAnalysisQueue()
         guard !isReadOnly, !isMaintenanceBlocked, !terminationRequested, persistenceTask == nil, queueStorageIssue == nil, persistenceError == nil, inventoryTask == nil, !isQueuePaused, isConnected, let currentHost = connectedHost, let script else { return }
         let available = Set(drones.filter { allowedUUIDs.contains($0.uuid) && $0.isOnline && $0.armed != true && (inventoryBusyUntil[$0.uuid] ?? .distantPast) <= Date() }.map(\.uuid))
-        var retargeted = false
-        for index in queue.indices where queue[index].isPending && available.contains(queue[index].droneUUID) {
-            if queue[index].host != currentHost {
-                dirtyTransferIDs.insert(queue[index].id)
-                queue[index].retargetPending(to: currentHost)
+        // One publication per scheduling pass avoids repeated array updates and
+        // keeps intermediate changes to a job out of subscribers.
+        var updated = queue, retargeted = false
+        for index in updated.indices where updated[index].isPending && available.contains(updated[index].droneUUID) {
+            if updated[index].host != currentHost {
+                dirtyTransferIDs.insert(updated[index].id)
+                updated[index].retargetPending(to: currentHost)
                 retargeted = true
             }
         }
         let importCapacity = max(0, maxBufferedImports - bufferedAnalysisCount - transferTasks.count)
-        let jobs = GCSQueuePolicy.nextJobs(queue: queue, activeIDs: Set(transferTasks.keys), availableUUIDs: available, host: currentHost).prefix(importCapacity)
+        let jobs = GCSQueuePolicy.nextJobs(queue: updated, activeIDs: Set(transferTasks.keys), availableUUIDs: available, host: currentHost).prefix(importCapacity)
         for id in jobs {
             guard let index = queueIDIndex[id] else { continue }
-            queue[index].state = "downloading"; queue[index].error = nil
-            queue[index].completedBytes = 0; queue[index].nextRetryAt = nil
-            queue[index].phase = nil; queue[index].phaseBytes = nil; queue[index].phaseTotal = nil
+            updated[index].state = "downloading"; updated[index].error = nil
+            updated[index].completedBytes = 0; updated[index].nextRetryAt = nil
+            updated[index].phase = nil; updated[index].phaseBytes = nil; updated[index].phaseTotal = nil
             dirtyTransferIDs.insert(id)
             // Reserve synchronously before a task can yield or discovery schedules more work.
             transferTasks[id] = Task { [weak self] in await self?.download(id: id, script: script) }
         }
+        if retargeted || !jobs.isEmpty { queue = updated }
         updateBusy()
         if retargeted || !jobs.isEmpty { persist() }
     }
@@ -1100,32 +1105,36 @@ final class GCSStore: ObservableObject {
                 if event.event == "error" { retryable = event.retryable ?? true; throw AnalysisError.engine(event.message ?? "Échec de la collecte.") }
                 guard event.uuid == job.droneUUID, event.path == job.remotePath else { continue }
                 dirtyTransferIDs.insert(id)
+                var updated = queue[index]
+                var changed = true, save = false
                 switch event.event {
                 case "transfer_started":
-                    queue[index].phase = "drone"; queue[index].phaseBytes = 0; queue[index].phaseTotal = job.size
+                    updated.phase = "drone"; updated.phaseBytes = 0; updated.phaseTotal = job.size
                     library?.diagnostics.record(.transferProgress, phase: .drone, correlation: diagnosticCorrelation, metrics: [.bytes: 0, .totalBytes: job.size])
-                    queue[index].remoteBusyUntil = Date().addingTimeInterval(min(3600, max(300, event.timeoutSeconds ?? 300)) + 5)
-                    persist()
-                case "transfer_finished": queue[index].remoteBusyUntil = nil; persist()
+                    updated.remoteBusyUntil = Date().addingTimeInterval(min(3600, max(300, event.timeoutSeconds ?? 300)) + 5)
+                    save = true
+                case "transfer_finished": updated.remoteBusyUntil = nil; save = true
                 case "phase":
                     if let phase = event.phase, ["drone", "http", "verification"].contains(phase) {
-                        queue[index].phase = phase; queue[index].phaseBytes = event.bytes; queue[index].phaseTotal = event.total
+                        updated.phase = phase; updated.phaseBytes = event.bytes; updated.phaseTotal = event.total
                         library?.diagnostics.record(.transferProgress, phase: DiagnosticEvent.Phase(rawValue: phase), correlation: diagnosticCorrelation, metrics: [.bytes: event.bytes ?? 0, .totalBytes: event.total ?? job.size])
-                    }
+                    } else { changed = false }
                 case "progress":
-                    queue[index].receiveProgress(phase: event.phase, bytes: event.bytes ?? 0, total: event.total)
+                    updated.receiveProgress(phase: event.phase, bytes: event.bytes ?? 0, total: event.total)
                     if Date().timeIntervalSince(lastDiagnosticProgress) >= 5 {
                         lastDiagnosticProgress = Date()
-                        library?.diagnostics.record(.transferProgress, phase: DiagnosticEvent.Phase(rawValue: queue[index].phase ?? ""), correlation: diagnosticCorrelation, metrics: [.bytes: event.bytes ?? 0, .totalBytes: event.total ?? job.size])
+                        library?.diagnostics.record(.transferProgress, phase: DiagnosticEvent.Phase(rawValue: updated.phase ?? ""), correlation: diagnosticCorrelation, metrics: [.bytes: event.bytes ?? 0, .totalBytes: event.total ?? job.size])
                     }
-                    if Date().timeIntervalSince(lastSave) > 1 { persist() }
+                    if Date().timeIntervalSince(lastSave) > 1 { save = true }
                 case "downloaded":
                     guard let local = event.localPath, let hash = event.sha256, event.bytes == job.size else { throw AnalysisError.engine("Réponse de téléchargement incomplète.") }
-                    queue[index].localPath = local; queue[index].sha256 = hash
-                    queue[index].completedBytes = job.size; downloaded = true
-                    queue[index].phase = "verified"; queue[index].phaseBytes = job.size; queue[index].phaseTotal = job.size
-                default: break
+                    updated.localPath = local; updated.sha256 = hash
+                    updated.completedBytes = job.size; downloaded = true
+                    updated.phase = "verified"; updated.phaseBytes = job.size; updated.phaseTotal = job.size
+                default: changed = false
                 }
+                if changed { queue[index] = updated }
+                if save { persist() }
                 refreshQueueCounts()
             }
             try Task.checkCancellation()
@@ -1133,8 +1142,10 @@ final class GCSStore: ObservableObject {
             // The collector has exited after verified publication. Persist the analysis
             // obligation before this worker releases its network/per-drone slot.
             retryable = false; diagnosticFailure = .storageUnavailable
-            queue[index].state = autoImport ? "importing" : "downloaded"
-            if autoImport { queue[index].phase = "import" }
+            var finished = queue[index]
+            finished.state = autoImport ? "importing" : "downloaded"
+            if autoImport { finished.phase = "import" }
+            queue[index] = finished
             dirtyTransferIDs.insert(id)
             try await saveState()
             if !autoImport { await finishTransfer(job: job, analyzed: false) }
