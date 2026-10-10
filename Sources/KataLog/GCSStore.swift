@@ -17,7 +17,12 @@ private struct GCSTransferSource: Hashable, Sendable {
 final class GCSStore: ObservableObject {
     @Published private(set) var collectionClientID: String?
     var collectionClientName: String { library?.clients.scopeLabel(for: collectionClientID ?? "") ?? "Sans client" }
-    @Published var host: String { didSet { if terminationRequested { host = oldValue } } }
+    @Published var host: String {
+        didSet {
+            if terminationRequested { host = oldValue }
+            else if host != oldValue { cancelPendingDiscoveryReconnect() }
+        }
+    }
     @Published private(set) var isConnected = false
     @Published private(set) var isConnecting = false
     @Published private(set) var isBusy = false { didSet { updateCollectionActivity() } }
@@ -98,11 +103,13 @@ final class GCSStore: ObservableObject {
     private var legacyTransfers: [GCSTransfer] = []
     private let initialDestination: URL?
     private let collectorOverride: URL?
+    private let discoveryEvents: (URL, String) -> AsyncThrowingStream<GCSCollectorEvent, Error>
     private let snapshotOverride: (() -> FleetSnapshot)?
     private let importOverride: ((URL, String?) async throws -> FleetSnapshot)?
     private let directoryIssueOverride: (@Sendable (URL) -> String?)?
     private weak var library: LibraryStore?
     private var discoveryTask: Task<Void, Never>?
+    private var pendingDiscoveryReconnect: (host: String, controlRevision: UInt64)?
     private var inventoryTask: Task<Void, Never>?
     private var transferTasks: [String: Task<Void, Never>] = [:]
     private var analysisTask: Task<Void, Never>?
@@ -364,8 +371,12 @@ final class GCSStore: ObservableObject {
          directoryIssue: (@Sendable (URL) -> String?)? = nil,
          previewConfiguration: AppPreviewConfiguration = AppPreviewConfiguration(),
          applicationSupportDirectory: URL? = nil,
-         inventoryRetryClock: @escaping () -> Date = Date.init) {
+         inventoryRetryClock: @escaping () -> Date = Date.init,
+         discoveryEvents: @escaping (URL, String) -> AsyncThrowingStream<GCSCollectorEvent, Error> = { script, host in
+             GCSProcessService.events(script: script, arguments: ["discover", "--host", host, "--port", "1999"])
+         }) {
         self.inventoryRetryClock = inventoryRetryClock
+        self.discoveryEvents = discoveryEvents
         collectorOverride = collector
         snapshotOverride = snapshot
         importOverride = importer
@@ -450,7 +461,7 @@ final class GCSStore: ObservableObject {
     /// Called while the library owns its maintenance gate. No original is touched.
     func resetForApplication() async throws {
         guard !isBusy else { throw AnalysisError.engine("Arrêtez la collecte avant la réinitialisation.") }
-        discoveryTask?.cancel(); discoveryTask = nil
+        await stopDiscoveryForStorageTransition()
         inventoryTask?.cancel(); inventoryTask = nil
         inventoryRetries.removeAll()
         pendingAttachmentReconnect = false; reconnect = false; isQueuePaused = true; configurationDirty = true
@@ -606,7 +617,7 @@ final class GCSStore: ObservableObject {
     /// Restore changes files beneath this store. Reopen handles without reconnecting or starting work.
     func preparePersistedStorageForRestore() async throws {
         guard !isBusy else { throw AnalysisError.unavailable("Arrêtez la collecte avant de restaurer la bibliothèque.") }
-        discoveryTask?.cancel(); discoveryTask = nil
+        await stopDiscoveryForStorageTransition()
         isConnected = false; isConnecting = false; connectedHost = nil; reconnect = false
         await persistenceTask?.value
         storageGeneration &+= 1
@@ -706,22 +717,36 @@ final class GCSStore: ObservableObject {
     func connect() {
         guard permitMutation() else { return }
         pendingAttachmentReconnect = false
-        guard discoveryTask == nil else { return }
+        guard discoveryTask == nil || discoveryTask?.isCancelled == true else { return }
         let value = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, value.count <= 253,
               value.unicodeScalars.allSatisfy({ CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-:[]%_").contains($0) }) else {
             errorMessage = "Saisissez l’adresse de la GCS, par exemple gcs.local, sans http:// ni chemin."; return
         }
         guard let script else { errorMessage = "Le collecteur GCS est absent de l’app."; return }
-        host = value; connectedHost = value; isConnecting = true; errorMessage = nil
+        host = value
+        if discoveryTask != nil {
+            // Keep the cancelled task as the sole owner until its reader has stopped.
+            // Its defer consumes this intent; repeated clicks only replace the same intent.
+            pendingDiscoveryReconnect = (value, controlRevision)
+            isConnecting = true; errorMessage = nil
+            return
+        }
+        connectedHost = value; isConnecting = true; errorMessage = nil
         reconnect = true; persist()
         library?.diagnostics.record(.gcsConnecting)
         discoveryTask = Task { [weak self] in
             guard let self else { return }
-            defer { self.isConnecting = false; self.isConnected = false; self.discoveryTask = nil }
+            defer {
+                self.isConnecting = false; self.isConnected = false; self.discoveryTask = nil
+                let pending = self.pendingDiscoveryReconnect
+                self.pendingDiscoveryReconnect = nil
+                if let pending, pending.host == self.host, pending.controlRevision == self.controlRevision,
+                   !self.terminationRequested { self.connect() }
+            }
             while !Task.isCancelled {
                 do {
-                    for try await event in GCSProcessService.events(script: script, arguments: ["discover", "--host", value, "--port", "1999"]) {
+                    for try await event in self.discoveryEvents(script, value) {
                         try Task.checkCancellation()
                         switch event.event {
                         case "connection":
@@ -773,9 +798,30 @@ final class GCSStore: ObservableObject {
         }
     }
 
+    private func cancelPendingDiscoveryReconnect() {
+        guard pendingDiscoveryReconnect != nil else { return }
+        pendingDiscoveryReconnect = nil
+        isConnecting = false
+    }
+
+    /// Join the current owner without changing a later connection intent.
+    func waitForDiscoveryTermination() async { await discoveryTask?.value }
+
+    private func stopDiscoveryForStorageTransition() async {
+        // Direct restore/reset callers also need the admission gate while the actor yields.
+        let previousTransition = isStorageTransitioning
+        isStorageTransitioning = true
+        defer { if !previousTransition { finishStorageTransition() } }
+        pendingAttachmentReconnect = false; reconnect = false
+        cancelPendingDiscoveryReconnect()
+        discoveryTask?.cancel()
+        await waitForDiscoveryTermination()
+    }
+
     func disconnect() {
         guard !isBusy else { pauseQueue(); return }
         controlRevision &+= 1
+        cancelPendingDiscoveryReconnect()
         pendingAttachmentReconnect = false
         reconnect = false; isQueuePaused = true
         inventoryRetries.removeAll()
@@ -1354,6 +1400,7 @@ final class GCSStore: ObservableObject {
     func resumeQueue() { guard permitMutation() else { return }; isQueuePaused = false; library?.diagnostics.record(.collectionStarted, correlation: currentBatchID); persist(); runQueue() }
     func stopCollection() {
         controlRevision &+= 1
+        cancelPendingDiscoveryReconnect()
         library?.diagnostics.record(.collectionStopped, code: .cancelled, correlation: currentBatchID)
         isQueuePaused = true
         inventoryRetries.removeAll()
@@ -1825,6 +1872,7 @@ final class GCSStore: ObservableObject {
     }
     func finishTermination() async throws {
         stopForTermination()
+        await waitForDiscoveryTermination()
         await attachmentTask?.value
         while isStorageTransitioning { try await Task.sleep(for: .milliseconds(10)) }
         // An unavailable/read-only library owns no writable collection state.
@@ -1839,6 +1887,7 @@ final class GCSStore: ObservableObject {
     func stopForTermination() {
         guard !terminationRequested else { return }
         terminationRequested = true; controlRevision &+= 1
+        cancelPendingDiscoveryReconnect()
         inventoryRetries.removeAll()
         pendingAttachmentReconnect = false
         isQueuePaused = true
