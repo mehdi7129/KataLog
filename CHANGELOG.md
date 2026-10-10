@@ -1,19 +1,26 @@
 # Changelog
 
-Version distribuée par le flux stable : [0.8.3](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.3),
-build **22**. [Télécharger le DMG](https://github.com/mehdi7129/KataLog/releases/download/v0.8.3/KataLog-0.8.3-macOS-arm64.dmg)
+Version stable actuelle : [0.8.5](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.5),
+build **24**. [Télécharger le DMG](https://github.com/mehdi7129/KataLog/releases/download/v0.8.5/KataLog-0.8.5-macOS-arm64.dmg)
 ou suivre les [instructions de mise à jour](docs/UPDATING.md).
 Les sections antérieures conservent l’état de leur version au moment de sa livraison.
+Le flux versionné propose le build **24**, préparé depuis le build 22. Les
+archives et le tag de 0.8.4 restent immuables ; son build 23 n’a jamais été activé.
 
-## 0.8.5 — candidate du 2026-10-10
+## 0.8.5 — 2026-10-10
 
 - Reconnexion GCS demandée pendant la fermeture de l’ancienne connexion conservée,
   sans perdre le clic ni lancer deux sessions de découverte.
 - Annulation de cette demande lors d’un arrêt ou d’un changement d’hôte ;
   attente de la fermeture de la découverte avant de terminer les opérations de sortie.
+- Restauration et réinitialisation attendent cette fermeture et invalident les
+  demandes de reconnexion avant de poursuivre.
 
-Version **0.8.5**, build **24**, en qualification. Elle reprend les améliorations
-0.8.4 ci-dessous. Parseur et projection SQLite inchangés. Voir la
+Version **0.8.5**, build **24**, publiée sous le tag `v0.8.5` (`0209635`).
+CI, distribution signée et notarisée et recette native validées, avec une
+observation de métadonnées d’export. Les quatre assets ont été téléchargés et
+vérifiés sans authentification. Elle reprend les améliorations 0.8.4 ci-dessous.
+Parseur et projection SQLite inchangés. Voir la
 [recette 0.8.5](docs/RELEASE-0.8.5.md).
 
 ## 0.8.4 — 2026-10-10
@@ -33,8 +40,9 @@ Version **0.8.5**, build **24**, en qualification. Elle reprend les amélioratio
 
 Version **0.8.4**, build **23**, publiée sous le tag `v0.8.4`. Aucun changement de
 parseur ou projection SQLite. La reprise par octets Drone → GCS n’est pas exposée
-par le protocole utilisé. Le flux stable reste sur 0.8.3 pendant la préparation
-du correctif 0.8.5. Voir la [recette 0.8.4](docs/RELEASE-0.8.4.md).
+par le protocole utilisé. Le flux stable était resté sur 0.8.3 pendant la préparation
+du correctif 0.8.5 : le build 23 n’a jamais été activé dans ce flux. Le tag et les
+assets 0.8.4 restent immuables. Voir la [recette 0.8.4](docs/RELEASE-0.8.4.md).
 
 ## 0.8.3 — 2026-10-09
 
