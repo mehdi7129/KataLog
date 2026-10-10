@@ -7,7 +7,7 @@ import KataLogCore
 @MainActor
 final class GCSCountStateTests: XCTestCase {
     private let uuid = "0102030405060708090A0B0C"
-    private func fixture(count: Int = 500, state: String = "failed") async throws -> (GCSStore, URL) {
+    private func fixture(count: Int = 500, state: String = "failed", bytes: Int64 = 0) async throws -> (GCSStore, URL) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("katalog-counts-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
@@ -21,12 +21,39 @@ final class GCSCountStateTests: XCTestCase {
             var item = GCSTransfer(droneUUID: uuid, remotePath: "/fixture/\(index).ulg", size: 100,
                                    host: "synthetic-gcs.local", destination: root.path)
             item.state = state; item.batchID = "fixture-batch"
+            item.completedBytes = bytes
             return item
         }
         _ = try repository.saveTransfers(jobs)
         let store = GCSStore(storageDirectory: root)
         try await store.flushPersistedStateForMaintenance()
         return (store, root)
+    }
+    func testSameBatchProgressRemainsVisibleDuringAsynchronousCountRefresh() async throws {
+        let (store, root) = try await fixture(count: 2, bytes: 50)
+        XCTAssertEqual(store.collectionFraction, 0.5)
+        _ = try await store.enqueue([GCSLogFile(path: "/fixture/new.ulg", size: 100)], uuid: uuid,
+                                    host: "synthetic-gcs.local", destination: root.path)
+        XCTAssertFalse(store.countsAreCurrent)
+        XCTAssertTrue(store.hasDisplayableProgress)
+        XCTAssertNil(store.countsReadMessage)
+        XCTAssertEqual(store.collectionFraction, 0.5, "Do not flash an empty bar between two valid snapshots.")
+        await store.waitForQueueCounts()
+        XCTAssertTrue(store.countsAreCurrent)
+        XCTAssertEqual(store.batchProgress.totalCount, 3)
+        XCTAssertEqual(store.collectionFraction, 1.0 / 3.0, accuracy: 0.001, "New work must still change the denominator.")
+    }
+
+    func testCompletedSnapshotCannotClaimCompletionWhileNewWorkIsBeingCounted() async throws {
+        let (store, root) = try await fixture(count: 1, state: "complete")
+        _ = try await store.enqueue([GCSLogFile(path: "/fixture/new.ulg", size: 100)], uuid: uuid,
+                                    host: "synthetic-gcs.local", destination: root.path)
+        XCTAssertTrue(store.hasDisplayableProgress)
+        XCTAssertGreaterThan(store.collectionFraction, 0)
+        XCTAssertLessThan(store.collectionFraction, 1)
+        XCTAssertFalse(store.batchStatusMessage.contains("terminée"))
+        await store.waitForQueueCounts()
+        XCTAssertEqual(store.collectionFraction, 0.5)
     }
     private func sql(_ sql: String, root: URL) throws {
         var database: OpaquePointer?

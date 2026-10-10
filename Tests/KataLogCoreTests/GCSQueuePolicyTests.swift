@@ -63,10 +63,40 @@ final class GCSQueuePolicyTests: XCTestCase {
 
     func testRetryBudgetAllowsOnlyThreeAttemptsWithIncreasingBackoff() throws {
         XCTAssertEqual(GCSQueuePolicy.maxAttempts, 3)
-        XCTAssertEqual(try XCTUnwrap(GCSQueuePolicy.retryDate(attempt: 1, now: now)).timeIntervalSince(now), 5)
-        XCTAssertEqual(try XCTUnwrap(GCSQueuePolicy.retryDate(attempt: 2, now: now)).timeIntervalSince(now), 15)
-        XCTAssertNil(GCSQueuePolicy.retryDate(attempt: 3, now: now))
-        XCTAssertNil(GCSQueuePolicy.retryDate(attempt: 4, now: now))
+        XCTAssertEqual(try XCTUnwrap(GCSQueuePolicy.retryDate(attempt: 1, limit: 3, now: now)).timeIntervalSince(now), 5)
+        XCTAssertEqual(try XCTUnwrap(GCSQueuePolicy.retryDate(attempt: 2, limit: 3, now: now)).timeIntervalSince(now), 15)
+        XCTAssertNil(GCSQueuePolicy.retryDate(attempt: 3, limit: 3, now: now))
+        XCTAssertNil(GCSQueuePolicy.retryDate(attempt: 4, limit: 3, now: now))
+    }
+
+    func testUnlimitedRetriesSurviveTwentyFiveDisconnectsWithBoundedBackoff() throws {
+        for attempt in 1...25 {
+            let retry = try XCTUnwrap(GCSQueuePolicy.retryDate(attempt: attempt, now: now))
+            XCTAssertGreaterThanOrEqual(retry.timeIntervalSince(now), 5)
+            XCTAssertLessThanOrEqual(retry.timeIntervalSince(now), 60)
+        }
+        XCTAssertNotNil(GCSQueuePolicy.retryDate(attempt: 9, limit: 10, now: now))
+        XCTAssertNil(GCSQueuePolicy.retryDate(attempt: 10, limit: 10, now: now))
+    }
+
+    func testConcurrencyCanIncreaseAndDecreaseWithoutOverlappingTheSameDrone() {
+        let a = job(droneA), a2 = job(droneA, index: 2), b = job(droneB), c = job(droneC)
+        let queue = [a, a2, b, c]
+        XCTAssertEqual(GCSQueuePolicy.nextJobs(queue: queue, activeIDs: [], availableUUIDs: [droneA, droneB, droneC], host: "gcs.local", limit: 3, now: now), [a.id, b.id, c.id])
+        XCTAssertEqual(GCSQueuePolicy.nextJobs(queue: queue, activeIDs: [], availableUUIDs: [droneA, droneB, droneC], host: "gcs.local", limit: 1, now: now), [a.id])
+        XCTAssertTrue(GCSQueuePolicy.nextJobs(queue: queue, activeIDs: [a.id, b.id], availableUUIDs: [droneA, droneB, droneC], host: "gcs.local", limit: 1, now: now).isEmpty)
+    }
+
+    func testManualPriorityIsStableAndRespectsActiveDroneAndRetryDeadlines() {
+        let a = job(droneA), b = job(droneB)
+        var chosen = job(droneA, index: 2)
+        chosen.manualPriority = true
+        var later = job(droneC)
+        later.manualPriority = true; later.nextRetryAt = now.addingTimeInterval(5)
+        let queue = [a, b, chosen, later]
+        XCTAssertEqual(GCSQueuePolicy.nextJobs(queue: queue, activeIDs: [], availableUUIDs: [droneA, droneB, droneC], host: "gcs.local", now: now), [chosen.id, b.id])
+        XCTAssertEqual(GCSQueuePolicy.nextJobs(queue: queue, activeIDs: [a.id], availableUUIDs: [droneA, droneB, droneC], host: "gcs.local", now: now), [b.id])
+        XCTAssertEqual(queue.map(\.id), [a.id, b.id, chosen.id, later.id], "Never reorder entries held by active workers.")
     }
 
     func testScheduledRetryWaitsForItsDateWithoutBlockingAnotherDrone() {

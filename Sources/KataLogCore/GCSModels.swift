@@ -111,6 +111,8 @@ public struct GCSTransfer: Codable, Identifiable, Sendable {
     public var batchID: String?
     /// Import destination captured when enqueued; nil legacy jobs remain unassigned.
     public var clientID: String?
+    /// Explicit requests precede bulk jobs without moving active array entries.
+    public var manualPriority: Bool?
     public var attempts: Int?
     public var nextRetryAt: Date?
     public var remoteBusyUntil: Date?
@@ -199,6 +201,9 @@ public struct GCSCollectorEvent: Decodable, Sendable {
 
 public struct GCSCollectionState: Codable, Sendable {
     public var collectionClientID: String?
+    public var concurrentDownloads: Int?
+    /// Zero means retry transient network failures until stopped by the user.
+    public var retryLimit: Int?
 
     public var schemaVersion = 1
     public var host = ""
@@ -274,18 +279,24 @@ enum GCSProgressMath {
 public enum GCSQueuePolicy {
     public static let maxAttempts = 3
     public static let maxConcurrentDownloads = 2
-    public static func retryDate(attempt: Int, now: Date = Date()) -> Date? {
-        guard attempt < maxAttempts else { return nil }
-        return now.addingTimeInterval(attempt <= 1 ? 5 : 15)
+    public static let concurrentDownloadRange = 1...4
+    public static func retryDate(attempt: Int, limit: Int = 0, now: Date = Date()) -> Date? {
+        guard limit <= 0 || attempt < limit else { return nil }
+        // Bounded backoff keeps overnight retries useful without flooding the GCS.
+        let delay: TimeInterval = attempt <= 1 ? 5 : attempt == 2 ? 15 : attempt == 3 ? 30 : 60
+        return now.addingTimeInterval(delay)
     }
     public static func nextJobs(queue: [GCSTransfer], activeIDs: Set<String>, availableUUIDs: Set<String>,
-                                host: String, now: Date = Date()) -> [String] {
+                                host: String, limit: Int = maxConcurrentDownloads, now: Date = Date()) -> [String] {
         var occupied = Set(queue.filter { activeIDs.contains($0.id) || ($0.remoteBusyUntil ?? .distantPast) > now }.map(\.droneUUID))
-        var slots = max(0, maxConcurrentDownloads - activeIDs.count)
+        var slots = max(0, min(concurrentDownloadRange.upperBound, max(concurrentDownloadRange.lowerBound, limit)) - activeIDs.count)
         var result: [String] = []
-        for job in queue where job.isPending && job.host == host && availableUUIDs.contains(job.droneUUID) {
-            guard slots > 0, !occupied.contains(job.droneUUID), (job.nextRetryAt ?? .distantPast) <= now else { continue }
-            occupied.insert(job.droneUUID); slots -= 1; result.append(job.id)
+        for priority in [true, false] {
+            for job in queue where (job.manualPriority == true) == priority && job.isPending && job.host == host && availableUUIDs.contains(job.droneUUID) {
+                guard slots > 0 else { return result }
+                guard !occupied.contains(job.droneUUID), (job.nextRetryAt ?? .distantPast) <= now else { continue }
+                occupied.insert(job.droneUUID); slots -= 1; result.append(job.id)
+            }
         }
         return result
     }
