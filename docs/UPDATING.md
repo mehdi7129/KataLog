@@ -17,6 +17,44 @@ release une première fois par DMG : leurs builds n’activent pas le flux publi
 Ensuite les mises à jour se font depuis l’app. KataLog Preview reste une app de
 review indépendante.
 
+## Passage à 0.8.5
+
+La version **0.8.5 (build 24)** conserve un clic sur **Connecter** effectué
+pendant la fermeture de l’ancienne découverte GCS. Les clics répétés sont
+regroupés ; Annuler, Arrêter, la fermeture et le changement d’hôte invalident
+la demande. La terminaison, la restauration et la réinitialisation attendent
+la fin de cette découverte.
+
+Elle reprend les améliorations de 0.8.4 : accès à un log précis, progression
+et débit par trajet, 1 à 4 drones simultanés et choix du nombre de tentatives.
+Le réglage par défaut reste 2 drones et des réessais réseau sans limite ; un
+seul fichier est transféré à la fois par drone. Pause et Arrêter restent disponibles.
+
+Le parseur **1.4.0** et la projection SQLite **8** restent inchangés depuis
+0.8.3/0.8.4. Aucun réimport ni nouvelle migration n’est nécessaire. Bibliothèque,
+analyses, clients, attributions, identités, dossiers et réglages sont conservés.
+
+La reprise GCS → Mac exige un ETag fort et un support HTTP Range cohérent.
+Une copie Drone → GCS peut encore repartir du début. Après fermeture de l’app,
+relancez les inventaires incomplets avec **Tout collecter**. Le maintien éveillé
+n’empêche ni la fermeture du capot ni la mise en veille explicite.
+
+La [recette 0.8.5](RELEASE-0.8.5.md) consigne la qualification et ses limites.
+Le [DMG 0.8.5](https://github.com/mehdi7129/KataLog/releases/download/v0.8.5/KataLog-0.8.5-macOS-arm64.dmg)
+est disponible ; les quatre assets de la release ont été vérifiés en accès
+anonyme. Le flux stable versionné propose le build **24**, préparé depuis le
+build **22**. Les signatures du flux local et du ZIP public sont vérifiées avec
+l’outil officiel Sparkle. L’activation passe par la fusion de la publication du
+feed ; après fusion, contrôler séparément le flux effectivement servi en HTTPS.
+
+## Release 0.8.4 conservée
+
+La [release 0.8.4](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.4),
+build **23**, est publique. Son tag et ses quatre assets restent immuables.
+Ce build n’a jamais été activé dans le flux stable. Les preuves propres à cette
+version restent dans [sa recette historique](RELEASE-0.8.4.md) ; elles ne
+qualifient pas les nouvelles archives 0.8.5.
+
 ## Passage à 0.8.3
 
 La version **0.8.3 (build 22)** apporte des corrections de fiabilité et de
@@ -27,8 +65,10 @@ attributions, identités, dossiers et réglages restent conservés.
 
 La [recette 0.8.3](RELEASE-0.8.3.md) consigne la qualification du package et ses
 limites. Le [DMG 0.8.3](https://github.com/mehdi7129/KataLog/releases/download/v0.8.3/KataLog-0.8.3-macOS-arm64.dmg)
-est disponible. Le XML stable versionné propose le build 22 ; ses signatures
-et celles du ZIP public sont vérifiées localement avec l’outil officiel Sparkle.
+est disponible. Lors de la publication de 0.8.3, le XML stable versionné
+proposait le build 22 ; ses signatures et celles du ZIP public ont été
+vérifiées localement avec l’outil officiel Sparkle. Le flux était resté sur
+ce build pendant la préparation du build 24.
 
 ## Passage à 0.8.2
 
@@ -49,7 +89,7 @@ l’arrêt de la lecture des clients avant de remplacer ou modifier la biblioth�
 ## Changements introduits en 0.8.1
 
 Les changements de **0.8.1 (build 20)** sont inclus lors d’une mise à jour directe
-vers 0.8.3. Le [suivi de qualification 0.8.1](RELEASE-0.8.1.md) conserve les
+vers 0.8.5. Le [suivi de qualification 0.8.1](RELEASE-0.8.1.md) conserve les
 résultats de la Preview approuvée et des contrôles de ce package stable.
 
 La bibliothèque stable, les identités, les clients, les réglages et les dossiers
@@ -65,7 +105,7 @@ y compris ceux qui dépassaient l’ancienne limite d’affichage de 80 logs.
 ## Passage depuis une version antérieure à 0.8.0
 
 Les changements introduits en 0.8.0 sont également inclus lors d’une mise à jour
-directe vers 0.8.3. La [recette 0.8.0](RELEASE-0.8.0.md) conserve les résultats
+directe vers 0.8.5. La [recette 0.8.0](RELEASE-0.8.0.md) conserve les résultats
 de cette release.
 
 La mise à jour conserve la bibliothèque stable, les identifications et les dossiers
@@ -147,7 +187,7 @@ de staging doit être créé et vérifié séparément avant activation.
 Configurer un build de staging :
 
 ```bash
-KATALOG_VERSION=0.8.3 KATALOG_BUILD_NUMBER=22 \
+KATALOG_VERSION=0.8.5 KATALOG_BUILD_NUMBER=24 \
 KATALOG_UPDATE_CHANNEL=staging \
 KATALOG_UPDATE_FEED_URL=https://updates.example.org/staging/appcast.xml \
 KATALOG_UPDATE_PUBLIC_KEY='<cle-publique-base64>' \
@@ -161,11 +201,11 @@ Pour relire un brouillon, une archive ZIP existante suffit :
 
 ```bash
 python3 tools/update-feed.py prepare \
-  --archive dist/KataLog-0.8.3-macOS-arm64.zip \
-  --archive-url https://updates.example.org/KataLog-0.8.3-macOS-arm64.zip \
+  --archive dist/KataLog-0.8.5-macOS-arm64.zip \
+  --archive-url https://updates.example.org/KataLog-0.8.5-macOS-arm64.zip \
   --output /private/tmp/katalog-update-draft \
   --release-notes /private/tmp/katalog-release-notes.txt \
-  --channel staging --previous-build 21 --draft
+  --channel staging --previous-build 22 --draft
 ```
 
 Le brouillon est nommé `appcast.draft.xml` et reste non signé. Pour préparer un
@@ -175,6 +215,11 @@ uniquement pour son premier build. Le compte Keychain correspondant au canal doi
 de préparation ne crée aucune clé. L’archive activée doit embarquer sa clé
 publique et le même canal. Une seed exportée par Sparkle peut être fournie avec
 `--ed-key-file` ; sa clé publique est vérifiée avant signature.
+
+Adapter `--previous-build` au dernier build vérifié du canal réellement utilisé.
+Le flux stable versionné 0.8.5 prépare la transition **22 → 24** : le build 23
+de 0.8.4 n’a pas été servi. L’exemple de staging ne prouve pas l’existence d’un
+serveur de staging ni une mise à jour installée.
 
 La préparation refuse les builds qui n’augmentent pas par rapport à
 `--previous-build`, une URL qui ne porte pas le nom exact du ZIP, les clés qui
