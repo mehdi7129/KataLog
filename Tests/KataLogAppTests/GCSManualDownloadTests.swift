@@ -162,9 +162,7 @@ extension GCSStoreTests {
         await store.selectDrone(first)
         XCTAssertEqual(try manualInventoryTrace(root).count, 1)
         store.disconnect()
-        // The discovery process releases its task asynchronously after cancellation.
-        try await store.finishTermination()
-        store.cancelTermination()
+        // A real immediate reconnect must survive the old discovery task unwinding.
         store.connect()
         try await waitUntil { store.canSelectDrone(uuid: self.first) }
         await store.selectDrone(first)

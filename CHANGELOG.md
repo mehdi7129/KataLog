@@ -1,11 +1,22 @@
 # Changelog
 
-Version stable actuelle : [0.8.3](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.3),
+Version distribuée par le flux stable : [0.8.3](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.3),
 build **22**. [Télécharger le DMG](https://github.com/mehdi7129/KataLog/releases/download/v0.8.3/KataLog-0.8.3-macOS-arm64.dmg)
 ou suivre les [instructions de mise à jour](docs/UPDATING.md).
 Les sections antérieures conservent l’état de leur version au moment de sa livraison.
 
-## 0.8.4 — candidate du 2026-10-10
+## 0.8.5 — candidate du 2026-10-10
+
+- Reconnexion GCS demandée pendant la fermeture de l’ancienne connexion conservée,
+  sans perdre le clic ni lancer deux sessions de découverte.
+- Annulation de cette demande lors d’un arrêt ou d’un changement d’hôte ;
+  attente de la fermeture de la découverte avant de terminer les opérations de sortie.
+
+Version **0.8.5**, build **24**, en qualification. Elle reprend les améliorations
+0.8.4 ci-dessous. Parseur et projection SQLite inchangés. Voir la
+[recette 0.8.5](docs/RELEASE-0.8.5.md).
+
+## 0.8.4 — 2026-10-10
 
 - Progression GCS stable pendant le recalcul des totaux, avec débit séparé pour
   Drone → GCS et GCS → Mac.
@@ -20,10 +31,10 @@ Les sections antérieures conservent l’état de leur version au moment de sa l
 - Reprise des copies HTTP partielles quand le serveur fournit un ETag fort et
   une plage valide ; vérification du préfixe, de la source et de l’intégrité.
 
-Version **0.8.4**, build **23**, en qualification. Aucun changement de parseur ou
-projection SQLite. La reprise par octets Drone → GCS n’est pas exposée par le
-protocole utilisé. Voir la [recette 0.8.4](docs/RELEASE-0.8.4.md) pour les résultats
-et limites ; la version publique reste 0.8.3 jusqu’à publication.
+Version **0.8.4**, build **23**, publiée sous le tag `v0.8.4`. Aucun changement de
+parseur ou projection SQLite. La reprise par octets Drone → GCS n’est pas exposée
+par le protocole utilisé. Le flux stable reste sur 0.8.3 pendant la préparation
+du correctif 0.8.5. Voir la [recette 0.8.4](docs/RELEASE-0.8.4.md).
 
 ## 0.8.3 — 2026-10-09
 
