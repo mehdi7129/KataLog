@@ -1,9 +1,10 @@
 # Distribution macOS hors App Store
 
-La version **0.8.3 (build 22)** regroupe les corrections de fiabilité et de
-maintenabilité de l’audit. Elle conserve l’installation autonome par DMG et le
-flux Sparkle stable signé introduit en 0.7.0. La [recette 0.8.3](RELEASE-0.8.3.md)
-consigne ses preuves et limites. Toute nouvelle publication exige la validation
+La version **0.8.4 (build 23)** améliore les commandes, la progression et les
+reprises de collecte GCS. Elle conserve l’installation autonome par DMG et le
+flux Sparkle stable signé introduit en 0.7.0. La [recette 0.8.4](RELEASE-0.8.4.md)
+consigne les preuves de distribution et de publication ainsi que les limites
+connues. Toute nouvelle publication exige la validation
 de l’historique, des métadonnées GitHub et des assets ; une CI ad hoc ne
 qualifie pas à elle seule une distribution signée et notarisée.
 
@@ -18,8 +19,8 @@ sur toutes les versions de macOS.
 ## Préparer et tester
 
 1. Fixer version et build dans `tools/build-app.sh`, `tools/package-smoke.sh` et
-   `project.yml`, puis `xcodegen generate`. Le build 22 succède au build
-   stable 21 de 0.8.2.
+   `project.yml`, puis `xcodegen generate`. Le build 23 de 0.8.4 succède au build
+   stable 22 de 0.8.3.
    Conserver l’identité stable de l’app ; la Preview utilise son identité séparée.
 2. Exécuter les suites Swift, Python et Node du README. `KATALOG_PRIVATE_FIXTURES`
    désigne uniquement le corpus local ; les ULog et résultats privés restent hors Git.
@@ -146,7 +147,10 @@ un essai radio GCS réel. Calculer SHA256SUMS après toutes les opérations de s
 
 Committer les sources et docs validées. Lorsqu’une publication est demandée,
 fixer un tag annoté correspondant au commit, puis créer la release avec le DMG,
-le ZIP éventuel et leurs checksums. Vérifier le téléchargement et la quarantaine
+le ZIP de mise à jour, les sources correspondantes et leurs checksums.
+L’arbre du tag doit correspondre exactement à celui du commit qualifié, y compris
+si le commit de merge porte un autre identifiant. Les mises à jour documentaires
+et du flux effectuées ensuite ne déplacent pas ce tag. Vérifier le téléchargement et la quarantaine
 des assets depuis GitHub. Ne pas exposer les anciens assets 0.5.1 : ils restent
 dans l’archive privée distincte. Les clés privées et rapports de flotte restent locaux.
 
@@ -156,9 +160,10 @@ Construire avec `KATALOG_UPDATE_CHANNEL=stable`, l’URL HTTPS publique et la cl
 publique vérifiée sous `updates/stable/public-key.txt`. Garder la clé privée dans
 le Trousseau, compte `katalog-sparkle-stable`. Notariser et agrafer le bundle,
 puis recréer le ZIP final avant toute signature Sparkle ou calcul de checksum.
-Pour la release 0.8.3 (build 22), le flux a été préparé avec
-`tools/update-feed.py prepare` et `--previous-build 21`. Pour la prochaine
-release, utiliser le dernier build public vérifié, actuellement **22**.
+Pour préparer la release 0.8.4 (build 23), utiliser
+`tools/update-feed.py prepare` et `--previous-build 22` après vérification du
+build public précédent. Pour chaque release suivante, utiliser le dernier
+build public vérifié, **23** après activation du flux de 0.8.4.
 Revérifier ce build au moment de publier : il ne doit pas avoir changé entre
 préparation et publication.
 Publier d’abord le ZIP et le DMG vérifiés, puis le flux signé sous

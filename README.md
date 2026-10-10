@@ -1,14 +1,14 @@
 # KataLog — bibliothèque locale de logs PX4
 
-**0.8.3 (build 22)** · macOS 15+ · Apple Silicon · GPL-3.0-only
+**0.8.4 (build 23)** · macOS 15+ · Apple Silicon · GPL-3.0-only
 
 KataLog rassemble les logs ULog de votre flotte sur votre Mac : historique,
 alertes filtrables, trajectoires Apple Maps, courbes et rapports partageables.
 L’app native SwiftUI propose des thèmes clair, sombre et système.
 
-**[Télécharger KataLog 0.8.3 pour Mac Apple Silicon](https://github.com/mehdi7129/KataLog/releases/download/v0.8.3/KataLog-0.8.3-macOS-arm64.dmg)**
+**[Télécharger KataLog 0.8.4 pour Mac Apple Silicon](https://github.com/mehdi7129/KataLog/releases/download/v0.8.4/KataLog-0.8.4-macOS-arm64.dmg)**
 
-[Release et fichiers](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.3) ·
+[Release et fichiers](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.4) ·
 [Guide utilisateur](docs/README.md) · [Changelog](CHANGELOG.md) ·
 [Contribuer](CONTRIBUTING.md)
 
@@ -23,9 +23,10 @@ ARM64 est embarqué : aucun Python séparé, Homebrew ni Terminal n’est néces
 Une nouvelle installation démarre avec une bibliothèque vide ; une installation
 existante retrouve ses données.
 
-**Compatibilité : Mac Apple Silicon, macOS 15 minimum.** La recette native du package a été exécutée sur macOS 27.
-Les résultats et les limites de qualification figurent dans les
-[notes de release](docs/RELEASE-0.8.3.md). Le package Intel n’est pas fourni.
+**Compatibilité : Mac Apple Silicon, macOS 15 minimum.** Le package 0.8.4
+passe les neuf contrôles de distribution ; sa recette native a été exécutée sur macOS 27.
+Les résultats et les limites figurent dans les [notes de release](docs/RELEASE-0.8.4.md).
+La [qualification 0.8.3](docs/RELEASE-0.8.3.md) reste consultable. Le package Intel n’est pas fourni.
 
 ## Mises à jour
 
@@ -48,7 +49,7 @@ et se met à jour manuellement.
 | Analyse | Messages texte, familles d’alertes personnalisables, mesures GNSS/RTK, batterie, durées, failsafe et couverture des données |
 | Carte | Tous les logs géolocalisés du périmètre, repères regroupés, trajectoires segmentées, recherche par ville, adresse ou coordonnées et rayon |
 | Fiches | Fenêtre indépendante par log, synthèse, messages et courbes Batterie/GNSS/EKF ; mesures détaillées, paramètres et topics dans le menu **Plus** du mode avancé |
-| Collecte GCS | Collecte Drotek, file persistante, deux drones en parallèle, pause/arrêt/reprise et analyse automatique des fichiers vérifiés |
+| Collecte GCS | Collecte Drotek, téléchargement individuel, 1 à 4 drones en parallèle, progression et débit par trajet, pause/arrêt/reprise et analyse automatique des fichiers vérifiés |
 | Rapports | HTML autonome avec filtres, graphiques et impression/PDF ; exports JSON et choix explicite du périmètre |
 | Conservation | Archivage vérifié à l’import, sauvegarde/restauration, réassociation des sources par SHA-256 et diagnostic local prévisualisé |
 
@@ -68,7 +69,23 @@ Les outils PX4 spécialisés sont accessibles via le **mode avancé** des régla
 
 Pour collecter directement sur une GCS, ouvrir **Collecte GCS**, renseigner son
 adresse, se connecter et choisir **Tout collecter**. Le client destinataire et
-le dossier de copie sont explicites. Voir le [guide de collecte](docs/README.md#collecter-depuis-une-gcs).
+le dossier de copie sont explicites. **Voir les logs** permet aussi de choisir
+un fichier précis. Voir le [guide de collecte](docs/README.md#collecter-depuis-une-gcs).
+
+## Nouveautés de 0.8.4
+
+- Progression conservée pendant les recalculs, avec débit distinct pour
+  Drone → GCS et GCS → Mac.
+- Téléchargement d’un log précis prioritaire sur les fichiers en attente ;
+  de 1 à 4 drones simultanés, 2 par défaut et un fichier à la fois par drone.
+- Réessais réseau sans limite par défaut, ou 3/10 tentatives ; maintien éveillé
+  pendant l’activité et l’attente du réseau, avec pause et arrêt explicites.
+- Reprise des copies HTTP partielles si le serveur fournit un ETag fort et
+  une plage cohérente ; préfixe, identité et intégrité contrôlés.
+
+Le parseur 1.4.0, la projection SQLite 8 et les analyses existantes sont conservés.
+La [recette 0.8.4](docs/RELEASE-0.8.4.md) consigne la CI, les contrôles du package,
+la recette native, les téléchargements publics et les limites connues.
 
 ## Nouveautés de 0.8.3
 
@@ -139,8 +156,15 @@ distinctes. Le dépôt distribue des fixtures synthétiques.
   n’est pas assimilée à zéro ; les lacunes GPS ne sont pas reliées.
 - Le cache et le JSON d’une fiche ne contiennent pas toutes les séries brutes du ULog.
 - La collecte réelle a été testée avec une GCS Drotek 3.7.2 et deux drones.
+  Les nouveaux contrôles de reprise et de parallélisme à 3/4 drones utilisent
+  des fixtures ; aucune nouvelle qualification radio n’est revendiquée.
   Les benchmarks de 500 identités sont synthétiques. Un arrêt agit sur le Mac ;
   une copie déjà demandée à la GCS peut continuer.
+- La reprise par octets GCS → Mac dépend du serveur. Le protocole Drone → GCS
+  utilisé ne propose pas d’offset ; ce trajet peut devoir repartir du début.
+- Le maintien éveillé n’empêche ni la fermeture du capot ni une mise en veille
+  explicite. Après fermeture de l’app, relancer les inventaires incomplets avec
+  **Tout collecter** ; les copies HTTP partielles valides restent récupérables.
 - La recette locale sur macOS 27 ne remplace pas une recette physique sur macOS 15.
 
 [Contrat de collecte](docs/GCS-COLLECTION.md) · [Contrat d’import](docs/IMPORT-CONTRACT.md) ·

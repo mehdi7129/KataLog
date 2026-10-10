@@ -1,11 +1,11 @@
 # Changelog
 
-Version stable actuelle : [0.8.3](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.3),
-build **22**. [Télécharger le DMG](https://github.com/mehdi7129/KataLog/releases/download/v0.8.3/KataLog-0.8.3-macOS-arm64.dmg)
+Version stable actuelle : [0.8.4](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.4),
+build **23**. [Télécharger le DMG](https://github.com/mehdi7129/KataLog/releases/download/v0.8.4/KataLog-0.8.4-macOS-arm64.dmg)
 ou suivre les [instructions de mise à jour](docs/UPDATING.md).
 Les sections antérieures conservent l’état de leur version au moment de sa livraison.
 
-## 0.8.4 — candidate du 2026-10-10
+## 0.8.4 — 2026-10-10
 
 - Progression GCS stable pendant le recalcul des totaux, avec débit séparé pour
   Drone → GCS et GCS → Mac.
@@ -19,11 +19,16 @@ Les sections antérieures conservent l’état de leur version au moment de sa l
   dormir. La fermeture du capot et la veille explicite ne sont pas contournées.
 - Reprise des copies HTTP partielles quand le serveur fournit un ETag fort et
   une plage valide ; vérification du préfixe, de la source et de l’intégrité.
+- Annulation pendant une copie HTTP ou sa finalisation protégée par des preuves
+  cohérentes ; publication atomique du marqueur de finalisation. Une réponse
+  invalide du collecteur termine les tentatives automatiques du fichier.
 
-Version **0.8.4**, build **23**, en qualification. Aucun changement de parseur ou
+Version **0.8.4**, build **23**, publiée le 10 octobre 2026 ; quatre jobs CI et neuf contrôles
+de distribution réussis sur le candidat `6b165f4`. Aucun changement de parseur ou de
 projection SQLite. La reprise par octets Drone → GCS n’est pas exposée par le
 protocole utilisé. Voir la [recette 0.8.4](docs/RELEASE-0.8.4.md) pour les résultats
-et limites ; la version publique reste 0.8.3 jusqu’à publication.
+et limites. Le tag annoté `v0.8.4` (`5f48496`) conserve exactement l’arbre du
+package qualifié. DMG, ZIP, sources correspondantes et SHA-256 sont publiés.
 
 ## 0.8.3 — 2026-10-09
 

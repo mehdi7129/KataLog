@@ -17,6 +17,28 @@ release une première fois par DMG : leurs builds n’activent pas le flux publi
 Ensuite les mises à jour se font depuis l’app. KataLog Preview reste une app de
 review indépendante.
 
+## Passage à 0.8.4
+
+La version **0.8.4 (build 23)** améliore la collecte : accès à un log précis,
+progression et débit par trajet, de 1 à 4 drones simultanés et choix du nombre
+de tentatives. Le réglage par défaut reste 2 drones, avec des réessais réseau
+sans limite. Pause et Arrêter restent disponibles.
+
+Le parseur **1.4.0** et la projection SQLite **8** restent inchangés. Depuis
+0.8.3, aucun réimport ni nouvelle migration n’est nécessaire. La bibliothèque,
+les analyses, clients, attributions, identités et dossiers existants sont conservés.
+
+La reprise d’une copie partielle GCS → Mac exige un ETag fort et un support
+HTTP Range cohérent. Une copie Drone → GCS peut encore repartir du début.
+Après fermeture de l’app, relancez les inventaires incomplets avec **Tout collecter**.
+Le maintien éveillé pendant la collecte n’empêche ni la fermeture du capot ni
+la mise en veille explicite.
+
+La [recette 0.8.4](RELEASE-0.8.4.md) consigne les résultats et limites. Le
+[DMG 0.8.4](https://github.com/mehdi7129/KataLog/releases/download/v0.8.4/KataLog-0.8.4-macOS-arm64.dmg)
+est disponible. Le XML stable versionné propose le build 23 ; le flux préparé
+et le ZIP correspondant sont signés et vérifiés avec l’outil officiel Sparkle.
+
 ## Passage à 0.8.3
 
 La version **0.8.3 (build 22)** apporte des corrections de fiabilité et de
@@ -27,8 +49,8 @@ attributions, identités, dossiers et réglages restent conservés.
 
 La [recette 0.8.3](RELEASE-0.8.3.md) consigne la qualification du package et ses
 limites. Le [DMG 0.8.3](https://github.com/mehdi7129/KataLog/releases/download/v0.8.3/KataLog-0.8.3-macOS-arm64.dmg)
-est disponible. Le XML stable versionné propose le build 22 ; ses signatures
-et celles du ZIP public sont vérifiées localement avec l’outil officiel Sparkle.
+reste disponible. À sa publication, le flux stable proposait le build 22 ; ses
+signatures et celles du ZIP public ont été vérifiées avec l’outil officiel Sparkle.
 
 ## Passage à 0.8.2
 
@@ -49,7 +71,7 @@ l’arrêt de la lecture des clients avant de remplacer ou modifier la biblioth�
 ## Changements introduits en 0.8.1
 
 Les changements de **0.8.1 (build 20)** sont inclus lors d’une mise à jour directe
-vers 0.8.3. Le [suivi de qualification 0.8.1](RELEASE-0.8.1.md) conserve les
+vers 0.8.4. Le [suivi de qualification 0.8.1](RELEASE-0.8.1.md) conserve les
 résultats de la Preview approuvée et des contrôles de ce package stable.
 
 La bibliothèque stable, les identités, les clients, les réglages et les dossiers
@@ -65,7 +87,7 @@ y compris ceux qui dépassaient l’ancienne limite d’affichage de 80 logs.
 ## Passage depuis une version antérieure à 0.8.0
 
 Les changements introduits en 0.8.0 sont également inclus lors d’une mise à jour
-directe vers 0.8.3. La [recette 0.8.0](RELEASE-0.8.0.md) conserve les résultats
+directe vers 0.8.4. La [recette 0.8.0](RELEASE-0.8.0.md) conserve les résultats
 de cette release.
 
 La mise à jour conserve la bibliothèque stable, les identifications et les dossiers
@@ -147,7 +169,7 @@ de staging doit être créé et vérifié séparément avant activation.
 Configurer un build de staging :
 
 ```bash
-KATALOG_VERSION=0.8.3 KATALOG_BUILD_NUMBER=22 \
+KATALOG_VERSION=0.8.4 KATALOG_BUILD_NUMBER=23 \
 KATALOG_UPDATE_CHANNEL=staging \
 KATALOG_UPDATE_FEED_URL=https://updates.example.org/staging/appcast.xml \
 KATALOG_UPDATE_PUBLIC_KEY='<cle-publique-base64>' \
@@ -161,11 +183,11 @@ Pour relire un brouillon, une archive ZIP existante suffit :
 
 ```bash
 python3 tools/update-feed.py prepare \
-  --archive dist/KataLog-0.8.3-macOS-arm64.zip \
-  --archive-url https://updates.example.org/KataLog-0.8.3-macOS-arm64.zip \
+  --archive dist/KataLog-0.8.4-macOS-arm64.zip \
+  --archive-url https://updates.example.org/KataLog-0.8.4-macOS-arm64.zip \
   --output /private/tmp/katalog-update-draft \
   --release-notes /private/tmp/katalog-release-notes.txt \
-  --channel staging --previous-build 21 --draft
+  --channel staging --previous-build 22 --draft
 ```
 
 Le brouillon est nommé `appcast.draft.xml` et reste non signé. Pour préparer un
