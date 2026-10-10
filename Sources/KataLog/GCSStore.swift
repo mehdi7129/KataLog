@@ -1461,13 +1461,15 @@ final class GCSStore: ObservableObject {
             try await saveState()
             try Task.checkCancellation()
             library?.diagnostics.record(.transferStarted, correlation: diagnosticCorrelation, metrics: [.totalBytes: job.size, .retryAttempt: Int64(queue[index].attemptCount)])
-            retryable = true; diagnosticFailure = .transferFailed
+            // Only a transport failure explicitly reported by the collector can
+            // retry. Launch, decoding and incomplete-result errors are permanent.
+            diagnosticFailure = .transferFailed
             var downloaded = false
             let args = ["download", "--host", job.host, "--port", "1999", "--http-port", "8080", "--uuid", job.droneUUID,
                         "--remote", job.remotePath, "--size", String(job.size), "--destination", job.destination]
             for try await event in GCSProcessService.events(script: script, arguments: args, writerLibrary: library?.storageDirectory) {
                 try Task.checkCancellation()
-                if event.event == "error" { retryable = event.retryable ?? true; throw AnalysisError.engine(event.message ?? "Échec de la collecte.") }
+                if event.event == "error" { retryable = event.retryable == true; throw AnalysisError.engine(event.message ?? "Échec de la collecte.") }
                 guard event.uuid == job.droneUUID, event.path == job.remotePath else { continue }
                 dirtyTransferIDs.insert(id)
                 var updated = queue[index]

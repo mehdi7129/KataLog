@@ -665,6 +665,7 @@ def recover_pending_commit(target, source):
         if (not same_file_identity(candidate, transaction) or candidate.stat().st_size != source["size"]
                 or hash_file(candidate) != record["sha256"]):
             raise CollectionError("Le fichier ne correspond pas à la finalisation interrompue ; il est conservé.")
+        remove_committed_http_resume(target, record)
         if candidate == part:
             require_local_data(part)
             require_local_data(pending)
@@ -723,6 +724,26 @@ def remove_http_resume_proof(target, record):
         raise LocalResumeConflict("La preuve de reprise a changé ; fichiers conservés.")
     journal.unlink(missing_ok=True)
     sync_directory(target.parent)
+
+
+def remove_committed_http_resume(target, committed):
+    """Finish a proof handoff interrupted after publishing the complete commit."""
+    journal = target.with_name(target.name + ".katalog.resume.json")
+    if require_local_data(journal, missing_ok=True) is None:
+        return
+    if journal.is_symlink():
+        raise LocalResumeConflict("La preuve de reprise a changé ; fichiers conservés.")
+    record = read_local_manifest(journal)
+    transaction = committed["transaction"]
+    if (not isinstance(record, dict) or record.get("version") != 1
+            or record.get("source") != committed["source"]
+            or record.get("staging") != committed.get("staging")
+            or record.get("bytes") != committed["source"]["size"]
+            or record.get("sha256") != committed["sha256"]
+            or not strong_etag(record.get("etag"))
+            or any(record.get(key) != transaction[key] for key in ("part", "device", "inode"))):
+        raise LocalResumeConflict("La preuve de reprise ne correspond pas à la finalisation ; fichiers conservés.")
+    remove_http_resume_proof(target, record)
 
 
 def discard_http_resume(target, record):
@@ -922,26 +943,31 @@ def copy_http(host, http_port, staging, part, expected, report, *, target=None, 
             reader = HTTPBodyReader(response.fp, deadline)
             response.fp = reader
             checkpoint_at = time.monotonic()
+            # A signal may interrupt any step below. Keep the last committed
+            # byte count and digest together, without mutating its digest.
+            progress = (total, digest)
             try:
                 while True:
                     reader.check_deadline()
-                    chunk = response.read1(min(256 * 1024, expected - total + 1))
+                    chunk = response.read1(min(256 * 1024, expected - progress[0] + 1))
                     if not chunk:
                         break
-                    if total + len(chunk) > expected:
+                    if progress[0] + len(chunk) > expected:
                         raise CollectionError("Le téléchargement dépasse la taille annoncée.")
+                    next_digest = progress[1].copy()
+                    next_digest.update(chunk)
                     output.write(chunk)
-                    digest.update(chunk)
-                    total += len(chunk)
-                    report(total)
+                    progress = (progress[0] + len(chunk), next_digest)
+                    report(progress[0])
                     if resume and time.monotonic() - checkpoint_at >= 1:
-                        checkpoint_http_resume(target, resume, output, digest, total)
+                        checkpoint_http_resume(target, resume, output, progress[1], progress[0])
                         checkpoint_at = time.monotonic()
             finally:
                 output.flush()
                 os.fsync(output.fileno())
                 if resume:
-                    checkpoint_http_resume(target, resume, output, digest, total)
+                    checkpoint_http_resume(target, resume, output, progress[1], progress[0])
+            total, digest = progress
     if total != expected:
         raise CollectionError("Téléchargement incomplet : %s / %s octets." % (total, expected), retryable=True)
     if hash_file(part) != digest.hexdigest():
@@ -1013,8 +1039,8 @@ def download(host, port, http_port, identity, remote, expected, destination):
     part = target.with_name(resume["part"] if resume else target.name + "." + uuid_module.uuid4().hex + ".part")
     manifest = target.with_name(target.name + ".katalog.json")
     pending = target.with_name(target.name + ".katalog.pending.json")
-    pending_created = False
-    pending_durable = False
+    pending_temporary = pending.with_name(pending.name + "." + uuid_module.uuid4().hex + ".tmp")
+    pending_identity = {}
     preserve_cloud_files = False
     preserve_http_resume = False
     transaction = {}
@@ -1044,16 +1070,20 @@ def download(host, port, http_port, identity, remote, expected, destination):
         part_stat = require_local_data(part)
         transaction = {"part": part.name, "device": part_stat.st_dev, "inode": part_stat.st_ino}
         record["transaction"] = transaction
-        # Persist proof of ownership before publishing the complete ULog. If the
-        # manifest rename fails or the process dies, the next attempt can recover
-        # this exact inode/content without claiming an unrelated manual file.
-        with pending.open("x") as stream:
-            pending_created = True
+        # Only expose the recovery name after its complete contents are durable.
+        # An interruption before publication leaves a private temporary file,
+        # which cannot hide a valid HTTP resume or overwrite another proof.
+        with pending_temporary.open("x") as stream:
+            pending_stat = os.fstat(stream.fileno())
+            pending_identity = {"device": pending_stat.st_dev, "inode": pending_stat.st_ino}
             json.dump(record, stream, ensure_ascii=False)
             stream.flush()
             os.fsync(stream.fileno())
+        try:
+            os.link(pending_temporary, pending)
+        except FileExistsError as error:
+            raise LocalResumeConflict("Une autre preuve de finalisation occupe la destination ; fichiers conservés.") from error
         sync_directory(target.parent)
-        pending_durable = True
         if resume:
             # The fully verified commit proof now owns recovery. Do not leave an
             # obsolete HTTP journal pointing at the part after it is promoted.
@@ -1080,13 +1110,17 @@ def download(host, port, http_port, identity, remote, expected, destination):
         preserve_http_resume = bool(resume) and (isinstance(error, (Cancelled, LocalResumeConflict)) or retryable_error(error))
         raise
     finally:
-        if not preserve_cloud_files and not preserve_http_resume and not pending_durable:
+        # Inspect ownership instead of a post-link flag: a signal can arrive
+        # immediately after link() has published the proof, before it returns.
+        pending_published = same_file_identity(pending, pending_identity)
+        if not preserve_cloud_files and not preserve_http_resume and not pending_published:
             if resume:
                 discard_http_resume(target, resume)
             else:
                 part.unlink(missing_ok=True)
-            if pending_created and not same_file_identity(target, transaction):
-                pending.unlink(missing_ok=True)
+        if not preserve_cloud_files and same_file_identity(pending_temporary, pending_identity):
+            require_local_data(pending_temporary)
+            pending_temporary.unlink()
 
 
 def discover(host, port):

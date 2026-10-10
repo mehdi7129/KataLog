@@ -5,6 +5,26 @@ build **22**. [Télécharger le DMG](https://github.com/mehdi7129/KataLog/releas
 ou suivre les [instructions de mise à jour](docs/UPDATING.md).
 Les sections antérieures conservent l’état de leur version au moment de sa livraison.
 
+## 0.8.4 — candidate du 2026-10-10
+
+- Progression GCS stable pendant le recalcul des totaux, avec débit séparé pour
+  Drone → GCS et GCS → Mac.
+- Accès rapide à un log précis : inventaire consultable, téléchargement individuel
+  et priorité sur les fichiers encore en attente.
+- Collecte réglable de 1 à 4 drones simultanés, 2 par défaut, avec un fichier
+  à la fois par drone et une file d’analyse bornée.
+- Réessais réseau sans limite par défaut, ou 3/10 tentatives par fichier ou
+  inventaire de collecte ; reprise des inventaires interrompus, pause et arrêt.
+- Maintien éveillé pendant la collecte et l’attente du réseau ; l’écran peut
+  dormir. La fermeture du capot et la veille explicite ne sont pas contournées.
+- Reprise des copies HTTP partielles quand le serveur fournit un ETag fort et
+  une plage valide ; vérification du préfixe, de la source et de l’intégrité.
+
+Version **0.8.4**, build **23**, en qualification. Aucun changement de parseur ou
+projection SQLite. La reprise par octets Drone → GCS n’est pas exposée par le
+protocole utilisé. Voir la [recette 0.8.4](docs/RELEASE-0.8.4.md) pour les résultats
+et limites ; la version publique reste 0.8.3 jusqu’à publication.
+
 ## 0.8.3 — 2026-10-09
 
 - Imports et réanalyses : rollback cohérent, protection des fichiers de sortie,

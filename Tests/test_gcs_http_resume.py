@@ -330,6 +330,177 @@ class HTTPResumeTests(unittest.TestCase):
             self.assertEqual(self.ftp_count(sim), 1)
             self.assert_published(directory)
 
+    def test_cancel_during_pending_write_keeps_http_resume_usable(self):
+        with Simulator() as sim, tempfile.TemporaryDirectory() as directory:
+            sim.http_writer = lambda handler: self.respond(handler, etag=self.etag)
+            dump = gcs.json.dump
+            def cancel_pending(record, stream, **kwargs):
+                if ".katalog.pending.json." in Path(stream.name).name:
+                    stream.write('{"source":')
+                    raise gcs.Cancelled("stop during pending proof write")
+                return dump(record, stream, **kwargs)
+            with patch.object(gcs.json, "dump", cancel_pending):
+                with self.assertRaises(gcs.Cancelled):
+                    self.collect(sim, directory)
+            target, journal = self.paths(directory)
+            self.assertFalse(target.with_name(target.name + ".katalog.pending.json").exists())
+            self.assertTrue(journal.exists())
+            self.assertTrue(journal.with_name(json.loads(journal.read_text())["part"]).exists())
+            sim.http_writer = self.range_writer([])
+            self.collect(sim, directory)
+            self.assertEqual(self.ftp_count(sim), 1)
+            self.assert_published(directory)
+
+    def test_interrupted_pending_open_never_exposes_an_incomplete_public_proof(self):
+        for truncated in (b"", b'{"source":'):
+            with self.subTest(truncated=truncated), Simulator() as sim, tempfile.TemporaryDirectory() as directory:
+                sim.http_writer = lambda handler: self.respond(handler, etag=self.etag)
+                original_open = Path.open
+                interrupted_paths = []
+                def interrupted_open(path, *args, **kwargs):
+                    stream = original_open(path, *args, **kwargs)
+                    if ".katalog.pending.json" in path.name and args and args[0] == "x":
+                        stream.write(truncated.decode())
+                        stream.close()
+                        interrupted_paths.append(path)
+                        # Simulate the files left by termination before the caller
+                        # receives the newly opened descriptor or records its inode.
+                        raise gcs.Cancelled("stop immediately after private proof creation")
+                    return stream
+                with patch.object(Path, "open", interrupted_open):
+                    with self.assertRaises(gcs.Cancelled):
+                        self.collect(sim, directory)
+                target, journal = self.paths(directory)
+                self.assertFalse(target.with_name(target.name + ".katalog.pending.json").exists())
+                self.assertEqual(len(interrupted_paths), 1)
+                self.assertEqual(interrupted_paths[0].read_bytes(), truncated)
+                self.assertTrue(journal.exists())
+                sim.http_writer = self.range_writer([])
+                self.collect(sim, directory)
+                self.assertEqual(self.ftp_count(sim), 1)
+                self.assert_published(directory)
+
+    def test_cancel_immediately_after_pending_publication_recovers_without_network(self):
+        with Simulator() as sim, tempfile.TemporaryDirectory() as directory:
+            sim.http_writer = lambda handler: self.respond(handler, etag=self.etag)
+            link = gcs.os.link
+            def publish_then_cancel(source, destination):
+                result = link(source, destination)
+                if str(destination).endswith(".katalog.pending.json"):
+                    raise gcs.Cancelled("stop immediately after complete pending publication")
+                return result
+            with patch.object(gcs.os, "link", publish_then_cancel):
+                with self.assertRaises(gcs.Cancelled):
+                    self.collect(sim, directory)
+            target, journal = self.paths(directory)
+            self.assertFalse(target.exists())
+            self.assertTrue(journal.exists())
+            pending = target.with_name(target.name + ".katalog.pending.json")
+            record = json.loads(pending.read_text())
+            self.assertEqual(record["sha256"], hashlib.sha256(BODY).hexdigest())
+            self.assertTrue(target.with_name(record["transaction"]["part"]).exists())
+            with patch.object(gcs, "MQTT", side_effect=AssertionError("No network after pending publication")):
+                events = self.collect(sim, directory)
+            self.assertTrue(events[-1]["cached"])
+            self.assertFalse(pending.exists())
+            self.assertEqual(self.ftp_count(sim), 1)
+            self.assert_published(directory)
+
+    def test_cancel_during_pending_write_preserves_foreign_public_proof(self):
+        with Simulator() as sim, tempfile.TemporaryDirectory() as directory:
+            sim.http_writer = lambda handler: self.respond(handler, etag=self.etag)
+            dump = gcs.json.dump
+            replacement_contents = '{"manual": "preserve this proof"}'
+            def replace_pending(record, stream, **kwargs):
+                if ".katalog.pending.json." in Path(stream.name).name:
+                    target, _ = self.paths(directory)
+                    replacement = Path(stream.name).with_name("manual-proof.json")
+                    replacement.write_text(replacement_contents)
+                    replacement.replace(target.with_name(target.name + ".katalog.pending.json"))
+                    raise gcs.Cancelled("stop after another writer publishes its proof")
+                return dump(record, stream, **kwargs)
+            with patch.object(gcs.json, "dump", replace_pending):
+                with self.assertRaises(gcs.Cancelled):
+                    self.collect(sim, directory)
+            target, journal = self.paths(directory)
+            self.assertEqual(target.with_name(target.name + ".katalog.pending.json").read_text(), replacement_contents)
+            self.assertTrue(journal.exists())
+            self.assertTrue(journal.with_name(json.loads(journal.read_text())["part"]).exists())
+
+    def test_pending_publication_never_overwrites_a_foreign_proof(self):
+        with Simulator() as sim, tempfile.TemporaryDirectory() as directory:
+            sim.http_writer = lambda handler: self.respond(handler, etag=self.etag)
+            link = gcs.os.link
+            foreign_contents = '{"manual": "keep this unrelated pending"}'
+            def occupy_pending(source, destination):
+                if str(destination).endswith(".katalog.pending.json"):
+                    Path(destination).write_text(foreign_contents)
+                return link(source, destination)
+            with patch.object(gcs.os, "link", occupy_pending):
+                with self.assertRaises(gcs.LocalResumeConflict):
+                    self.collect(sim, directory)
+            target, journal = self.paths(directory)
+            self.assertFalse(target.exists())
+            self.assertEqual(target.with_name(target.name + ".katalog.pending.json").read_text(), foreign_contents)
+            self.assertTrue(journal.exists())
+            self.assertTrue(journal.with_name(json.loads(journal.read_text())["part"]).exists())
+
+    def test_commit_recovery_preserves_a_changed_http_resume_proof(self):
+        with Simulator() as sim, tempfile.TemporaryDirectory() as directory:
+            sim.http_writer = lambda handler: self.respond(handler, etag=self.etag)
+            link = gcs.os.link
+            def publish_then_cancel(source, destination):
+                result = link(source, destination)
+                if str(destination).endswith(".katalog.pending.json"):
+                    raise gcs.Cancelled("stop after pending publication")
+                return result
+            with patch.object(gcs.os, "link", publish_then_cancel):
+                with self.assertRaises(gcs.Cancelled):
+                    self.collect(sim, directory)
+            target, journal = self.paths(directory)
+            record = json.loads(journal.read_text())
+            record["sha256"] = "0" * 64
+            journal.write_text(json.dumps(record))
+            before = journal.read_bytes()
+            with patch.object(gcs, "MQTT", side_effect=AssertionError("No network for conflicting proof")):
+                with self.assertRaises(gcs.LocalResumeConflict):
+                    self.collect(sim, directory)
+            self.assertEqual(journal.read_bytes(), before)
+            self.assertFalse(target.exists())
+            self.assertTrue(target.with_name(target.name + ".katalog.pending.json").exists())
+            self.assertTrue(target.with_name(record["part"]).exists())
+
+    def test_cancel_after_digest_update_keeps_checkpoint_hash_and_bytes_consistent(self):
+        with Simulator() as sim, tempfile.TemporaryDirectory() as directory:
+            sim.http_writer = lambda handler: self.respond(handler, etag=self.etag)
+            sha256 = hashlib.sha256
+            interrupted = False
+            class InterruptingDigest:
+                def __init__(self, digest=None):
+                    self.digest = sha256() if digest is None else digest
+                def update(self, chunk):
+                    nonlocal interrupted
+                    self.digest.update(chunk)
+                    if not interrupted:
+                        interrupted = True
+                        raise gcs.Cancelled("stop after digest update, before progress commit")
+                def copy(self):
+                    return InterruptingDigest(self.digest.copy())
+                def hexdigest(self):
+                    return self.digest.hexdigest()
+            with patch.object(gcs.hashlib, "sha256", InterruptingDigest):
+                with self.assertRaises(gcs.Cancelled):
+                    self.collect(sim, directory)
+            self.assertTrue(interrupted)
+            _, journal = self.paths(directory)
+            record = json.loads(journal.read_text())
+            part = journal.with_name(record["part"])
+            self.assertEqual(record["sha256"], sha256(part.read_bytes()[:record["bytes"]]).hexdigest())
+            sim.http_writer = self.range_writer([])
+            self.collect(sim, directory)
+            self.assertEqual(self.ftp_count(sim), 1)
+            self.assert_published(directory)
+
     def test_cancel_after_durable_commit_proof_recovers_without_any_network(self):
         with Simulator() as sim, tempfile.TemporaryDirectory() as directory:
             sim.http_writer = lambda handler: self.respond(handler, etag=self.etag)

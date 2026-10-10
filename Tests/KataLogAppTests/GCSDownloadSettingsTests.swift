@@ -57,6 +57,28 @@ final class GCSDownloadSettingsTests: XCTestCase {
 }
 
 extension GCSStoreTests {
+    func testMalformedDownloadResponseFailsOnceAndReleasesSleepAssertionWithUnlimitedRetries() async throws {
+        let (store, root) = try fixture(mode: "normal")
+        addTeardownBlock { @MainActor in
+            try await store.finishTermination()
+            try? FileManager.default.removeItem(at: root)
+        }
+        let script = root.appendingPathComponent("collector.py")
+        let source = try String(contentsOf: script, encoding: .utf8).replacingOccurrences(
+            of: "    if mode=='permanent':",
+            with: "    print('{invalid-json', flush=True);sys.exit(0)\n    if mode=='permanent':"
+        )
+        try source.write(to: script, atomically: true, encoding: .utf8)
+        XCTAssertEqual(store.retryLimit, 0)
+        try await waitUntil { store.canCollectAll }
+        await store.collectAll()
+        try await waitUntil { !store.isBusy && store.queue.count == 4 && store.queue.allSatisfy { $0.state == "failed" } }
+        XCTAssertTrue(store.queue.allSatisfy { $0.attemptCount == 1 && $0.nextRetryAt == nil })
+        XCTAssertFalse(store.preventsIdleSystemSleep, "A permanent helper failure must not keep the Mac awake for another retry.")
+        let attempts = try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8)
+        XCTAssertEqual(attempts.split(separator: "\n").count, 4, "Each malformed response must end its file's automatic attempts.")
+    }
+
     func testConfiguredConcurrencyAdmitsThreeDifferentDronesAndDrainsBeforeDecreasing() async throws {
         let (store, root) = try fixture(mode: "phases-gated")
         addTeardownBlock { @MainActor in
