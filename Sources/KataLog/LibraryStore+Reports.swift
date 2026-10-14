@@ -52,18 +52,19 @@ extension LibraryStore {
         defer { diagnostics.record(diagnosticCompleted ? .exportCompleted : .exportFailed, code: diagnosticCompleted ? .none : diagnosticFailure, correlation: diagnosticOperation) }
         defer { isExporting = false; exportTask = nil }
         let captured = selection ?? snapshot
+        let manifest = ReportScopeManifest.describing(captured, mode: selection == nil ? .full : .flight)
         let task = Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
             if html {
                 let contents = ReportRenderer.cancellableHTML(captured,
-                    manifest: .describing(captured, mode: selection == nil ? .full : .flight), isCancelled: { Task.isCancelled })
+                    manifest: manifest, isCancelled: { Task.isCancelled })
                 try Task.checkCancellation()
                 guard contents.utf8.count <= 10 * 1024 * 1024 else {
                     throw AnalysisError.engine("Ce relevé dépasse 10 Mio en HTML. Exportez le JSON intégral ou utilisez le rapport de bibliothèque avec données jointes.")
                 }
                 try contents.write(to: url, atomically: true, encoding: .utf8)
             } else {
-                let contents = try ReportRenderer.json(captured)
+                let contents = try ReportRenderer.json(captured, manifest: manifest)
                 try Task.checkCancellation()
                 try contents.write(to: url, options: .atomic)
             }

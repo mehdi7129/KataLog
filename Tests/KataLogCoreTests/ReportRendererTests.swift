@@ -3,6 +3,39 @@ import XCTest
 @testable import KataLogCore
 
 final class ReportRendererTests: XCTestCase {
+    func testIndividualLogJSONAndHTMLShareCoverageManifestAndPreserveSnapshotPayload() throws {
+        var flight = log("individual", messages: [message("m")])
+        flight.parameters = ["SYS_AUTOSTART": "1001"]
+        flight.personalNote = .init(text: "Après essai", createdAt: "2026-10-14T10:00:00Z", updatedAt: "2026-10-14T11:00:00Z")
+        var original = snapshot([flight])
+        original.archiveResult = .object(["kept": .bool(true)])
+        let manifest = ReportScopeManifest.describing(original, mode: .flight, revision: "fixture-42", includesMaskedMessages: false)
+        let html = ReportRenderer.html(original, manifest: manifest)
+        let json = try ReportRenderer.json(original, manifest: manifest)
+        let jsonObject = try XCTUnwrap(JSONSerialization.jsonObject(with: json) as? [String: Any])
+        let htmlManifest = try XCTUnwrap(payload(in: html)["manifest"] as? [String: Any])
+        let jsonManifest = try XCTUnwrap(jsonObject["reportManifest"] as? [String: Any])
+        let decoder = JSONDecoder()
+        XCTAssertEqual(try decoder.decode(ReportScopeManifest.self, from: JSONSerialization.data(withJSONObject: htmlManifest)), manifest)
+        XCTAssertEqual(try decoder.decode(ReportScopeManifest.self, from: JSONSerialization.data(withJSONObject: jsonManifest)), manifest)
+        XCTAssertEqual(manifest.mode, .flight)
+        XCTAssertEqual(manifest.completeness, .partial)
+        XCTAssertTrue(manifest.availableSections.contains("personalNotes"))
+        XCTAssertTrue(manifest.unavailableSections.contains("telemetry"))
+        let decoded = try AnalysisService.decode(json)
+        XCTAssertEqual(decoded.schemaVersion, original.schemaVersion)
+        XCTAssertEqual(decoded.generatedAt, original.generatedAt)
+        XCTAssertEqual(decoded.sourceFolders, original.sourceFolders)
+        XCTAssertEqual(decoded.archiveResult, original.archiveResult)
+        XCTAssertEqual(decoded.logs.count, 1)
+        XCTAssertEqual(decoded.logs[0].id, flight.id)
+        XCTAssertEqual(decoded.logs[0].metadata, flight.metadata)
+        XCTAssertEqual(decoded.logs[0].parameters, flight.parameters)
+        XCTAssertEqual(decoded.logs[0].personalNote, flight.personalNote)
+        XCTAssertEqual(decoded.logs[0].messages.map(\.text), flight.messages.map(\.text))
+        XCTAssertNil(decoded.logs[0].telemetry)
+    }
+
     func testStandaloneReportHasInlineDataAndNoExternalRuntimeDependency() throws {
         let html = ReportRenderer.html(snapshot([log("one", messages: [message("m")])]))
         let payload = try payload(in: html)

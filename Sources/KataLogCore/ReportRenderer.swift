@@ -1,7 +1,20 @@
 import Foundation
 
 public enum ReportRenderer {
-    public static func json(_ snapshot: FleetSnapshot) throws -> Data {
+    /// Add export metadata alongside the unchanged snapshot schema. Delegating
+    /// its encoding preserves every snapshot field without a JSON object copy.
+    private struct JSONReport: Encodable {
+        let snapshot: FleetSnapshot
+        let manifest: ReportScopeManifest
+        private enum CodingKeys: String, CodingKey { case reportManifest }
+        func encode(to encoder: Encoder) throws {
+            try snapshot.encode(to: encoder)
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(manifest, forKey: .reportManifest)
+        }
+    }
+
+    public static func json(_ snapshot: FleetSnapshot, manifest: ReportScopeManifest? = nil) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         var exported = snapshot
@@ -9,7 +22,7 @@ public enum ReportRenderer {
             exported.logs[index].signalAssessment = snapshot.logs[index].assessment
             exported.logs[index].identityProvisional = snapshot.logs[index].isProvisionalIdentity
         }
-        return try encoder.encode(exported)
+        return try encoder.encode(JSONReport(snapshot: exported, manifest: manifest ?? .describing(snapshot)))
     }
 
     public static func html(_ snapshot: FleetSnapshot) -> String {

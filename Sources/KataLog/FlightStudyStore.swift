@@ -111,11 +111,12 @@ final class FlightStudyStore: ObservableObject {
             export = Task { try await library.export(to: destination, html: html, selection: snapshot) }
         } else {
             // The anonymous preview has no library. It keeps the same rendering and atomic publication contract.
+            let manifest = ReportScopeManifest.describing(snapshot, mode: .flight, scopeDescription: "Relevé des séries affichées d’un log")
             export = Task.detached(priority: .userInitiated) {
                 try Task.checkCancellation()
                 if html {
                     let content = ReportRenderer.cancellableHTML(snapshot,
-                        manifest: .describing(snapshot, mode: .flight, scopeDescription: "Relevé des séries affichées d’un log"),
+                        manifest: manifest,
                         isCancelled: { Task.isCancelled })
                     try Task.checkCancellation()
                     guard content.utf8.count <= 10 * 1024 * 1024 else {
@@ -123,7 +124,7 @@ final class FlightStudyStore: ObservableObject {
                     }
                     try content.write(to: destination, atomically: true, encoding: .utf8)
                 } else {
-                    let data = try ReportRenderer.json(snapshot); try Task.checkCancellation()
+                    let data = try ReportRenderer.json(snapshot, manifest: manifest); try Task.checkCancellation()
                     try data.write(to: destination, options: .atomic)
                 }
             }
