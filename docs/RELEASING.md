@@ -3,8 +3,10 @@
 La version **0.8.6 (build 25)** ajoute favoris, comparaison de deux logs,
 notes personnelles, contrôle d’espace avant collecte, suivi de sauvegarde et
 couverture cohérente des exports. La [recette 0.8.6](RELEASE-0.8.6.md) sépare
-les preuves des sources, du package final et de la publication. La version
-publique disponible pendant cette préparation reste **0.8.5 (build 24)**.
+les preuves des sources, du package final et de la publication du
+**14 octobre 2026**. Les quatre assets publics correspondent aux fichiers qualifiés.
+L’activation du flux build 25 passe par la fusion de la PR de publication et
+sa vérification canonique après fusion.
 
 La distribution conserve le DMG autonome et le flux Sparkle stable signé.
 Toute publication exige la validation de l’historique, des métadonnées GitHub

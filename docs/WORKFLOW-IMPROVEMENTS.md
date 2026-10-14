@@ -18,6 +18,10 @@ les mises à jour des firmwares GCS et drone.
 | Dernière sauvegarde | La page de stockage affiche la date de création de la dernière sauvegarde vérifiée, sa couverture et les nouveaux logs depuis celle-ci. Le compteur compare les identités de contenu, même si des logs ont été retirés entre-temps. |
 | Couverture des exports | Le HTML interactif, la synthèse des gros rapports, le JSON et le manifeste décrivent les mêmes détails disponibles ou absents. Un champ disponible pour certains logs peut aussi être absent pour d'autres. |
 
+Avant la génération d’un rapport, la configuration courante doit correspondre
+à l’aperçu vérifié. Si le périmètre, le format ou l’anonymisation vient de
+changer, l’aperçu est actualisé avant qu’un export soit possible.
+
 ## Conservation et limites
 
 - Les notes et favoris restent locaux et sont inclus dans les sauvegardes.
@@ -51,6 +55,7 @@ les mises à jour des firmwares GCS et drone.
 - Exports : couverture complète, partielle, résumée et vide ; concordance entre
   les pièces ; rendu natif clair et sombre avec des données synthétiques.
 
-Les résultats exécutés sont consignés dans la PR #42. Ils portent sur les
-sources et les fixtures ; les preuves du package 0.8.6, de la mise à jour et des
-transferts exécutés depuis cette app restent distinctes dans sa recette.
+Les résultats des fonctionnalités sont consignés dans la PR #42. La
+[recette 0.8.6](RELEASE-0.8.6.md) complète ces tests avec la CI du candidat
+final, le package signé et notarisé, les parcours natifs, la conservation depuis
+0.8.5 et la collecte simulée. Les limites matérielles y restent explicites.

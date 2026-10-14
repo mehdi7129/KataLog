@@ -1,19 +1,19 @@
 # KataLog — bibliothèque locale de logs PX4
 
-**0.8.6 (build 25), en qualification** · macOS 15+ · Apple Silicon · GPL-3.0-only
+**0.8.6 (build 25)** · macOS 15+ · Apple Silicon · GPL-3.0-only
 
 KataLog rassemble les logs ULog de votre flotte sur votre Mac : historique,
 alertes filtrables, trajectoires Apple Maps, courbes et rapports partageables.
 L’app native SwiftUI propose des thèmes clair, sombre et système.
 
-La version **0.8.6 est en cours de qualification**. Elle ajoute les filtres
+La version **0.8.6 est publique**, signée et notarisée. Elle ajoute les filtres
 favoris, la comparaison de deux logs, les notes personnelles et le suivi de
-sauvegarde. [Résultats et limites de qualification](docs/RELEASE-0.8.6.md).
-La version publique disponible pendant cette préparation reste **0.8.5**.
+sauvegarde. Ses quatre assets ont été téléchargés et vérifiés sans authentification.
+[Résultats et limites de qualification](docs/RELEASE-0.8.6.md).
 
-**[Télécharger KataLog 0.8.5 pour Mac Apple Silicon](https://github.com/mehdi7129/KataLog/releases/download/v0.8.5/KataLog-0.8.5-macOS-arm64.dmg)**
+**[Télécharger KataLog 0.8.6 pour Mac Apple Silicon](https://github.com/mehdi7129/KataLog/releases/download/v0.8.6/KataLog-0.8.6-macOS-arm64.dmg)**
 
-[Release et fichiers](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.5) ·
+[Release et fichiers](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.6) ·
 [Guide utilisateur](docs/README.md) · [Changelog](CHANGELOG.md) ·
 [Contribuer](CONTRIBUTING.md)
 
@@ -29,9 +29,10 @@ Une nouvelle installation démarre avec une bibliothèque vide ; une installatio
 existante retrouve ses données.
 
 **Compatibilité : Mac Apple Silicon, macOS 15 minimum.** Les contrôles du
-package 0.8.6 sont consignés dans les [notes de release](docs/RELEASE-0.8.6.md).
-Les résultats d’une version précédente ne qualifient pas ce nouveau package.
-Le package Intel n’est pas fourni.
+package 0.8.6 et sa recette native sur macOS 27.0.1 sont consignés dans les
+[notes de release](docs/RELEASE-0.8.6.md). La collecte loopback et la migration
+manuelle depuis 0.8.5 sont validées ; un nouveau transfert Aqua réel et un cycle
+Sparkle en production ne sont pas qualifiés. Le package Intel n’est pas fourni.
 
 ## Mises à jour
 
@@ -90,10 +91,14 @@ le dossier de copie sont explicites. Voir le [guide de collecte](docs/README.md#
 - **Sauvegardes** : afficher la date, la couverture et les nouveaux logs depuis
   la dernière sauvegarde vérifiée.
 - **Exports** : décrire les mêmes détails disponibles ou absents dans le HTML,
-  le JSON et le manifeste, y compris pour une fiche individuelle.
+  le JSON et le manifeste, y compris pour une fiche individuelle. Une génération
+  immédiate après un changement d’options attend un aperçu à jour.
 
 Les [parcours et limites](docs/WORKFLOW-IMPROVEMENTS.md) précisent ces ajouts.
-Les contrôles du package final et de la publication sont suivis dans la
+La CI finale réussit ses quatre jobs : **502 tests Swift, 553 Python et
+18 JavaScript** sur chacun de macOS 15 et 26 ; un seul test Python nécessite
+le corpus privé absent. Le package passe neuf contrôles de distribution et
+sa recette native. Les preuves et limites sont dans la
 [recette 0.8.6](docs/RELEASE-0.8.6.md).
 
 ## Nouveautés de 0.8.5
