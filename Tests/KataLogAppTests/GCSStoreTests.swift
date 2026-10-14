@@ -214,7 +214,7 @@ else:
         sys.exit(0)
     count=root/(key+'.attempt');attempt=int(count.read_text())+1 if count.exists() else 1;count.write_text(str(attempt))
     fd=os.open(root/'trace.jsonl',os.O_WRONLY|os.O_CREAT|os.O_APPEND,0o600)
-    os.write(fd,(json.dumps(dict(uuid=u,path=p,attempt=attempt,time=time.time(),host=arg('--host'),destination=arg('--destination')))+'\n').encode());os.close(fd)
+    os.write(fd,(json.dumps(dict(uuid=u,path=p,attempt=attempt,time=time.time(),host=arg('--host'),destination=arg('--destination'),reservedBytes=int(arg('--reserved-bytes'))))+'\n').encode());os.close(fd)
     emit('transfer_started',uuid=u,path=p,timeoutSeconds=300)
     wait_phase('drone',u)
     emit('progress',uuid=u,path=p,bytes=64 if mode in ('phases','phases-gated') else 16,total=64,phase='drone')
@@ -1200,6 +1200,22 @@ else:
         try await waitUntil { !store.isBusy && store.batchProgress.completedCount == 8 }
         XCTAssertEqual(imports, 8); XCTAssertEqual(peak, 1)
         XCTAssertEqual(try traceCount(root), 8)
+    }
+
+    func testCollectorReceivesReservationForOtherActiveFTP() async throws {
+        let (store, root) = try fixture(mode: "phases-gated")
+        defer { store.stopCollection(); store.disconnect(); try? FileManager.default.removeItem(at: root) }
+        try await waitUntil { store.canCollectAll }
+        await store.collectAll()
+        try await waitUntil { (try? self.traceCount(root)) == 2 }
+        let lines = try String(contentsOf: root.appendingPathComponent("trace.jsonl"), encoding: .utf8).split(separator: "\n")
+        let reservations = try lines.map { line -> Int in
+            let value = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+            return try XCTUnwrap(value["reservedBytes"] as? Int)
+        }
+        XCTAssertEqual(reservations.count, 2)
+        XCTAssertEqual(reservations.max(), 64, "The second active FTP still needs its full size on the Mac.")
+        XCTAssertTrue(reservations.allSatisfy { $0 == 0 || $0 == 64 })
     }
 
     func testAnalysisOverlapKeepsTwoTransfersAndOneTransferPerDrone() async throws {

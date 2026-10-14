@@ -22,9 +22,10 @@ import zipfile
 
 from local_files import (digest_file as digest, require_local_source, stat_signature,
                          atomic_json as _atomic_json)
+from backup_history import RECEIPT_NAME, record_verified_backup
 
 BACKUP_VERSION = 1
-CONFIG_NAMES = frozenset(("annotations.json", "views.json", "fleet.json", "settings.json",
+CONFIG_NAMES = frozenset((RECEIPT_NAME, "annotations.json", "views.json", "fleet.json", "settings.json",
                           "gcs-collection.json", "gcs-settings.json", 'import-options.json'))
 DB_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\.sqlite(?:3)?")
 MAX_MANIFEST_BYTES = 16 * 1024 * 1024
@@ -105,6 +106,10 @@ def backup(library, destination, include_ulog=False):
         for name in database_names(root):
             versions[name] = copy_database(root / name, staging / "state" / name)
         for name in sorted(CONFIG_NAMES):
+            # A local verification receipt is replaced after restore; embedding
+            # the previous receipt would misidentify the archive just restored.
+            if name == RECEIPT_NAME:
+                continue
             source = root / name
             if source.is_symlink():
                 raise ValueError("Un fichier de configuration est un lien symbolique ; sauvegarde refusée.")
@@ -183,10 +188,12 @@ def backup(library, destination, include_ulog=False):
         with archive_path.open("rb") as stream:
             os.fsync(stream.fileno())
         os.replace(archive_path, destination)
+        history_warning = record_verified_backup(root, destination, manifest)
         return {"backupVersion": BACKUP_VERSION, "path": str(destination), "sha256": digest(destination),
                 "sizeBytes": destination.stat().st_size, "logCount": len(sources),
                 "archivedLogCount": sum(source["state"] == "archived" for source in sources),
-                "missingSourceCount": manifest["missingSourceCount"], "inspection": inspection, 'preflight': preflight}
+                "missingSourceCount": manifest["missingSourceCount"], "inspection": inspection, 'preflight': preflight,
+                'historyWarning': history_warning}
 
 
 def backup_preflight(library, destination, include_ulog=False):
@@ -608,7 +615,8 @@ def restore(archive_path, library):
             # The same recovery is safe if this rollback is itself interrupted.
             recover_restore(root)
             raise
-        return {"restoreVersion": 1, "recoveryDirectory": str(recovery),
+        history_warning = record_verified_backup(root, archive_path, manifest)
+        return {"restoreVersion": 1, "recoveryDirectory": str(recovery), 'historyWarning': history_warning,
                 "fileCount": len(incoming), "logCount": len(manifest.get("sources", [])),
                 "archivedLogCount": sum(bool(source.get("archivePath")) for source in manifest.get("sources", [])),
                 "missingSourceCount": manifest.get("missingSourceCount", 0), "jobsRestoredActive": False}

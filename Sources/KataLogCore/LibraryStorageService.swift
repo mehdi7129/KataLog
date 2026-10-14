@@ -9,6 +9,7 @@ public struct LibraryBackupResult: Codable, Sendable {
     public var archivedLogCount: Int
     public var missingSourceCount: Int
     public var inspection: JSONValue
+    public var historyWarning: String? = nil
 }
 
 public enum LibraryStorageService {

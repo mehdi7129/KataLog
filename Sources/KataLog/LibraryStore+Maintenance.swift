@@ -26,6 +26,7 @@ extension LibraryStore {
             statusMessage = "Sauvegarde et vérification…"
             let result = try await LibraryStorageService.backup(library: storageDirectory, destination: destination, includeULog: includeULog, engine: engine)
             statusMessage = "Sauvegarde vérifiée · \(result.logCount) logs · \(result.archivedLogCount) fichiers ULog · \(result.missingSourceCount) sources absentes."
+            if let warning = result.historyWarning { statusMessage = (statusMessage ?? "") + " " + warning }
             return result
         }
     }
@@ -52,6 +53,7 @@ extension LibraryStore {
         }
         clients.reload(); reload()
         statusMessage = "Bibliothèque restaurée. L’ancien état est conservé dans le dossier de récupération. Les collectes actives sont interrompues."
+        if let warning = result["historyWarning"]?.stringValue { statusMessage = (statusMessage ?? "") + " " + warning }
         if let postRestoreIssue { errorMessage = "La bibliothèque a été restaurée, mais la collecte ne peut pas être rouverte : \(postRestoreIssue). Elle reste bloquée ; relancez l’app ou restaurez sa configuration." }
         return result
     }
@@ -64,7 +66,7 @@ extension LibraryStore {
         guard !diagnosticStore.isExporting, !diagnosticStore.isFetchingGCS, !diagnosticStore.isLoading else {
             throw AnalysisError.engine("Terminez ou arrêtez le diagnostic avant de réinitialiser la bibliothèque.")
         }
-        let settings = ["views.json", "annotations.json", "import-options.json"]
+        let settings = ["views.json", "annotations.json", "import-options.json", "last-backup.json"]
         let indices = ["library.json", "progress.json"]
         var cleanupIssues: [String] = []
         try await performMaintenance {

@@ -57,6 +57,20 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(json.loads((target / 'views.json').read_text())['revision'], 2)
         self.assertEqual(json.loads((target / 'import-options.json').read_text())['archiveDirectory'], str(self.root / 'chosen-archive'))
 
+    def test_backup_restores_dated_notes_and_preserves_original_ulog(self):
+        annotation_file = self.library / 'annotations.json'
+        annotations = json.loads(annotation_file.read_text())
+        note = {'text': 'Synthetic test\nAntenna replaced', 'createdAt': '2026-10-14T10:00:00Z',
+                'updatedAt': '2026-10-14T11:00:00Z'}
+        annotations.update(logNotes={self.identity: note}, droneNotes={'ulog:synthetic-controller': note})
+        annotation_file.write_text(json.dumps(annotations))
+        source_bytes = self.source.read_bytes()
+        storage.backup(self.library, self.destination, include_ulog=True)
+        restored = self.root / 'restored-notes'
+        storage.restore(self.destination, restored)
+        self.assertEqual(json.loads((restored / 'annotations.json').read_text()), annotations)
+        self.assertEqual(self.source.read_bytes(), source_bytes)
+
     def test_backup_inspects_same_verified_capture_without_second_database_copy(self):
         original = storage.shutil.copyfileobj
         def refuse_archive_database_extraction(source, destination, *args, **kwargs):

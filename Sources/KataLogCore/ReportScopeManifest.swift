@@ -16,6 +16,16 @@ public struct ReportScopeManifest: Codable, Sendable, Equatable {
     public var availableSections: [String]
     public var unavailableSections: [String]
 
+    static func sectionLabel(_ key: String) -> String {
+        ["messages": "messages", "metrics": "mesures", "metadata": "métadonnées", "topics": "noms des topics", "sources": "sources",
+         "parameters": "paramètres initiaux", "parameterChanges": "changements de paramètres", "topicDetails": "instances et champs des topics",
+         "events": "événements", "telemetry": "séries de mesures",
+         "metadataDetails": "informations et provenance", "parameterDetails": "paramètres typés",
+         "dropouts": "interruptions de journalisation", "batteryDetails": "batteries par instance",
+         "gnssDetails": "GNSS par récepteur", "personalNotes": "notes personnelles",
+         "rawText": "textes bruts", "identity": "identités", "coordinates": "coordonnées", "sourcePaths": "chemins des sources"][key] ?? key
+    }
+
     public init(mode: Mode = .full, scopeDescription: String = "Toute la bibliothèque",
                 revision: String? = nil, generatedAt: String = "", includesMaskedMessages: Bool = true,
                 completeness: Completeness = .summary,
@@ -41,12 +51,13 @@ public struct ReportScopeManifest: Codable, Sendable, Equatable {
         let available = optional.filter { _, predicate in snapshot.logs.contains(where: predicate) }.map(\.0)
         let unavailable = optional.filter { _, predicate in snapshot.logs.contains { !predicate($0) } }.map(\.0)
         let completeDetails = !snapshot.logs.isEmpty && unavailable.isEmpty
+        let notes = snapshot.logs.contains { $0.personalNote != nil || $0.droneNote != nil } ? ["personalNotes"] : []
         return Self(mode: mode,
                     scopeDescription: scopeDescription ?? (mode == .full ? "Toute la bibliothèque" : mode == .flight ? "Fiche d’un log" : "Sélection courante"),
                     revision: revision, generatedAt: snapshot.generatedAt,
                     includesMaskedMessages: includesMaskedMessages,
                     completeness: completeDetails ? .detailed : available.isEmpty ? .summary : .partial,
-                    availableSections: ["messages", "metrics", "metadata", "topics", "sources"] + available,
+                    availableSections: ["messages", "metrics", "metadata", "topics", "sources"] + available + notes,
                     unavailableSections: unavailable)
     }
 }

@@ -51,6 +51,21 @@ class RepositoryTests(unittest.TestCase):
     def query(self, **args):
         return repository.query(self.db, {'queryVersion': 1, **args})
 
+    def test_note_only_identity_remains_visible_and_invalid_notes_are_rejected(self):
+        note = {'text': 'Synthetic offline context', 'createdAt': '2026-10-14T10:00:00Z',
+                'updatedAt': '2026-10-14T11:00:00Z'}
+        annotations = {'droneNotes': {'gcs:1234567890ABCDEF12345678': note}}
+        reply = self.query(kind='drones', annotations=annotations)
+        offline = next(row for row in reply['drones'] if row['id'] == 'gcs:1234567890ABCDEF12345678')
+        self.assertEqual(offline['logCount'], 0)
+        self.assertIsNone(offline['stockNumber'])
+        for invalid in ({'logNotes': []}, {'droneNotes': {'bad-key': note}},
+                        {'logNotes': {'log': dict(note, text='\x00')}},
+                        {'logNotes': {'log': dict(note, updatedAt='bad')}},
+                        {'logNotes': {'log': dict(note, updatedAt='2026-10-13T10:00:00Z')}}):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                self.query(annotations=invalid)
+
     def cache_events(self, log, events=None, parser=None):
         detail = copy.deepcopy(log)
         if events is not None:

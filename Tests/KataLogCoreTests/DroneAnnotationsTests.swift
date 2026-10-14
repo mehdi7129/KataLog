@@ -2,6 +2,46 @@ import XCTest
 @testable import KataLogCore
 
 final class DroneAnnotationsTests: XCTestCase {
+    func testNotesProjectByLogAndControllerIdentityWithoutChangingRecordedMetadata() throws {
+        var first = try fixture(); first.id = "first"
+        var second = first; second.id = "second"
+        var other = first; other.id = "other"; other.droneID = "another-controller"
+        let note = PersonalNote(text: "Conclusion personnelle", createdAt: "2026-10-14T10:00:00Z", updatedAt: "2026-10-14T10:01:00Z")
+        var state = DroneAnnotationState()
+        state.logNotes[first.id] = note; state.droneNotes[first.annotationKey] = note
+        var snapshot = FleetSnapshot.empty; snapshot.logs = [first, second, other]
+        let projected = state.applying(to: snapshot)
+        XCTAssertEqual(projected.logs[0].personalNote, note)
+        XCTAssertEqual(projected.logs[0].droneNote, note)
+        XCTAssertNil(projected.logs[1].personalNote); XCTAssertEqual(projected.logs[1].droneNote, note)
+        XCTAssertNil(projected.logs[2].personalNote); XCTAssertNil(projected.logs[2].droneNote)
+        XCTAssertEqual(projected.logs[0].metadata, first.metadata)
+        state.logNotes = [:]; state.droneNotes = [:]
+        XCTAssertNil(state.applying(to: projected.logs[0]).personalNote)
+        XCTAssertNil(state.applying(to: projected.logs[0]).droneNote)
+    }
+
+    func testNoteValidationPreservesMultilineAndRejectsControlCharactersOrExcessiveLength() throws {
+        XCTAssertEqual(try DroneAnnotationValidation.note(" A\r\nB\tC "), "A\nB\tC")
+        XCTAssertNil(try DroneAnnotationValidation.note(" \n "))
+        XCTAssertThrowsError(try DroneAnnotationValidation.note("A\u{0000}B"))
+        XCTAssertThrowsError(try DroneAnnotationValidation.note(String(repeating: "x", count: 4001)))
+        XCTAssertNoThrow(try DroneAnnotationValidation.note(String(repeating: "é", count: 4000)))
+    }
+
+    func testPrivateExportsRetainDatedNotesAndEscapeHTML() throws {
+        var log = try fixture()
+        let note = PersonalNote(text: "Essai <script>alert('x')</script>\nOK", createdAt: "2026-10-14T10:00:00Z", updatedAt: "2026-10-14T10:01:00Z")
+        log.personalNote = note; log.droneNote = note
+        var snapshot = FleetSnapshot.empty; snapshot.logs = [log]
+        let restored = try AnalysisService.decode(ReportRenderer.json(snapshot))
+        XCTAssertEqual(restored.logs[0].personalNote, note); XCTAssertEqual(restored.logs[0].droneNote, note)
+        let html = ReportRenderer.html(snapshot)
+        XCTAssertTrue(html.contains("Note personnelle du log")); XCTAssertTrue(html.contains("Note personnelle du drone"))
+        XCTAssertTrue(html.contains("2026-10-14T10:01:00Z"))
+        XCTAssertTrue(html.contains("&lt;script&gt;")); XCTAssertFalse(html.contains("<script>alert('x')</script>"))
+    }
+
     func testIdentityRequiresVerifiedGCSMetadataAndNeverGuessesUUIDEncoding() throws {
         var log = try fixture()
         XCTAssertEqual(log.annotationKey, "ulog:source-uuid")

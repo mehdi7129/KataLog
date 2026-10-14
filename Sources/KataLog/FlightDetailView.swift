@@ -250,6 +250,7 @@ struct FlightDetailView: View {
     private func overview(_ log: FlightLog) -> some View {
         let selected = log.messages.first { $0.id == selectedMessageID }
         return VStack(alignment: .leading, spacing: 18) {
+            FlightNotesPanel(log: log, store: store.annotations)
             FlightPanel {
                 HStack(alignment: .top, spacing: 28) {
                     VStack(alignment: .leading, spacing: 9) {

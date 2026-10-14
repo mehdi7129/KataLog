@@ -23,6 +23,7 @@ struct Workspace06View: View {
     @State private var importClientID = ""
     @State private var showingAssignment = false
     @State private var selectedHistoryLogs: Set<String> = []
+    @State private var comparisonLogIDs: [String]?
     @State private var confirmingClear = false
     @State private var confirmingReset = false
     @State private var localError: String?
@@ -182,6 +183,12 @@ struct Workspace06View: View {
             if page == .drones { navigation.loadAuxiliary(kind: "drones", search: registrySearch) }
         }
         .onChange(of: gcs.host) { _, host in diagnostics.endpointChanged(to: host) }
+        .onChange(of: library.isImporting) { previous, current in
+            if previous && !current && page == .storage { storage.load() }
+        }
+        .onChange(of: gcs.isBusy) { previous, current in
+            if previous && !current && page == .storage { storage.load() }
+        }
         .onChange(of: views.state.historySort) { _, _ in historyCursors = [nil]; groupCursors = [nil] }
         .onChange(of: navigation.currentHistoryCursor) { _, cursor in if cursor == nil { historyCursors = [nil] } }
         .onReceive(library.annotations.$state.dropFirst()) { _ in selectedGroup = nil; groupCursors = [nil] }
@@ -193,6 +200,9 @@ struct Workspace06View: View {
     private var navigationSheets: some View {
         observedWorkspace
         .sheet(isPresented: $showingScope, onDismiss: { focusedControl = .scope }) { ScopeEditor06(library: library) }
+        .sheet(isPresented: Binding(get: { comparisonLogIDs != nil }, set: { if !$0 { comparisonLogIDs = nil } })) {
+            if let ids = comparisonLogIDs { LogComparisonView(library: library, logIDs: ids).preferredColorScheme(theme) }
+        }
         .sheet(isPresented: $showingAssignment) {
             ClientAssignmentView(library: library, scope: assignmentScope,
                 logCount: selectedHistoryLogs.isEmpty ? (totals?.logs ?? 0) : selectedHistoryLogs.count) { selectedHistoryLogs = [] }
@@ -344,6 +354,7 @@ struct Workspace06View: View {
                 .help("Actualiser").accessibilityLabel("Actualiser").disabled(busy).focused($focusedControl, equals: .refresh)
             }
             if [.overview, .history, .alerts, .events, .map, .reports].contains(page) {
+                LibraryFavoritesMenu(library: library).disabled(busy)
                 Button("Filtrer", systemImage: "line.3.horizontal.decrease") { showingScope = true }
                     .disabled(busy).focused($focusedControl, equals: .scope).keyboardShortcut("f", modifiers: .command)
             }
@@ -613,7 +624,7 @@ struct Workspace06View: View {
                         HStack(spacing: 12) {
                             Toggle("Choisir ce log", isOn: Binding(get: { selectedHistoryLogs.contains(log.id) }, set: {
                                 if $0 { selectedHistoryLogs.insert(log.id) } else { selectedHistoryLogs.remove(log.id) }
-                            })).labelsHidden().toggleStyle(.checkbox).disabled(busy || library.isReadOnly)
+                            })).labelsHidden().toggleStyle(.checkbox).disabled(busy)
                                 .accessibilityLabel("Choisir " + log.fileName)
                             historyRow(log)
                         }
@@ -650,7 +661,7 @@ struct Workspace06View: View {
             HStack(spacing: 10) { assignmentButtons }
             VStack(alignment: .leading, spacing: 10) { assignmentButtons }
         }
-        .disabled(mutationBusy || library.isReadOnly || library.clients.isWorking)
+        .disabled(busy)
     }
     @ViewBuilder private var assignmentButtons: some View {
         Button("Choisir cette page") { selectedHistoryLogs.formUnion(navigation.snapshot.logs.map(\.id)) }
@@ -659,10 +670,15 @@ struct Workspace06View: View {
             Text("\(selectedHistoryLogs.count) logs choisis").font(.caption).foregroundStyle(palette.secondary)
         }
         Spacer(minLength: 0)
+        Button("Comparer…", systemImage: "square.split.2x1") { comparisonLogIDs = selectedHistoryLogs.sorted() }
+            .disabled(selectedHistoryLogs.count != 2)
+            .help("Choisissez exactement deux logs du même contrôleur, sur une ou plusieurs pages.")
+            .accessibilityIdentifier("library.compare-logs")
         Button(selectedHistoryLogs.isEmpty ? "Attribuer les résultats…" : "Attribuer la sélection…", systemImage: "person.2") {
             showingAssignment = true
         }.help(selectedHistoryLogs.isEmpty ? "Attribuer tous les logs correspondant aux filtres, sur toutes les pages." : "Attribuer uniquement les logs cochés, sur toutes les pages.")
             .accessibilityIdentifier("clients.assign")
+            .disabled(mutationBusy || library.isReadOnly || library.clients.isWorking)
     }
     private var historySort: some View {
         Menu {
@@ -921,6 +937,7 @@ struct Workspace06View: View {
             Button("Historique") { var scope = SelectionScope(); scope.droneKeys = [drone.id]; edit { try views.chooseScope(scope); page = .history } }
                 .help("Voir les logs de ce drone pour tous les clients.").disabled(drone.logCount == 0 || busy)
             Button(drone.stockNumber == nil ? "Identifier" : "Modifier") { identity = DroneIdentityTarget(key: drone.id, sourceName: drone.name) }.disabled(library.isReadOnly || busy)
+            DroneNoteControl(target: DroneIdentityTarget(drone: drone), store: library.annotations).disabled(busy)
         }.buttonStyle(WorkspaceActionButtonStyle(palette: palette, compact: true))
     }
     private var storagePage: some View {
@@ -1030,6 +1047,37 @@ struct Workspace06View: View {
                 .font(.system(size: 11)).foregroundStyle(palette.secondary)
             Text("La sauvegarde complète inclut les fichiers ULog accessibles. Les fichiers absents sont signalés.")
                 .font(.system(size: 12)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
+            if let backup = storage.info?.lastVerifiedBackup {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Dernière sauvegarde vérifiée").font(.system(size: 12, weight: .semibold))
+                    if let date = backup.creationDate {
+                        Text(date.formatted(date: .abbreviated, time: .shortened)).font(.system(size: 12))
+                    }
+                    Text("\(quantity(backup.logCount, "log")) · \(backup.includeUlog ? "\(backup.archivedLogCount) fichiers ULog inclus" : "Analyses et réglages")")
+                        .font(.system(size: 11)).foregroundStyle(palette.secondary)
+                    if backup.missingSourceCount > 0 {
+                        Text("\(backup.missingSourceCount) sources absentes lors de la sauvegarde.")
+                            .font(.system(size: 11)).foregroundStyle(palette.amber)
+                    }
+                    if storage.isLoading {
+                        Text("Actualisation du nombre de nouveaux logs…").font(.system(size: 11)).foregroundStyle(palette.secondary)
+                    } else if storage.errorMessage != nil {
+                        Text("Dernières informations conservées · le nombre de nouveaux logs n’a pas pu être actualisé.")
+                            .font(.system(size: 11)).foregroundStyle(palette.amber)
+                    } else {
+                        Text("\(backup.newLogCount) \(backup.newLogCount == 1 ? "nouveau log" : "nouveaux logs") depuis cette sauvegarde")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    Text("Les modifications de notes et de réglages ne sont pas comptées. La présence actuelle du fichier de sauvegarde n’est pas vérifiée.")
+                        .font(.system(size: 10)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 6)
+            } else if let error = storage.info?.backupHistoryError {
+                Text(error).font(.system(size: 11)).foregroundStyle(palette.amber)
+            } else if storage.info != nil {
+                Text("Aucune sauvegarde enregistrée. Les sauvegardes créées avec les anciennes versions restent utilisables.")
+                    .font(.system(size: 11)).foregroundStyle(palette.secondary)
+            }
             Divider()
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 9) { backupButtons }
@@ -1592,7 +1640,7 @@ struct Workspace06View: View {
     }
     private func bytes(_ value: Int64) -> String { ByteCountFormatter.string(fromByteCount: value, countStyle: .file) }
     private func selectFolder(_ title: String) -> URL? { let p = NSOpenPanel(); p.title = title; p.canChooseDirectories = true; p.canChooseFiles = false; return p.runModal() == .OK ? p.url : nil }
-    private func backup(includeULog: Bool) { let p = NSSavePanel(); p.nameFieldStringValue = includeULog ? "KataLog-complet.zip" : "KataLog-analyses.zip"; guard p.runModal() == .OK, let url = p.url else { return }; maintenanceTask = Task { do { _ = try await library.backup(to: url, includeULog: includeULog) } catch { localError = error.localizedDescription }; maintenanceTask = nil } }
+    private func backup(includeULog: Bool) { let p = NSSavePanel(); p.nameFieldStringValue = includeULog ? "KataLog-complet.zip" : "KataLog-analyses.zip"; guard p.runModal() == .OK, let url = p.url else { return }; maintenanceTask = Task { do { _ = try await library.backup(to: url, includeULog: includeULog); storage.load() } catch { localError = error.localizedDescription }; maintenanceTask = nil } }
     private func previewRestore() { guard let engine = library.engineURL else { return }; let p = NSOpenPanel(); p.canChooseFiles = true; p.canChooseDirectories = false; guard p.runModal() == .OK, let url = p.url else { return }; maintenanceTask = Task { do { let result = try await LibraryStorageService.inspect(archive: url, engine: engine); restoreCandidate = url; restorePreview = result } catch { localError = error.localizedDescription }; maintenanceTask = nil } }
     private func exportReport() {
         guard let preview = reportPreview.preview, preview.totals.logs > 0, !reportPreview.isLoading else { return }

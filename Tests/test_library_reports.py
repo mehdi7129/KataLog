@@ -61,6 +61,36 @@ class ReportTests(unittest.TestCase):
         result = reports.prepare_report(capture, destination)
         return capture, captured, destination, result
 
+    def test_summary_coverage_matches_embedded_and_sidecar_manifests(self):
+        _, _, root, result = self.export()
+        payload = json.loads((root / 'rapport.json').read_text())
+        embedded = payload['reportManifest']
+        sidecar = json.loads((root / 'manifest.json').read_text())
+        self.assertEqual(embedded['unavailableSections'], list(reports.DETAIL_SECTIONS))
+        self.assertEqual(embedded['completeness'], 'summary')
+        for key in ('availableSections', 'unavailableSections', 'completeness'):
+            self.assertEqual(embedded[key], sidecar[key])
+            self.assertEqual(embedded[key], result['manifest'][key])
+
+    def test_mixed_cached_details_report_both_present_and_missing_sections(self):
+        value = copy.deepcopy(self.values[0])
+        value['parameters'] = []  # Known empty is available, unlike absent.
+        value['gnssDetails'] = None
+        self.db.execute('INSERT INTO flight_details VALUES(?,?,?)', (value['id'], analyzer.PARSER_VERSION, json.dumps(value)))
+        self.db.commit()
+        _, _, root, _ = self.export(self.request(options={'format': 'html', 'includeCachedDetails': True}))
+        manifest = json.loads((root / 'rapport.json').read_text())['reportManifest']
+        self.assertEqual(manifest['completeness'], 'partial')
+        self.assertIn('parameters', manifest['availableSections'])
+        self.assertIn('parameters', manifest['unavailableSections'])
+        self.assertNotIn('gnssDetails', manifest['availableSections'])
+
+    def test_empty_selection_does_not_claim_detailed_coverage(self):
+        _, _, root, _ = self.export(self.request(scope={'logIDs': ['0' * 64]}))
+        manifest = json.loads((root / 'rapport.json').read_text())['reportManifest']
+        self.assertEqual(manifest['completeness'], 'summary')
+        self.assertEqual(manifest['unavailableSections'], [])
+
     def test_capture_is_immutable_after_live_import_and_annotation_mutation(self):
         request = self.request(annotations={'schemaVersion': 1, 'stockNumbers': {'ulog:controller-1': '42'}})
         capture = self.root / 'capture'
@@ -73,6 +103,31 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(len(payload['logs']), 4)
         self.assertEqual(next(log for log in payload['logs'] if log['droneID'] == 'controller-1')['stockNumber'], '42')
         self.assertEqual(result['messageCount'], 3)
+
+    def test_personal_notes_are_captured_privately_and_removed_from_every_shared_piece(self):
+        note = {'text': 'PRIVATE-NOTE-SENTINEL\nAfter antenna change',
+                'createdAt': '2026-10-14T10:00:00Z', 'updatedAt': '2026-10-14T11:00:00Z'}
+        annotations = {'schemaVersion': 1, 'logNotes': {self.values[0]['id']: note},
+                       'droneNotes': {'ulog:controller-1': note}}
+        for options in ({'format': 'html'}, {'format': 'json'},
+                        {'format': 'html', 'excludeIdentity': True},
+                        {'format': 'json', 'excludePaths': True},
+                        {'format': 'html', 'excludeCoordinates': True, 'includeCachedDetails': True}):
+            _, _, folder, result = self.export(self.request(annotations=annotations, options=options))
+            payload = json.loads((folder / 'rapport.json').read_text())
+            if result['rawDataIncluded']:
+                log = next(value for value in payload['logs'] if value['id'] == self.values[0]['id'])
+                self.assertEqual(log['personalNote'], note)
+                self.assertEqual(log['droneNote'], note)
+                for other in payload['logs']:
+                    if other['id'] != self.values[0]['id']:
+                        self.assertNotIn('personalNote', other)
+            else:
+                for path in folder.iterdir():
+                    self.assertNotIn('PRIVATE-NOTE-SENTINEL', path.read_text(), path.name)
+                for log in payload['logs']:
+                    self.assertNotIn('personalNote', log)
+                    self.assertNotIn('droneNote', log)
 
     def test_streamed_selection_parity_with_query_and_failsafe_contract(self):
         for scope in [{}, {'families': ['GPS']}, {'levels': ['INFO'], 'alertOnly': True},
