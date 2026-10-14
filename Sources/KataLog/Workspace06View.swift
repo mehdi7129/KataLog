@@ -110,12 +110,14 @@ struct Workspace06View: View {
         .init(format: reportFormat, excludePaths: sharedReport, excludeIdentity: sharedReport,
               excludeCoordinates: sharedReport, includeCachedDetails: cachedDetails)
     }
-    private var reportPreviewKey: String {
-        let request = ReportPreviewStore.request(mode: reportMode, scope: views.state.activeScope,
+    private var reportRequest: ReportExportRequest {
+        ReportPreviewStore.request(mode: reportMode, scope: views.state.activeScope,
             annotations: library.annotations.state, maskedMessageKeys: views.state.maskedMessageKeys,
             viewRevision: views.state.revision, options: reportOptions)
+    }
+    private var reportPreviewKey: String {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-        return ((try? encoder.encode(request))?.base64EncodedString() ?? "") + ":\(navigation.historyPage?.revision ?? 0)"
+        return ((try? encoder.encode(reportRequest))?.base64EncodedString() ?? "") + ":\(navigation.historyPage?.revision ?? 0)"
     }
 
     var body: some View {
@@ -1338,7 +1340,7 @@ struct Workspace06View: View {
             Divider()
             Button("Générer le rapport…", systemImage: "doc.badge.plus") { exportReport() }
                 .buttonStyle(WorkspaceActionButtonStyle(palette: palette, prominent: true))
-                .disabled(!commandCapabilities.canPrepareReport || reportPreview.isLoading || (reportPreview.preview?.totals.logs ?? 0) == 0)
+                .disabled(!commandCapabilities.canPrepareReport || reportPreview.exportPreview(matching: reportRequest) == nil)
                 .accessibilityIdentifier("reports.generate")
             if library.isExporting { Button("Arrêter", systemImage: "stop") { library.cancelExport() } }
         }
@@ -1643,10 +1645,15 @@ struct Workspace06View: View {
     private func backup(includeULog: Bool) { let p = NSSavePanel(); p.nameFieldStringValue = includeULog ? "KataLog-complet.zip" : "KataLog-analyses.zip"; guard p.runModal() == .OK, let url = p.url else { return }; maintenanceTask = Task { do { _ = try await library.backup(to: url, includeULog: includeULog); storage.load() } catch { localError = error.localizedDescription }; maintenanceTask = nil } }
     private func previewRestore() { guard let engine = library.engineURL else { return }; let p = NSOpenPanel(); p.canChooseFiles = true; p.canChooseDirectories = false; guard p.runModal() == .OK, let url = p.url else { return }; maintenanceTask = Task { do { let result = try await LibraryStorageService.inspect(archive: url, engine: engine); restoreCandidate = url; restorePreview = result } catch { localError = error.localizedDescription }; maintenanceTask = nil } }
     private func exportReport() {
-        guard let preview = reportPreview.preview, preview.totals.logs > 0, !reportPreview.isLoading else { return }
+        guard let preview = reportPreview.exportPreview(matching: reportRequest) else { refreshReportPreview(); return }
         let p = NSSavePanel(); p.nameFieldStringValue = preview.request.options.format == .html ? "KataLog-rapport" : "KataLog-rapport.json"
         guard p.runModal() == .OK, let url = p.url else { return }
-        Task { do { _ = try await library.exportReport(to: url, reviewedRequest: preview.request, expectedRevision: preview.revision) } catch is CancellationError { localError = nil; library.statusMessage = "Export arrêté. Aucun rapport partiel n’a été publié." } catch { localError = error.localizedDescription; refreshReportPreview() } }
+        Task {
+            guard preview.matches(reportRequest) else { refreshReportPreview(); return }
+            do { _ = try await library.exportReport(to: url, reviewedRequest: preview.request, expectedRevision: preview.revision) }
+            catch is CancellationError { localError = nil; library.statusMessage = "Export arrêté. Aucun rapport partiel n’a été publié." }
+            catch { localError = error.localizedDescription; refreshReportPreview() }
+        }
     }
     private func refreshReportPreview() {
         reportPreviewWasCancelled = false

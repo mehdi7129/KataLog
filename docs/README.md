@@ -1,6 +1,7 @@
 # Documentation de KataLog
 
-La version stable actuelle est **0.8.2 (build 21)**, publiée le **7 octobre 2026**.
+La version **0.8.6 (build 25)** est en qualification. La version publique
+disponible pendant cette préparation reste **0.8.5 (build 24)**.
 Pour installer l’app, commencer par le [README du projet](../README.md#installation).
 
 ## Trouver le bon document
@@ -9,11 +10,11 @@ Pour installer l’app, commencer par le [README du projet](../README.md#install
 | --- | --- |
 | Importer, explorer, exporter ou collecter des logs | [Guide utilisateur](#guide-utilisateur) |
 | Installer une mise à jour et comprendre les migrations | [Mises à jour](UPDATING.md) |
-| Comprendre la version stable et ses contrôles | [Release 0.8.2](RELEASE-0.8.2.md), [changelog](../CHANGELOG.md) |
+| Comprendre la version stable et ses contrôles | [Qualification 0.8.6](RELEASE-0.8.6.md), [release 0.8.5](RELEASE-0.8.5.md), [changelog](../CHANGELOG.md) |
 | Classer les logs par client et gérer le nettoyage | [Clients et interface](CLIENTS-BENTO.md) |
 | Identifier les drones | [Numérotation et identité](STOCK-IDENTITY.md) |
 | Comprendre la collecte et ses limites | [Collecte GCS](GCS-COLLECTION.md) |
-| Examiner les évolutions proposées après 0.8.5 | [Suivi des logs](WORKFLOW-IMPROVEMENTS.md) |
+| Utiliser les favoris, la comparaison, les notes et le suivi de sauvegarde | [Suivi des logs en 0.8.6](WORKFLOW-IMPROVEMENTS.md) |
 | Produire un diagnostic local | [Diagnostic](DIAGNOSTICS.md) |
 | Comprendre les données importées, les détails et les rapports | [Contrat d’import](IMPORT-CONTRACT.md) |
 | Construire, tester et proposer une contribution | [Contribution](../CONTRIBUTING.md) |
@@ -37,20 +38,32 @@ Pour installer l’app, commencer par le [README du projet](../README.md#install
 4. Dans **Historique**, filtrer les logs du client choisi : drones, période,
    recherche, familles et niveaux. Les agrégats portent sur tout ce périmètre,
    indépendamment des pages de 200 entrées au maximum. L’attribution à un client peut être
-   modifiée en lot. Dans **Alertes**, personnaliser familles et masquages réversibles.
+   modifiée en lot. Le menu **Favoris → Enregistrer ou gérer les favoris…**
+   conserve les filtres et le client ; les résultats évoluent avec la bibliothèque.
+   Cocher exactement deux logs puis **Comparer…** pour lire les écarts de
+   firmware et de paramètres d’un même contrôleur. Dans **Alertes**, personnaliser
+   familles et masquages réversibles.
 5. Ouvrir un log dans sa fenêtre macOS pour consulter sa synthèse, ses messages,
    sa carte et ses courbes. Jusqu’à quatre courbes partagent un budget total de
    2 048 points au maximum ; les champs absents, lacunes et réductions sont annoncés.
    Activer le **mode avancé** dans les réglages pour accéder au menu **Plus** :
    événements, mesures détaillées, paramètres, topics, couverture et révisions.
+   Dans **Synthèse**, ajouter une note au log ou au drone ; la note du drone est
+   commune à ses logs et se modifie aussi dans le registre **Drones**.
 6. **Stockage** propose sauvegarde analyses/réglages ou complète, restauration
    vérifiée, réassociation des sources par SHA et retrait groupé des sources.
+   La dernière sauvegarde vérifiée indique sa date, sa couverture et les nouveaux
+   logs depuis celle-ci. Le suivi commence en 0.8.6 ; les anciennes archives
+   restent utilisables. Il ne contrôle pas la présence actuelle du fichier et
+   ne compte pas les modifications de notes ou de réglages.
    Dans **Réglages**, **Vider la bibliothèque** et **Réinitialiser KataLog** sont
    deux actions distinctes pour tous les clients, avec confirmation. Les fichiers
    `.ulg` restent sur disque ; [les éléments effacés sont explicités](CLIENTS-BENTO.md#nettoyage).
 7. **Rapports** permet de vérifier le périmètre et les exclusions avant export.
    Les données intégrales sont conservées même si un HTML de plus de 10 Mio
-   doit être remplacé par une synthèse et un manifeste.
+   doit être remplacé par une synthèse et un manifeste. HTML et JSON indiquent
+   les mêmes détails disponibles ou absents. Les notes personnelles sont incluses
+   dans les exports privés et retirées de toutes les pièces du partage.
 
 La collecte utilise une file SQLite durable et importe exactement les fichiers
 reçus, sans créer automatiquement une seconde archive. Les drones ajoutés lors de la collecte
@@ -135,7 +148,9 @@ Voir le [contrat d’import et des détails](IMPORT-CONTRACT.md).
 Depuis **Rapports**, exporter la sélection ou tous les logs du client choisi en
 HTML, puis ouvrir le fichier dans un navigateur. Choisir **Tous les clients**
 avant l’export pour couvrir la bibliothèque entière. **Exporter ce log** utilise la même présentation pour une seule
-fiche. Le rapport est autonome : styles, données et interactions sont embarqués,
+fiche. Le HTML, le JSON et le manifeste décrivent la couverture des détails du
+même export ; une section peut être disponible pour certains logs et absente
+pour d’autres. Le rapport est autonome : styles, données et interactions sont embarqués,
 sans connexion à KataLog, à la GCS ou à un service de graphiques.
 
 - Synthèse bento claire/sombre : identités, fichiers, durée enregistrée,
@@ -178,20 +193,22 @@ filtres du rapport HTML.
    conservent leur attribution. Le cache et l’import évitent les copies inutiles.
 
 La barre **Progression globale** suit le lot courant : octets, fichiers vérifiés,
-attentes et erreurs. Jusqu’à **2 drones distincts** transfèrent leurs logs en
-parallèle, avec **1 fichier à la fois par UUID**. Les fichiers déjà vérifiés sont
+attentes et erreurs. Le réglage permet **1 à 4 drones distincts** en parallèle,
+avec **2 par défaut** et **1 fichier à la fois par UUID**. La progression et le
+débit distinguent les trajets Drone → GCS et GCS → Mac. Les fichiers déjà vérifiés sont
 reconnus lors de l’inventaire et exclus des nouveaux téléchargements.
 Depuis 0.8.1, l’analyse utilise un worker séparé ; un transfert
-vérifié libère son slot réseau immédiatement. Au plus quatre fichiers sont en
-transfert, en analyse ou en attente d’analyse. Les résultats et limites mesurés figurent dans
+vérifié libère son slot réseau immédiatement. La file d’analyse reste bornée. Les résultats et limites mesurés figurent dans
 [la validation des performances](PERFORMANCE-MAP-NAVIGATION.md).
 
 La connexion surveille les nouveaux appareils et se rétablit automatiquement.
 Les réglages et UUID autorisés sont enregistrés dans `gcs-settings.json`, la
 file durable dans `gcs-queue.sqlite` et les observations dans `fleet.json`.
-L’ancien `gcs-collection.json` est migré lors du chargement. Les erreurs transitoires déclenchent au
-maximum **3 tentatives au total**, avec attentes de **5 puis 15 secondes**, prolongées
-si une session distante est encore en attente de fin. Les erreurs permanentes ne
+L’ancien `gcs-collection.json` est migré lors du chargement. Les erreurs réseau
+transitoires de collecte sont réessayées **sans limite par défaut**, ou avec un
+plafond de **3 ou 10 tentatives au total** selon le réglage. L’attente est prolongée
+si une session distante est encore en attente de fin. La lecture manuelle
+**Voir les logs** hors collecte garde trois essais. Les erreurs permanentes ne
 sont pas réessayées automatiquement. **Relancer** reprend les fichiers arrêtés,
 interrompus ou en échec.
 
@@ -207,6 +224,10 @@ rangées par UUID et répertoire distant ; le bouton **Changer** permet un autre
 Ce choix est conservé au redémarrage. Un dossier absent ou inaccessible bloque la
 collecte avec une erreur explicite ; aucun autre dossier n’est choisi silencieusement.
 Les travaux déjà en file gardent leur destination initiale, visible dans la file.
+Avant le réseau et avant la copie HTTP, le collecteur vérifie l’espace disponible
+pour les octets restant à écrire, une marge et les autres transferts actifs.
+Un manque d’espace est signalé ; un cache déjà vérifié reste réutilisable.
+Ce contrôle ne réserve pas le disque contre les écritures d’autres applications.
 Si l’interface web GCS 3.7.2 reste ouverte dans Edge, elle peut elle-même créer une
 copie dans Téléchargements : fermer cet onglet pendant la collecte évite cette
 copie indépendante de KataLog. Voir le [diagnostic](GCS-COLLECTION.md#copies-supplémentaires-dans-téléchargements-gcs-web-372).
@@ -225,7 +246,9 @@ firmware 4.1.5. Voir le [contrat et la recette](GCS-COLLECTION.md).
 
 Bibliothèque de l’app : `~/Library/Application Support/KataLog/` (`library.sqlite`
 et `library.json`). Les numéros et classements locaux sont enregistrés atomiquement
-dans `annotations.json`. **SQLite est l’autorité de lecture** ; le JSON est un export/cache.
+dans `annotations.json`, avec les notes personnelles de logs et de drones.
+Les notes et filtres favoris restent locaux et sont inclus dans les sauvegardes.
+**SQLite est l’autorité de lecture** ; le JSON est un export/cache.
 Les logs déjà commis restent visibles après une annulation, même si le JSON n’a
 pas été réécrit. La table `flight_details` conserve les détails consultés sans
 les ajouter au snapshot global. Les sources sont lues sans modification. La collecte communique
@@ -252,10 +275,16 @@ Références du moteur : [pyulog](https://github.com/PX4/pyulog),
 
 Ces documents conservent la version et le contexte de leur rédaction. Leurs
 états « à faire », « privé » ou « feed désactivé » décrivent cette étape et ne
-remplacent pas l’état actuel de la [release 0.8.2](RELEASE-0.8.2.md).
+remplacent pas le suivi actuel de la [qualification 0.8.6](RELEASE-0.8.6.md)
+ou celui de la [release publique 0.8.5](RELEASE-0.8.5.md).
 
 | Étape | Documents |
 | --- | --- |
+| 0.8.6 | [Qualification](RELEASE-0.8.6.md), [suivi des logs](WORKFLOW-IMPROVEMENTS.md) |
+| 0.8.5 | [Release](RELEASE-0.8.5.md) |
+| 0.8.4 | [Release](RELEASE-0.8.4.md) |
+| 0.8.3 | [Release](RELEASE-0.8.3.md) |
+| 0.8.2 | [Release](RELEASE-0.8.2.md) |
 | 0.8.1 | [Release](RELEASE-0.8.1.md), [mesures carte/navigation](PERFORMANCE-MAP-NAVIGATION.md) |
 | Preview 0.8.1 | [Recette beta 1](RELEASE-0.8.1-BETA.md), [audit UX](UX-AUDIT-0.8.1.md) |
 | 0.8.0 | [Release](RELEASE-0.8.0.md), [validation de la Preview clients](VALIDATION-CLIENTS-BENTO.md) |

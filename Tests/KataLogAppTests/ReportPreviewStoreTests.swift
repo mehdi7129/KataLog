@@ -57,4 +57,53 @@ final class ReportPreviewStoreTests: XCTestCase {
         fixtureShouldFail = false; store.load(request: request, database: placeholder, engine: placeholder); try await settle(store)
         XCTAssertNil(store.error); XCTAssertEqual(store.preview?.totals.logs, 0)
     }
+
+    func testExportRejectsChangedScopeBeforeNextPreviewLoad() async throws {
+        var scope = SelectionScope(); scope.droneKeys = ["ulog:DEMO-A"]
+        let selected = ReportPreviewStore.request(mode: .selection, scope: scope, annotations: .init(),
+            maskedMessageKeys: [], viewRevision: 1, options: .init())
+        let store = ReportPreviewStore { [self] _, _, _ in try page(logs: 1, revision: 7) }
+        store.load(request: selected, database: placeholder, engine: placeholder); try await settle(store)
+        let reviewed = try XCTUnwrap(store.exportPreview(matching: selected))
+
+        let full = ReportPreviewStore.request(mode: .full, scope: scope, annotations: .init(),
+            maskedMessageKeys: [], viewRevision: 1, options: .init())
+        // No suspension or replacement load: the old preview is still ready.
+        XCTAssertFalse(store.isLoading)
+        XCTAssertNotNil(store.preview)
+        XCTAssertNil(store.exportPreview(matching: full))
+        XCTAssertFalse(reviewed.matches(full), "A review captured before the save panel must also reject a changed scope.")
+
+        store.load(request: full, database: placeholder, engine: placeholder)
+        XCTAssertNil(store.exportPreview(matching: full))
+        try await settle(store)
+        let accepted = try XCTUnwrap(store.exportPreview(matching: full))
+        XCTAssertEqual(accepted.request.mode, .full)
+        XCTAssertTrue(accepted.request.query.scope.droneKeys.isEmpty)
+        XCTAssertTrue(accepted.request.query.scope.includeMasked)
+    }
+
+    func testExportRejectsPrivatePreviewImmediatelyWhenSharingIsEnabled() async throws {
+        let privateRequest = ReportPreviewStore.request(mode: .full, scope: .init(), annotations: .init(),
+            maskedMessageKeys: [], viewRevision: 1, options: .init())
+        let store = ReportPreviewStore { [self] _, _, _ in try page(logs: 3, revision: 7) }
+        store.load(request: privateRequest, database: placeholder, engine: placeholder); try await settle(store)
+        let reviewed = try XCTUnwrap(store.exportPreview(matching: privateRequest))
+
+        var shared = privateRequest
+        shared.options = .init(excludePaths: true, excludeIdentity: true, excludeCoordinates: true)
+        // The UI's refresh task has not run yet. No private export may start.
+        XCTAssertFalse(store.isLoading)
+        XCTAssertNil(store.exportPreview(matching: shared))
+        XCTAssertFalse(reviewed.matches(shared))
+
+        store.load(request: shared, database: placeholder, engine: placeholder)
+        XCTAssertNil(store.exportPreview(matching: shared))
+        try await settle(store)
+        let accepted = try XCTUnwrap(store.exportPreview(matching: shared))
+        XCTAssertTrue(accepted.request.options.excludePaths)
+        XCTAssertTrue(accepted.request.options.excludeIdentity)
+        XCTAssertTrue(accepted.request.options.excludeCoordinates)
+        XCTAssertNil(store.exportPreview(matching: privateRequest))
+    }
 }

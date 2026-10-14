@@ -1,29 +1,31 @@
 # Distribution macOS hors App Store
 
-La version **0.8.5 (build 24)** corrige la reconnexion GCS et reprend les
-améliorations de collecte de 0.8.4. Elle conserve l’installation autonome par DMG
-et le flux Sparkle stable signé introduit en 0.7.0. La
-[recette 0.8.5](RELEASE-0.8.5.md) consigne la CI, la distribution, la recette
-native et les téléchargements publics vérifiés, avec une observation de
-métadonnées d’export.
-La release 0.8.4 est publique et immuable, sans activation de son build 23 dans
-le flux. Toute nouvelle publication exige la validation
-de l’historique, des métadonnées GitHub et des assets ; une CI ad hoc ne
-qualifie pas à elle seule une distribution signée et notarisée.
+La version **0.8.6 (build 25)** ajoute favoris, comparaison de deux logs,
+notes personnelles, contrôle d’espace avant collecte, suivi de sauvegarde et
+couverture cohérente des exports. La [recette 0.8.6](RELEASE-0.8.6.md) sépare
+les preuves des sources, du package final et de la publication. La version
+publique disponible pendant cette préparation reste **0.8.5 (build 24)**.
+
+La distribution conserve le DMG autonome et le flux Sparkle stable signé.
+Toute publication exige la validation de l’historique, des métadonnées GitHub
+et des assets ; une CI ad hoc ne qualifie pas à elle seule une distribution
+signée et notarisée. Les releases antérieures et leurs assets restent immuables.
 
 ## Parcours utilisateur
 
 Télécharger le **DMG signé et notarisé**, l’ouvrir, glisser **KataLog.app** dans
 **Applications**, éjecter puis lancer. Aucun Python, Homebrew, Terminal ni App Store
 n’est requis pour utiliser le package. Mac Apple Silicon, macOS 15 minimum.
-La recette native de 0.8.5 a été exécutée sur sa copie du DMG après éjection ;
-une recette sur macOS 27 ne vaut pas recette physique sur toutes les versions de macOS.
+La recette native doit utiliser une copie du DMG après éjection. Ses résultats
+sont propres à la version et à l’OS testés ; une recette locale sur macOS 27
+ne vaut pas recette physique sur toutes les versions de macOS.
 
 ## Préparer et tester
 
 1. Fixer version et build dans `tools/build-app.sh`, `tools/package-smoke.sh` et
-   `project.yml`, puis `xcodegen generate`. Le build 24 de 0.8.5 succède au build
-   23 de la release 0.8.4 ; le flux passe directement du build 22 au build 24.
+   `project.yml`, puis `xcodegen generate`. Le build **25** de 0.8.6 succède au
+   build **24** de 0.8.5. Revérifier le dernier build effectivement servi avant
+   de préparer le nouveau flux.
    Conserver l’identité stable de l’app ; la Preview utilise son identité séparée.
 2. Exécuter les suites Swift, Python et Node du README. `KATALOG_PRIVATE_FIXTURES`
    désigne uniquement le corpus local ; les ULog et résultats privés restent hors Git.
@@ -143,8 +145,11 @@ simulateur GCS localhost avec réutilisation d’un téléchargement vérifié.
 
 Vérifier aussi le lancement après copie puis éjection du DMG, l’import et l’export
 natifs, et la conservation du numéro/dossier après redémarrage avec une bibliothèque
-isolée. Une recette locale sur macOS 27 ne remplace pas un Mac vierge/macOS 15 ou
-un essai radio GCS réel. Calculer SHA256SUMS après toutes les opérations de stapling.
+isolée. Pour 0.8.6, vérifier aussi favoris, comparaison, notes privées/partagées,
+indication des détails absents et suivi de sauvegarde. Qualifier la conservation
+des données depuis 0.8.5 et distinguer un transfert GCS simulé d’un essai Aqua réel.
+Une recette locale sur macOS 27 ne remplace pas un Mac vierge/macOS 15 ou un essai
+radio GCS réel. Calculer SHA256SUMS après toutes les opérations de stapling.
 
 ## Publication séparée
 
@@ -163,14 +168,11 @@ Construire avec `KATALOG_UPDATE_CHANNEL=stable`, l’URL HTTPS publique et la cl
 publique vérifiée sous `updates/stable/public-key.txt`. Garder la clé privée dans
 le Trousseau, compte `katalog-sparkle-stable`. Notariser et agrafer le bundle,
 puis recréer le ZIP final avant toute signature Sparkle ou calcul de checksum.
-Le flux 0.8.5 (build 24) a été préparé avec `tools/update-feed.py prepare` et
-`--previous-build 22`, après vérification du dernier build effectivement servi
-par le flux stable. La release publique 0.8.4 (build 23) n’a jamais été activée
-dans ce flux ; son existence ne change donc pas la transition **22 → 24**.
-Pour chaque release suivante, utiliser le dernier build servi et vérifié,
-**24** après activation publique de 0.8.5.
-Revérifier ce build au moment de publier : il ne doit pas avoir changé entre
-préparation et publication.
+Pour 0.8.6, préparer le build **25** avec `--previous-build 24` seulement
+après vérification du build effectivement servi par le flux stable. Revérifier
+ce build au moment de publier : il ne doit pas avoir changé entre préparation
+et publication. La transition historique 0.8.3 → 0.8.5 était **22 → 24** ;
+la release 0.8.4 (build 23) n’a jamais été activée dans le flux stable.
 Publier d’abord le ZIP et le DMG vérifiés, puis le flux signé sous
 `updates/stable/appcast.xml`. La signature du fichier préparé localement et celle
 du ZIP ne prouvent pas la mise en ligne du feed : après fusion, télécharger le

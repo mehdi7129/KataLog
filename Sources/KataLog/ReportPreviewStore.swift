@@ -7,6 +7,13 @@ struct ReportPreview: Sendable {
     let revision: Int
     let totals: LibraryTotals
     let checkedAt: Date
+
+    func matches(_ currentRequest: ReportExportRequest) -> Bool {
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+        guard let reviewed = try? encoder.encode(request),
+              let current = try? encoder.encode(currentRequest) else { return false }
+        return reviewed == current
+    }
 }
 
 /// This preview reads one log page for its SQL totals. It never parses sources,
@@ -24,6 +31,13 @@ final class ReportPreviewStore: ObservableObject {
     init(loader: @escaping Loader = { request, database, engine in
         try await LibraryQueryService.page(LibraryLogPage.self, request: request, database: database, engine: engine, readOnly: true)
     }) { self.loader = loader }
+
+    /// Configuration can change before SwiftUI starts the next preview task.
+    /// Admit an export only when the completed review matches the current inputs.
+    func exportPreview(matching request: ReportExportRequest) -> ReportPreview? {
+        guard !isLoading, let preview, preview.totals.logs > 0, preview.matches(request) else { return nil }
+        return preview
+    }
 
     static func request(mode: ReportScopeManifest.Mode, scope: SelectionScope, annotations: DroneAnnotationState,
                         maskedMessageKeys: [String], viewRevision: Int, options: ReportExportOptions) -> ReportExportRequest {
