@@ -80,7 +80,7 @@ et ses observations ne sont pas présentés comme ceux du bundle final.
 | Notarisation et tickets, app et DMG | Vérifications réussies sur le package final signé et notarisé |
 | Distribution et moteur autonome | **9/9 contrôles réussis** |
 | Copie du DMG puis éjection | **200 fichiers et liens identiques** au bundle qualifié ; volume éjecté avant lancement |
-| Migration manuelle depuis 0.8.5 | **Réussie sur bibliothèque isolée** : trois logs, six messages, identité et numéro conservés, même client, réglages, annotations et favoris ; ULogs sources inchangés |
+| Migration manuelle depuis 0.8.5 | **Réussie sur bibliothèque isolée** : trois logs, six messages, identité et numéro conservés, même client, réglages et documents d’annotations/vues conservés (aucun favori dans la bibliothèque 0.8.5 de départ) ; ULogs sources inchangés |
 | Exports de la bibliothèque migrée | Trois logs et six messages identiques entre HTML et JSON ; dix catégories de détails absents concordantes ; tailles et empreintes conformes, aucune troncature |
 | Clic rapide après changement du périmètre | **Refus de l’aperçu obsolète observé sur le package final** : après choix de destination, aucun rapport périmé créé ; aperçu complet actualisé ensuite |
 | Relancement du package final | Deux ouvertures pour la migration, puis redémarrage de la recette native : favori final, notes, dernière sauvegarde et réglages de collecte conservés |
