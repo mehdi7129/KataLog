@@ -54,6 +54,8 @@ public struct FlightLog: Codable, Identifiable, Sendable {
     /// Local linkage derived from unique observed metadata, never written into source metadata.
     public var annotationGCSUUID: String? = nil
     public var annotationWarning: String? = nil
+    public var personalNote: PersonalNote? = nil
+    public var droneNote: PersonalNote? = nil
     public var displayName: String { stockNumber.map { "Drone " + $0 } ?? droneName }
     public var annotationKey: String {
         if metadata["gcsIdentityStatus"] != "rejected", let uuid = metadata["gcsUUID"], GCSIdentity.isValid(uuid) { return "gcs:" + uuid.uppercased() }

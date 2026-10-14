@@ -21,7 +21,7 @@ struct DroneRegistryView: View {
     private var entries: [Entry] {
         let byKey = Dictionary(grouping: library.snapshot.logs, by: \.annotationKey)
         let gcsKeys = gcs.allowedUUIDs.map { "gcs:" + $0 }
-        let keys = Set(byKey.keys).union(gcsKeys).union(annotations.state.stockNumbers.keys)
+        let keys = Set(byKey.keys).union(gcsKeys).union(annotations.state.stockNumbers.keys).union(annotations.state.droneNotes.keys)
         return keys.map { key in
             let logs = byKey[key] ?? []
             let uuid = key.hasPrefix("gcs:") ? String(key.dropFirst(4)) : nil
@@ -66,6 +66,7 @@ struct DroneRegistryView: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity, alignment: .leading)
                         Text(row.logs.isEmpty ? "Aucun log" : "\(row.logs.count) logs").font(.callout).foregroundStyle(.secondary)
+                        DroneNoteControl(target: row.logs.first.map(DroneIdentityTarget.init(log:)) ?? DroneIdentityTarget(key: row.id, sourceName: row.sourceName), store: annotations)
                         Button(annotations.state.stockNumbers[row.id] == nil ? "Identifier…" : "Modifier le numéro…") {
                             editing = row.logs.first.map(DroneIdentityTarget.init(log:)) ?? DroneIdentityTarget(key: row.id, sourceName: row.sourceName)
                         }.controlSize(.small).accessibilityIdentifier("registry.identify.\(row.id)")

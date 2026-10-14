@@ -27,6 +27,8 @@ MAX_CONTEXT_BYTES = 16 * 1024 * 1024
 MAX_INLINE_JSON_BYTES = 8 * 1024 * 1024
 MAX_HTML_BYTES = 10 * 1024 * 1024
 PAGE_SIZE = 200
+DETAIL_SECTIONS = ('parameters', 'parameterChanges', 'topicDetails', 'events', 'telemetry',
+                   'metadataDetails', 'parameterDetails', 'dropouts', 'batteryDetails', 'gnssDetails')
 
 
 class ReportCancelled(Exception):
@@ -236,6 +238,17 @@ def _header(db, row, context):
         value['flightSeconds'] = None
     if row['annotation_key'].startswith('gcs:') and value.get('metadata', {}).get('gcsUUID') is None:
         value['annotationGCSUUID'] = row['annotation_key'][4:]
+    annotations = context['query'].get('annotations', {})
+    # Re-project captured annotations; never retain stale notes from cached JSON.
+    for field in ('personalNote', 'droneNote'):
+        value.pop(field, None)
+    log_note = annotations.get('logNotes', {}).get(row['id'])
+    drone_notes = annotations.get('droneNotes', {})
+    drone_note = drone_notes.get(row['annotation_key'])
+    if drone_note is None and row['annotation_key'].startswith('gcs:') and row['uuid_count'] == 1:
+        drone_note = drone_notes.get('ulog:' + value['droneID'])
+    if log_note is not None: value['personalNote'] = log_note
+    if drone_note is not None: value['droneNote'] = drone_note
     paths = {item[0] for item in db.execute('SELECT path FROM sources WHERE log_id=?', (row['id'],))}
     paths.update(value.get('sourcePaths', []))
     value['sourcePaths'] = sorted(paths)
@@ -321,7 +334,7 @@ def prepare_report(capture, destination, cancel=None, progress=None):
                            'includesMaskedMessages': scope['includeMasked'],
                            'completeness': 'partial' if context['options']['includeCachedDetails'] and not shared else 'summary',
                            'availableSections': ['messages'] if shared else ['messages', 'metrics', 'metadata', 'topics', 'sources'],
-                           'unavailableSections': ['rawText', 'metadata', 'parameters', 'events', 'topics', 'telemetry', 'coordinates', 'sourcePaths', 'identity'] if shared else [],
+                           'unavailableSections': ['rawText', 'metadata', 'parameters', 'events', 'topics', 'telemetry', 'coordinates', 'sourcePaths', 'identity', 'personalNotes'] if shared else [],
                            'requestedPrivacy': context['options'],
                            'effectivePrivacy': {'excludePaths': shared, 'excludeIdentity': shared, 'excludeCoordinates': shared,
                                                 'freeTextRemoved': shared, 'unknownMetadataRemoved': shared},
@@ -338,9 +351,9 @@ def prepare_report(capture, destination, cancel=None, progress=None):
         if shared:
             stats = {key: value for key, value in stats.items() if key in ('discovered', 'imported', 'unchanged', 'duplicates', 'failed', 'reanalyzed') and type(value) is int}
         writer.write(b',"importStats":'); writer.value(stats)
-        writer.write(b',"reportManifest":'); writer.value(export_manifest)
         writer.write(b',"logs":[')
         log_count, message_count, detailed_count = 0, 0, 0
+        available_details, unavailable_details, has_notes = set(), set(), False
         _progress(progress, 0, captured['totalLogs'], 'Préparation des données du rapport…')
         valid_logs, seconds, alert_logs, failsafe_logs = 0, 0.0, 0, 0
         flight_seconds, flight_logs = 0.0, 0
@@ -371,6 +384,10 @@ def prepare_report(capture, destination, cancel=None, progress=None):
                                    ((str(Path(path).parent),) for path in source.get('sourcePaths', [])))
                 if any(key in source for key in ('parameters', 'events', 'telemetryFields')): detailed_count += 1
                 header = redaction.header(source, log_count) if redaction else source
+                if not shared:
+                    available_details.update(key for key in DETAIL_SECTIONS if header.get(key) is not None)
+                    unavailable_details.update(key for key in DETAIL_SECTIONS if header.get(key) is None)
+                    has_notes = has_notes or any(header.get(key) is not None for key in ('personalNote', 'droneNote'))
                 if log_count > 1: writer.write(b',')
                 writer.write(b'{')
                 for index, (key, value) in enumerate(header.items()):
@@ -414,7 +431,16 @@ def prepare_report(capture, destination, cancel=None, progress=None):
         for index, row in enumerate(db.execute('SELECT path FROM report_source_folders ORDER BY path')):
             if index: writer.write(b',')
             writer.value(row[0])
-        writer.write(b']}')
+        if not shared:
+            export_manifest['availableSections'] += [key for key in DETAIL_SECTIONS if key in available_details]
+            if has_notes:
+                export_manifest['availableSections'].append('personalNotes')
+            export_manifest['unavailableSections'] = [key for key in DETAIL_SECTIONS if key in unavailable_details]
+            export_manifest['completeness'] = ('detailed' if log_count and not unavailable_details
+                                                else 'partial' if available_details else 'summary')
+        # Streaming determines actual coverage without a second pass or source
+        # reread. JSON key order is immaterial; all formats share this manifest.
+        writer.write(b'],"reportManifest":'); writer.value(export_manifest); writer.write(b'}')
         full_entry = writer.close(); writer = None
         if log_count != captured['totalLogs'] or message_count != captured['totalMessages']:
             raise ValueError('Le rapport ne contient pas toutes les occurrences capturées.')

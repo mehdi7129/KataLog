@@ -98,6 +98,18 @@ final class LibraryViewStore: ObservableObject {
     func removeView(_ id: String) throws {
         var next = state; next.views.removeAll { $0.id == id }; try save(next)
     }
+    func applyView(_ id: String, validClientIDs: Set<String>?) throws {
+        guard let view = state.views.first(where: { $0.id == id }) else {
+            throw AnalysisError.engine("Ce favori n’existe plus. Rechargez les favoris.")
+        }
+        if let clientID = view.scope.clientID, !clientID.isEmpty {
+            guard let validClientIDs else { throw AnalysisError.engine("Attendez le chargement des clients avant d’appliquer ce favori.") }
+            guard validClientIDs.contains(clientID) else {
+                throw AnalysisError.engine("Le client de ce favori n’est plus disponible. Choisissez un client et enregistrez un nouveau favori.")
+            }
+        }
+        try chooseScope(view.scope)
+    }
     func mask(_ keys: [String], masked: Bool) throws {
         var next = state; var selected = Set(next.maskedMessageKeys)
         for key in keys where key.hasPrefix("text-v1:") { if masked { selected.insert(key) } else { selected.remove(key) } }

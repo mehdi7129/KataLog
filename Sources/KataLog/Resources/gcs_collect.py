@@ -17,6 +17,7 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import select
+import shutil
 import signal
 import socket
 import stat
@@ -42,6 +43,9 @@ MAX_INVENTORY_FRAME_BYTES = 256 * 1024
 # four-byte UTF-8, plus record markers, size and separators for every entry.
 MAX_LISTING_BYTES = (MAX_FILES + MAX_DIRECTORIES) * (4 * 1024 + 32)
 HTTP_COPY_MIN_SECONDS = 60
+# Same margin as local archive/backup admission; includes journal and directory
+# updates. This is an estimate, not an OS reservation against other writers.
+DOWNLOAD_SPACE_RESERVE = 16 * 1024 * 1024
 # Darwin's UF_DATALESS is absent from some bundled Python stat modules. Other
 # platforms have no st_flags and therefore never take the cloud-only branch.
 UF_DATALESS = getattr(stat, "UF_DATALESS", 0x40000000)
@@ -74,6 +78,38 @@ class StagingChanged(CollectionError):
 
 class LocalResumeConflict(CollectionError):
     """A file changed outside the collector; preserve it for explicit resolution."""
+
+
+class InsufficientDiskSpace(CollectionError):
+    """Permanent admission/write failure; keep any verified resume prefix."""
+
+
+def is_disk_full(error):
+    return isinstance(error, OSError) and error.errno in (errno.ENOSPC, errno.EDQUOT)
+
+
+def require_download_space(target, expected, *, part=None, resume=None, reserved_bytes=0):
+    """Check the actual destination volume before requesting any remote copy.
+
+    Existing cache entries bypass this check. Only a proven, allocated prefix
+    reduces the estimate for a resumed copy. Other active workers' requirements
+    come from the scheduler; external writers can still fill the disk later.
+    """
+    credit = 0
+    if resume:
+        metadata = require_local_data(part)
+        if not same_file_identity(part, resume) or metadata.st_size < resume["bytes"]:
+            raise LocalResumeConflict("La copie partielle a changé ; fichiers conservés.")
+        # Sparse bytes do not occupy disk space and therefore cannot be credited.
+        allocated = getattr(metadata, "st_blocks", 0) * 512
+        credit = min(resume["bytes"], allocated)
+    required = max(0, expected - credit) + reserved_bytes + DOWNLOAD_SPACE_RESERVE
+    available = shutil.disk_usage(target.parent).free
+    if available < required:
+        raise InsufficientDiskSpace(
+            f"Espace disque insuffisant pour la collecte : environ {required} octets nécessaires, "
+            f"{available} disponibles, transferts en cours inclus. Libérez de l’espace sur le volume "
+            "de destination ou choisissez un autre dossier. Les fichiers existants sont conservés.")
 
 
 def require_local_data(path, metadata=None, *, missing_ok=False):
@@ -1019,11 +1055,13 @@ def request_staging(host, port, identity, remote, expected):
     return staging
 
 
-def download(host, port, http_port, identity, remote, expected, destination):
+def download(host, port, http_port, identity, remote, expected, destination, *, reserved_bytes=0):
     remote = remote_path(remote, file=True)
     expected = file_size(expected)
     if expected < 16:
         raise CollectionError("Fichier vide ou en-tête ULog incomplet.")
+    if type(reserved_bytes) is not int or not 0 <= reserved_bytes <= MAX_LOG_BYTES * MAX_FILES:
+        raise CollectionError("Budget des transferts en cours invalide.")
     target = local_target(destination, identity, remote)
     source = {"host": host.lower(), "port": port, "httpPort": http_port,
               "uuid": identity, "path": remote, "size": expected}
@@ -1046,10 +1084,14 @@ def download(host, port, http_port, identity, remote, expected, destination):
     transaction = {}
     if manifest.exists() or manifest.is_symlink():
         raise CollectionError("Un manifeste sans fichier associé existe déjà ; il est conservé.")
+    require_download_space(target, expected, part=part, resume=resume, reserved_bytes=reserved_bytes)
     verify_remote_size(host, port, identity, remote, expected)
     try:
         while True:
+            require_download_space(target, expected, part=part, resume=resume, reserved_bytes=reserved_bytes)
             staging = resume["staging"] if resume else request_staging(host, port, identity, remote, expected)
+            # FTP may take minutes; recheck before beginning the local HTTP copy.
+            require_download_space(target, expected, part=part, resume=resume, reserved_bytes=reserved_bytes)
             emit("phase", uuid=identity, path=remote, phase="http", bytes=resume.get("bytes", 0), total=expected)
             try:
                 digest = copy_http(host, http_port, staging, part, expected, lambda transferred:
@@ -1107,7 +1149,12 @@ def download(host, port, http_port, identity, remote, expected, destination):
         preserve_cloud_files = True
         raise
     except BaseException as error:
-        preserve_http_resume = bool(resume) and (isinstance(error, (Cancelled, LocalResumeConflict)) or retryable_error(error))
+        preserve_http_resume = bool(resume) and (isinstance(error, (Cancelled, LocalResumeConflict, InsufficientDiskSpace))
+                                                or retryable_error(error) or is_disk_full(error))
+        if is_disk_full(error):
+            raise InsufficientDiskSpace(
+                "Le volume de destination n’a plus assez d’espace pour la collecte. Libérez de l’espace "
+                "puis relancez ce log. Les fichiers existants et la reprise vérifiée sont conservés.") from error
         raise
     finally:
         # Inspect ownership instead of a post-link flag: a signal can arrive
@@ -1188,6 +1235,7 @@ def main(argv=None):
         parser.add_argument("--remote")
         parser.add_argument("--size", type=int)
         parser.add_argument("--destination")
+        parser.add_argument("--reserved-bytes", type=int, default=0)
         args = parser.parse_args(argv)
         host, port = valid_host(args.host), valid_port(args.port)
         if args.command == "discover":
@@ -1202,13 +1250,17 @@ def main(argv=None):
             else:
                 if args.remote is None or args.size is None or not args.destination:
                     raise CollectionError("Le téléchargement exige --remote, --size et --destination.")
-                download(host, port, valid_port(args.http_port), identity, args.remote, args.size, args.destination)
+                download(host, port, valid_port(args.http_port), identity, args.remote, args.size, args.destination,
+                         reserved_bytes=args.reserved_bytes)
         return 0
     except Cancelled as error:
         emit("error", message=str(error), cancelled=True, retryable=False, cancellationRemoteStopped=False)
         return 130
     except (CollectionError, OSError, ValueError, EOFError, http.client.HTTPException) as error:
-        emit("error", message=str(error), retryable=retryable_error(error))
+        message = ("Le volume de destination n’a plus assez d’espace pour la collecte. "
+                   "Libérez de l’espace puis réessayez. Les fichiers existants sont conservés."
+                   if is_disk_full(error) else str(error))
+        emit("error", message=message, retryable=retryable_error(error))
         if isinstance(error, HTTPError):
             error.close()
         return 1

@@ -120,6 +120,7 @@ def link(db, identity, path):
 
 
 def storage_info(database, library, offset=0, limit=200):
+    from backup_history import backup_status
     if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 200:
         raise ValueError('Pagination du stockage invalide.')
     root = Path(library).resolve()
@@ -146,7 +147,9 @@ def storage_info(database, library, offset=0, limit=200):
             sources.append({'logID': row['log_id'], 'path': row['path'], 'sizeBytes': size, 'availability': availability})
         db_bytes = sum(path.stat().st_size for path in root.iterdir() if path.is_file() and not path.is_symlink() and (path.suffix in ('.sqlite', '.sqlite3') or path.name.endswith(('-wal', '-shm'))))
         recoveries = [{'name': path.name, 'sizeBytes': sum(child.stat().st_size for child in path.rglob('*') if child.is_file() and not child.is_symlink())} for path in sorted(root.glob('recovery-*')) if path.is_dir() and not path.is_symlink()]
+        last_backup, backup_error = backup_status(root, db)
         return {'storageVersion': 1, 'checkedAt': checked, 'logCount': log_count, 'sourceCount': source_count,
+                'lastVerifiedBackup': last_backup, 'backupHistoryError': backup_error,
                 'detailCacheCount': cache_count, 'detailCacheBytes': cache_bytes, 'databaseBytes': db_bytes,
                 'analysisRevisionCount': revision_count, 'analysisRevisionBytes': revision_bytes,
                 'analysisRevisionBudgetBytes': analyzer.MAX_REVISION_STORAGE_BYTES,

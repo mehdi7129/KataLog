@@ -13,6 +13,7 @@ Pour installer l’app, commencer par le [README du projet](../README.md#install
 | Classer les logs par client et gérer le nettoyage | [Clients et interface](CLIENTS-BENTO.md) |
 | Identifier les drones | [Numérotation et identité](STOCK-IDENTITY.md) |
 | Comprendre la collecte et ses limites | [Collecte GCS](GCS-COLLECTION.md) |
+| Examiner les évolutions proposées après 0.8.5 | [Suivi des logs](WORKFLOW-IMPROVEMENTS.md) |
 | Produire un diagnostic local | [Diagnostic](DIAGNOSTICS.md) |
 | Comprendre les données importées, les détails et les rapports | [Contrat d’import](IMPORT-CONTRACT.md) |
 | Construire, tester et proposer une contribution | [Contribution](../CONTRIBUTING.md) |

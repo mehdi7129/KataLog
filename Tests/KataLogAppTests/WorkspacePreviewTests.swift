@@ -808,6 +808,55 @@ final class WorkspacePreviewTests: XCTestCase {
         XCTAssertEqual(f.library.historyPage?.totals.familyLogCounts, counts)
     }
 
+    func testFavoritesAndComparisonRenderPopulatedInBothThemes() async throws {
+        let f = try await fixture(count: 4)
+        var scope = SelectionScope(); scope.families = ["GNSS"]; scope.dateFrom = "2026-01-01"
+        try f.library.views.chooseScope(scope); try f.library.views.saveView(name: "Essais GNSS")
+        try f.library.views.chooseScope(.init()); try await settle(f.library)
+        var first = try XCTUnwrap(f.library.snapshot.logs.first)
+        var second = first; second.id = "synthetic-second-log"; second.fileName = "second.ulg"
+        first.metadata["firmware"] = "synthetic-v1"; second.metadata["firmware"] = "synthetic-v2"
+        first.identityProvisional = false; second.identityProvisional = false
+        first.parameterDetails = .object(["schemaVersion": 1, "initial": .array([.object(["name": .string("SYNTHETIC_PARAM"), "type": .string("int"), "value": 1])]), "changes": .array([])])
+        second.parameterDetails = .object(["schemaVersion": 1, "initial": .array([.object(["name": .string("SYNTHETIC_PARAM"), "type": .string("int"), "value": 2])]), "changes": .array([])])
+        let records = [first.id: first, second.id: second]
+        for scheme in [ColorScheme.dark, .light] {
+            let favoriteSize = try await render(LibraryFavoritesView(library: f.library), name: "favorites-\(scheme)-minimum", width: 900, height: 620, scheme: scheme)
+            XCTAssertLessThanOrEqual(favoriteSize.width, 900.5); XCTAssertLessThanOrEqual(favoriteSize.height, 620.5)
+            let store = LogComparisonStore { id in try XCTUnwrap(records[id]) }
+            let comparisonSize = try await render(LogComparisonView(library: f.library, logIDs: [first.id, second.id], store: store), name: "log-comparison-\(scheme)-minimum", width: 900, height: 620, scheme: scheme)
+            XCTAssertLessThanOrEqual(comparisonSize.width, 900.5); XCTAssertLessThanOrEqual(comparisonSize.height, 620.5)
+            XCTAssertNil(store.error); XCTAssertEqual(store.comparison?.differences.count, 1)
+            XCTAssertTrue(store.comparison?.firmwareDiffers == true)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: f.noNetworkMarker.path))
+    }
+
+    func testPersonalNotesAndVerifiedBackupRenderInBothThemes() async throws {
+        let f = try await fixture(count: 4)
+        let log = try XCTUnwrap(f.library.snapshot.logs.first)
+        try f.library.annotations.setLogNote("Essai synthétique après mise à jour.\nParamètres à comparer au précédent essai.", forLogID: log.id)
+        try f.library.annotations.setDroneNote("Antenne remplacée · observation locale.", forKey: log.annotationKey)
+        try await settle(f.library)
+        let result = try await f.library.backup(to: f.root.appendingPathComponent("synthetic-backup.zip"), includeULog: false)
+        XCTAssertNil(result.historyWarning)
+        let storage = LibraryStorageStore(library: f.library)
+        storage.load()
+        let deadline = Date().addingTimeInterval(10)
+        while storage.isLoading, Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertNil(storage.errorMessage)
+        let receipt = try XCTUnwrap(storage.info?.lastVerifiedBackup)
+        XCTAssertEqual(receipt.logCount, 4); XCTAssertEqual(receipt.newLogCount, 0)
+        XCTAssertNotNil(receipt.creationDate)
+        let annotated = f.library.annotations.state.applying(to: log)
+        for scheme in [ColorScheme.dark, .light] {
+            _ = try await render(FlightNotesPanel(log: annotated, store: f.library.annotations).padding(24),
+                                 name: "personal-notes-\(scheme)", width: 900, height: 340, scheme: scheme)
+            _ = try await renderWorkspace(f, page: .storage, name: "verified-backup-\(scheme)", width: 1100, height: 800, scheme: scheme)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: f.noNetworkMarker.path))
+    }
+
     func testMaskPreviewCannotClaimImpactWhenGlobalKeysOrRevisionChanged() async throws {
         let f = try await fixture(count: 4)
         let group = try XCTUnwrap(f.library.groupPage?.groups.first(where: { $0.family == "Batterie" }))

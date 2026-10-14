@@ -1,11 +1,33 @@
 import Foundation
 
+/// Personal context belongs to the local library, never to the ULog source.
+public struct PersonalNote: Codable, Equatable, Sendable {
+    public var text: String
+    public var createdAt: String
+    public var updatedAt: String
+    public init(text: String, createdAt: String, updatedAt: String) {
+        self.text = text; self.createdAt = createdAt; self.updatedAt = updatedAt
+    }
+}
+
 /// Local annotations never replace controller identities or the raw ULog name.
 public struct DroneAnnotationState: Codable, Sendable {
     public var schemaVersion: Int = 1
     public var stockNumbers: [String: String] = [:]
     public var familyOverrides: [String: String] = [:]
+    public var logNotes: [String: PersonalNote] = [:]
+    public var droneNotes: [String: PersonalNote] = [:]
     public init() {}
+
+    private enum CodingKeys: String, CodingKey { case schemaVersion, stockNumbers, familyOverrides, logNotes, droneNotes }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try values.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        stockNumbers = try values.decodeIfPresent([String: String].self, forKey: .stockNumbers) ?? [:]
+        familyOverrides = try values.decodeIfPresent([String: String].self, forKey: .familyOverrides) ?? [:]
+        logNotes = try values.decodeIfPresent([String: PersonalNote].self, forKey: .logNotes) ?? [:]
+        droneNotes = try values.decodeIfPresent([String: PersonalNote].self, forKey: .droneNotes) ?? [:]
+    }
 
     public static func observedGCSLinks(in logs: [FlightLog]) -> [String: Set<String>] {
         var result: [String: Set<String>] = [:]
@@ -42,6 +64,8 @@ public struct DroneAnnotationState: Codable, Sendable {
         let canonical = stockNumbers[result.annotationKey]
         let legacy = stockNumbers["ulog:" + log.droneID]
         result.stockNumber = canonical ?? (canPropagate && observed.count == 1 ? legacy : nil)
+        result.personalNote = logNotes[log.id]
+        result.droneNote = droneNotes[result.annotationKey] ?? (canPropagate && observed.count == 1 ? droneNotes["ulog:" + log.droneID] : nil)
         if canPropagate && observed.count == 1, let canonical, let legacy, canonical != legacy {
             result.annotationWarning = "Numéros locaux en conflit : GCS \(canonical), ULog \(legacy). Le numéro GCS est affiché ; les deux annotations sont conservées jusqu’à modification."
         }
@@ -59,6 +83,27 @@ public struct DroneAnnotationState: Codable, Sendable {
 }
 
 public enum DroneAnnotationValidation {
+    public static let maximumNoteLength = 4_000
+    public static func note(_ value: String?) throws -> String? {
+        guard let value else { return nil }
+        let result = value.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !result.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) && $0 != "\n" && $0 != "\t" }) else {
+            throw DroneAnnotationError.invalid("La note contient un caractère de contrôle invalide.")
+        }
+        guard result.count <= maximumNoteLength, result.utf8.count <= 64 * 1024 else { throw DroneAnnotationError.invalid("La note est limitée à \(maximumNoteLength) caractères.") }
+        return result.isEmpty ? nil : result
+    }
+    public static func isValidLogKey(_ key: String) -> Bool {
+        !key.isEmpty && key.count <= 256 && !key.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+    }
+    public static func validate(_ value: PersonalNote) throws {
+        let formatter = ISO8601DateFormatter()
+        guard try note(value.text) == value.text,
+              let created = formatter.date(from: value.createdAt), let updated = formatter.date(from: value.updatedAt), updated >= created else {
+            throw DroneAnnotationError.invalid("Texte ou dates de note invalides.")
+        }
+    }
     public static func stockNumber(_ value: String?) throws -> String? {
         try normalized(value, maximum: 32, label: "Le numéro")
     }

@@ -1,7 +1,20 @@
 import Foundation
 
 public enum ReportRenderer {
-    public static func json(_ snapshot: FleetSnapshot) throws -> Data {
+    /// Add export metadata alongside the unchanged snapshot schema. Delegating
+    /// its encoding preserves every snapshot field without a JSON object copy.
+    private struct JSONReport: Encodable {
+        let snapshot: FleetSnapshot
+        let manifest: ReportScopeManifest
+        private enum CodingKeys: String, CodingKey { case reportManifest }
+        func encode(to encoder: Encoder) throws {
+            try snapshot.encode(to: encoder)
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(manifest, forKey: .reportManifest)
+        }
+    }
+
+    public static func json(_ snapshot: FleetSnapshot, manifest: ReportScopeManifest? = nil) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         var exported = snapshot
@@ -9,7 +22,7 @@ public enum ReportRenderer {
             exported.logs[index].signalAssessment = snapshot.logs[index].assessment
             exported.logs[index].identityProvisional = snapshot.logs[index].isProvisionalIdentity
         }
-        return try encoder.encode(exported)
+        return try encoder.encode(JSONReport(snapshot: exported, manifest: manifest ?? .describing(snapshot)))
     }
 
     public static func html(_ snapshot: FleetSnapshot) -> String {
@@ -38,12 +51,7 @@ public enum ReportRenderer {
         }
         func number(_ n: Double) -> String { n.isFinite ? String(format: "%.2f", n) : "non disponible" }
         func sectionLabel(_ key: String) -> String {
-            ["messages": "messages", "metrics": "mesures", "metadata": "métadonnées", "topics": "noms des topics", "sources": "sources",
-             "parameters": "paramètres initiaux", "parameterChanges": "changements de paramètres", "topicDetails": "instances et champs des topics",
-             "events": "événements", "telemetry": "séries de mesures",
-             "metadataDetails": "informations et provenance", "parameterDetails": "paramètres typés",
-             "dropouts": "interruptions de journalisation", "batteryDetails": "batteries par instance",
-             "gnssDetails": "GNSS par récepteur"][key] ?? key
+            ReportScopeManifest.sectionLabel(key)
         }
         let exportedAt = manifest.generatedAt.isEmpty ? snapshot.generatedAt : manifest.generatedAt
         let alertMessageCount = snapshot.validLogs.reduce(0) { $0 + $1.messages.filter(\.isAlert).count }
@@ -148,6 +156,11 @@ public enum ReportRenderer {
                 guard let index = logIndices[log.id] else { continue }
                 out.append("<details class=\"log-card\" data-log=\"\(h(log.id))\" id=\"log-\(index)\"><summary><span class=\"log-title\"><strong>\(h(log.fileName))</strong><small>\(h(log.date.isEmpty ? "Date inconnue" : log.date))</small></span><span class=\"log-meta\">\(number(log.durationSeconds / 60)) min enregistrées · <span class=\"visible-message-count\">\(log.messages.count) message\(log.messages.count > 1 ? "s" : "")</span></span><span class=\"log-assessment \(h(log.assessment.tone))\" title=\"\(h(log.assessment.help))\">\(h(log.assessment.label))</span><span class=\"log-status\" title=\"\(h(LibraryHelp.analysisQuality))\">\(h(log.analysisQualityLabel))</span></summary><div class=\"log-body\"><div class=\"detail-grid\"><div class=\"detail-box\"><h3>Identité et provenance</h3><p>Nom source : \(h(log.droneName)). Numéro attribué manuellement : \(h(log.stockNumber ?? "non renseigné")).</p><p>Identité de l’annotation : <code>\(h(log.annotationKey))</code>.</p>")
                 if let warning = log.annotationWarning { out.append("<p class=\"notice\">Identité à vérifier : \(h(warning))</p>") }
+                for (label, note) in [("Note personnelle du log", log.personalNote), ("Note personnelle du drone", log.droneNote)] {
+                    if let note {
+                        out.append("<h4>\(label)</h4><p class=\"raw\">\(h(note.text))</p><p class=\"muted\">Créée le \(h(note.createdAt)) · modifiée le \(h(note.updatedAt))</p>")
+                    }
+                }
                 if log.metadata["gcsUUID"] == nil && log.annotationKey.hasPrefix("gcs:") { out.append("<p class=\"muted\">Lien GCS local établi à partir des autres logs du même contrôleur. Cet UUID n’a pas été observé dans ce fichier ; les métadonnées source sont conservées.</p>") }
                 let identityLabel = manifest.unavailableSections.contains("identity") ? "Identifiant anonymisé" : "SHA256"
                 out.append("<p>\(identityLabel) : <code>\(h(log.id))</code></p><ul class=\"coverage-list mono\">\(items(log.sourcePaths))</ul></div><div class=\"detail-box\"><h3>Contexte de l’enregistrement</h3>\(help("Durées de l’enregistrement", LibraryHelp.flightDuration))<p>Durée enregistrée : \(number(log.durationSeconds)) s. Temps déclaré en vol par le détecteur (landed=false) : \(log.flightSeconds.flatMap { $0.isFinite && $0 >= 0 && log.status != "error" ? number($0) + " s" : nil } ?? "non calculable").</p><p>Date issue de : \(h(log.dateSource)). Failsafe observé : \(log.failsafeObserved ? "oui" : "non repéré").</p><p class=\"muted\">Les durées et mesures portent sur la portion enregistrée.</p></div></div>")

@@ -11,6 +11,7 @@ final class DroneAnnotationStore: ObservableObject {
     private let canWrite: Bool
     var canMutate: () -> Bool = { true }
     private var persisted: Data?
+    var isEditable: Bool { canWrite && canMutate() && !loadFailed }
 
     init(url: URL, canWrite: Bool = true) {
         self.url = url
@@ -31,6 +32,14 @@ final class DroneAnnotationStore: ObservableObject {
             }
             for (key, value) in decoded.familyOverrides {
                 guard !key.isEmpty, try DroneAnnotationValidation.family(value) == value else { throw DroneAnnotationError.invalid("Classement enregistré invalide.") }
+            }
+            for (key, note) in decoded.logNotes {
+                guard DroneAnnotationValidation.isValidLogKey(key) else { throw DroneAnnotationError.invalid("Identité de log invalide.") }
+                try DroneAnnotationValidation.validate(note)
+            }
+            for (key, note) in decoded.droneNotes {
+                guard DroneAnnotationValidation.isValidKey(key) else { throw DroneAnnotationError.invalid("Identité de drone invalide.") }
+                try DroneAnnotationValidation.validate(note)
             }
             state = decoded
             persisted = data; loadFailed = false; errorMessage = nil
@@ -60,20 +69,53 @@ final class DroneAnnotationStore: ObservableObject {
             try save(next)
         } catch { errorMessage = error.localizedDescription; throw error }
     }
+    func setLogNote(_ value: String?, forLogID id: String, now: Date = Date()) throws {
+        do {
+            guard DroneAnnotationValidation.isValidLogKey(id) else { throw DroneAnnotationError.invalid("Identité de log invalide.") }
+            var next = state
+            next.logNotes[id] = try updatedNote(value, previous: state.logNotes[id], now: now)
+            try save(next)
+        } catch { errorMessage = error.localizedDescription; throw error }
+    }
+    func setDroneNote(_ value: String?, forKey key: String, replacingLegacyKey legacy: String? = nil, now: Date = Date()) throws {
+        do {
+            guard DroneAnnotationValidation.isValidKey(key), legacy.map(DroneAnnotationValidation.isValidKey) ?? true else {
+                throw DroneAnnotationError.invalid("Identité de drone invalide.")
+            }
+            var next = state
+            let previous = state.droneNotes[key] ?? legacy.flatMap { state.droneNotes[$0] }
+            next.droneNotes[key] = try updatedNote(value, previous: previous, now: now)
+            if let legacy, legacy != key { next.droneNotes.removeValue(forKey: legacy) }
+            try save(next)
+        } catch { errorMessage = error.localizedDescription; throw error }
+    }
+    private func updatedNote(_ value: String?, previous: PersonalNote?, now: Date) throws -> PersonalNote? {
+        guard let text = try DroneAnnotationValidation.note(value) else { return nil }
+        if previous?.text == text { return previous }
+        let formatter = ISO8601DateFormatter()
+        // A clock correction must not make the update precede its creation.
+        let date = max(now, previous.flatMap { formatter.date(from: $0.updatedAt) } ?? now)
+        let timestamp = formatter.string(from: date)
+        return .init(text: text, createdAt: previous?.createdAt ?? timestamp, updatedAt: timestamp)
+    }
     func reconcileIdentities(in logs: [FlightLog]) {
         guard canWrite, canMutate() else { return }
         var next = state
         let rejected = Set(logs.filter { $0.metadata["gcsIdentityStatus"] == "rejected" }.map(\.droneID))
         for (raw, uuids) in DroneAnnotationState.observedGCSLinks(in: logs) where uuids.count == 1 && !rejected.contains(raw) {
-            guard let uuid = uuids.first, let legacy = next.stockNumbers["ulog:" + raw] else { continue }
+            guard let uuid = uuids.first else { continue }
             let canonical = "gcs:" + uuid
-            if next.stockNumbers[canonical] == nil || next.stockNumbers[canonical] == legacy {
+            if let legacy = next.stockNumbers["ulog:" + raw], next.stockNumbers[canonical] == nil || next.stockNumbers[canonical] == legacy {
                 next.stockNumbers[canonical] = legacy
                 next.stockNumbers.removeValue(forKey: "ulog:" + raw)
             }
+            if let legacy = next.droneNotes["ulog:" + raw], next.droneNotes[canonical] == nil || next.droneNotes[canonical] == legacy {
+                next.droneNotes[canonical] = legacy
+                next.droneNotes.removeValue(forKey: "ulog:" + raw)
+            }
         }
-        guard next.stockNumbers != state.stockNumbers else { return }
-        do { try save(next) } catch { errorMessage = "Migration des numéros non enregistrée : \(error.localizedDescription)" }
+        guard next.stockNumbers != state.stockNumbers || next.droneNotes != state.droneNotes else { return }
+        do { try save(next) } catch { errorMessage = "Migration des annotations non enregistrée : \(error.localizedDescription)" }
     }
     private func save(_ next: DroneAnnotationState) throws {
         guard canWrite, canMutate() else { throw DroneAnnotationError.invalid("La bibliothèque est occupée ou en lecture seule ; attendez la fin de l’opération ou fermez l’autre instance.") }

@@ -494,8 +494,26 @@ def parse_request(request):
     annotations = request.get("annotations", {})
     if not isinstance(annotations, dict) or annotations.get("schemaVersion", 1) != 1:
         raise ValueError("Version d’annotations non prise en charge.")
-    if any(not isinstance(annotations.get(field, {}), dict) for field in ("familyOverrides", "stockNumbers")):
+    if any(not isinstance(annotations.get(field, {}), dict) for field in ("familyOverrides", "stockNumbers", "logNotes", "droneNotes")):
         raise ValueError("Annotations invalides.")
+    for field in ('logNotes', 'droneNotes'):
+        for key, note in annotations.get(field, {}).items():
+            valid_key = isinstance(key, str) and 0 < len(key) <= 256 and not any(unicodedata.category(char) == 'Cc' for char in key)
+            if field == 'droneNotes':
+                valid_key = valid_key and (key.startswith('ulog:') and len(key) > 5 or bool(re.fullmatch(r'gcs:[A-F0-9]{24}', key)))
+            if not valid_key or not isinstance(note, dict):
+                raise ValueError('Identité ou note personnelle invalide.')
+            text = note.get('text')
+            # Swift bounds user-visible graphemes; this transport gate also
+            # bounds bytes without rejecting combining characters as extra letters.
+            if not isinstance(text, str) or not text.strip() or text != text.strip() or len(text.encode('utf-8')) > 64 * 1024 or any(unicodedata.category(char) == 'Cc' and char not in '\n\t' for char in text):
+                raise ValueError('Texte de note personnelle invalide.')
+            try:
+                created, updated = (datetime.fromisoformat(note[name].replace('Z', '+00:00')) for name in ('createdAt', 'updatedAt'))
+                if created.tzinfo is None or updated.tzinfo is None or updated < created:
+                    raise ValueError()
+            except (KeyError, TypeError, ValueError, AttributeError):
+                raise ValueError('Dates de note personnelle invalides.') from None
     masks = string_list(request.get("maskedMessageKeys", []), "maskedMessageKeys")
     group = request.get("groupID")
     if group is not None and (not isinstance(group, str) or not re.fullmatch(r"[a-f0-9]{64}", group)):
@@ -904,7 +922,9 @@ def _query_drones(db, request, scope, annotations, fleet, observation_revision,
     drones = [dict(row) for row in rows]
     keys = {item['id'] for item in drones}
     controller_keys = {'ulog:' + row[0] for row in db.execute('SELECT DISTINCT drone_id FROM kl_logs')}
-    for key, number in annotations.get('stockNumbers', {}).items():
+    annotation_keys = dict.fromkeys([*annotations.get('stockNumbers', {}), *annotations.get('droneNotes', {})])
+    for key in annotation_keys:
+        number = annotations.get('stockNumbers', {}).get(key)
         if scope.get('clientID') is None and key not in keys and key not in controller_keys and (key.startswith('ulog:') and len(key)>5 or re.fullmatch(r'gcs:[A-F0-9]{24}', key)):
             drones.append({'id': key, 'droneID': key[5:] if key.startswith('ulog:') else '',
                 'name': 'Drone sans log', 'stockNumber': number, 'logCount': 0, 'lastDate': '',

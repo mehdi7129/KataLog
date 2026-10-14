@@ -108,6 +108,13 @@ final class ReportExportTests: XCTestCase {
         let manifest = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(contentsOf: destination.appendingPathComponent("manifest.json"))) as? [String: Any])
         XCTAssertEqual((manifest["files"] as? [[String: Any]])?.count, 3)
         XCTAssertEqual(manifest["truncated"] as? Bool, false)
+        let missing = try XCTUnwrap(manifest["unavailableSections"] as? [String])
+        XCTAssertEqual(missing.count, 10)
+        let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(contentsOf: destination.appendingPathComponent("rapport.json"))) as? [String: Any])
+        let embedded = try XCTUnwrap(payload["reportManifest"] as? [String: Any])
+        XCTAssertEqual(embedded["unavailableSections"] as? [String], missing)
+        XCTAssertEqual(embedded["completeness"] as? String, manifest["completeness"] as? String)
+        for key in missing { XCTAssertTrue(html.contains(ReportScopeManifest.sectionLabel(key))) }
         let value = try JSONDecoder().decode(ImportProgress.self, from: Data(contentsOf: progress))
         XCTAssertEqual(value.completed, capture.manifest.totalLogs)
         XCTAssertEqual(value.current, "Rapport publié")
@@ -150,7 +157,9 @@ final class ReportExportTests: XCTestCase {
             let root = try folder(), (database, configuration) = try fixture(root, messageCount: messages)
             let engine = resources.appendingPathComponent("analyzer.py")
             var scope = SelectionScope(); scope.clientID = clientID
-            let request = ReportExportRequest(query: .init(scope: scope), mode: .selection,
+            var annotations = DroneAnnotationState()
+            annotations.droneNotes["ulog:PRIVATE-NEEDLE-42"] = .init(text: "PRIVATE-PERSONAL-NOTE-42", createdAt: "2026-10-14T10:00:00Z", updatedAt: "2026-10-14T11:00:00Z")
+            let request = ReportExportRequest(query: .init(scope: scope, annotations: annotations), mode: .selection,
                 scopeDescription: clientName + " " + clientID,
                 options: .init(excludeIdentity: true, includeCachedDetails: true))
             let capture = try await ReportExportService.capture(database: database, directory: root.appendingPathComponent("capture"),
@@ -163,11 +172,13 @@ final class ReportExportTests: XCTestCase {
                 let text = try String(contentsOf: file, encoding: .utf8)
                 XCTAssertFalse(text.contains(clientName), file.lastPathComponent)
                 XCTAssertFalse(text.contains(clientID), file.lastPathComponent)
+                XCTAssertFalse(text.contains("PRIVATE-PERSONAL-NOTE-42"), file.lastPathComponent)
             }
             let snapshot = try AnalysisService.decode(Data(contentsOf: destination.appendingPathComponent("rapport.json")))
             XCTAssertEqual(snapshot.logs.count, 1)
             XCTAssertNil(snapshot.logs[0].clientID); XCTAssertNil(snapshot.logs[0].clientName)
             XCTAssertNil(snapshot.logs[0].parameterDetails)
+            XCTAssertNil(snapshot.logs[0].droneNote); XCTAssertNil(snapshot.logs[0].personalNote)
         }
     }
 

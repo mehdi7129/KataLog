@@ -4,6 +4,97 @@ import XCTest
 
 @MainActor
 final class DroneAnnotationStoreTests: XCTestCase {
+    func testPersonalNotesPersistWithStableCreationDateAndResetWithoutChangingSources() throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("annotations.json")
+        let original = try JSONEncoder().encode(fixture())
+        let source = root.appendingPathComponent("library.json"); try original.write(to: source)
+        let first = DroneAnnotationStore(url: url)
+        let start = Date(timeIntervalSince1970: 1_780_000_000)
+        try first.setLogNote(" Premier essai\nRésultat à revoir ", forLogID: "log", now: start)
+        try first.setDroneNote("Antenne remplacée", forKey: "ulog:controller", now: start)
+        try first.setLogNote("Résultat vérifié", forLogID: "log", now: start.addingTimeInterval(60))
+        let restored = DroneAnnotationStore(url: url)
+        let note = try XCTUnwrap(restored.state.logNotes["log"])
+        XCTAssertEqual(note.text, "Résultat vérifié")
+        XCTAssertEqual(note.createdAt, ISO8601DateFormatter().string(from: start))
+        XCTAssertEqual(note.updatedAt, ISO8601DateFormatter().string(from: start.addingTimeInterval(60)))
+        XCTAssertEqual(restored.state.droneNotes["ulog:controller"]?.text, "Antenne remplacée")
+        try restored.setLogNote("   ", forLogID: "log")
+        try restored.setDroneNote(nil, forKey: "ulog:controller")
+        XCTAssertTrue(DroneAnnotationStore(url: url).state.logNotes.isEmpty)
+        XCTAssertTrue(DroneAnnotationStore(url: url).state.droneNotes.isEmpty)
+        XCTAssertEqual(try Data(contentsOf: source), original)
+    }
+
+    func testOldAnnotationFilesRemainReadableAndGainNotesWithoutDroppingPreviousAnnotations() throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("annotations.json")
+        try Data(#"{"schemaVersion":1,"stockNumbers":{"ulog:controller":"007"},"familyOverrides":{"legacy":"Essai"}}"#.utf8).write(to: url)
+        let store = DroneAnnotationStore(url: url)
+        XCTAssertNil(store.errorMessage); XCTAssertTrue(store.state.logNotes.isEmpty)
+        try store.setLogNote("Après firmware", forLogID: "log")
+        let reopened = DroneAnnotationStore(url: url)
+        XCTAssertEqual(reopened.state.stockNumbers["ulog:controller"], "007")
+        XCTAssertEqual(reopened.state.familyOverrides["legacy"], "Essai")
+        XCTAssertEqual(reopened.state.logNotes["log"]?.text, "Après firmware")
+    }
+
+    func testNoteWritesRespectReadOnlyMaintenanceAndExternalChanges() throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("annotations.json")
+        let original = DroneAnnotationStore(url: url)
+        try original.setLogNote("Conserver", forLogID: "log")
+        let bytes = try Data(contentsOf: url)
+        let reader = DroneAnnotationStore(url: url, canWrite: false)
+        XCTAssertFalse(reader.isEditable)
+        XCTAssertThrowsError(try reader.setLogNote("Écrasement", forLogID: "log"))
+        original.canMutate = { false }
+        XCTAssertThrowsError(try original.setDroneNote("Occupé", forKey: "ulog:controller"))
+        XCTAssertEqual(try Data(contentsOf: url), bytes)
+        original.canMutate = { true }
+        let other = DroneAnnotationStore(url: url)
+        try other.setLogNote("Autre fenêtre", forLogID: "log")
+        XCTAssertThrowsError(try original.setLogNote("Ancien état", forLogID: "log"))
+        XCTAssertEqual(DroneAnnotationStore(url: url).state.logNotes["log"]?.text, "Autre fenêtre")
+    }
+
+    func testDroneNoteIdentityMigrationPreservesConflictsAndExplicitMergeCannotResurrectLegacy() throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = DroneAnnotationStore(url: root.appendingPathComponent("annotations.json"))
+        var log = try fixture().logs[0]; log.metadata["gcsUUID"] = "100000000000000000000001"
+        try store.setDroneNote("Avant liaison", forKey: "ulog:controller")
+        store.reconcileIdentities(in: [log])
+        XCTAssertNil(store.state.droneNotes["ulog:controller"])
+        XCTAssertEqual(store.state.droneNotes[log.annotationKey]?.text, "Avant liaison")
+        try store.setDroneNote("Autre note", forKey: "ulog:controller")
+        store.reconcileIdentities(in: [log])
+        XCTAssertEqual(store.state.droneNotes["ulog:controller"]?.text, "Autre note")
+        let target = DroneIdentityTarget(log: log)
+        XCTAssertEqual(target.legacyKey, "ulog:controller")
+        try store.setDroneNote("Avant liaison\nAutre note", forKey: target.key, replacingLegacyKey: target.legacyKey)
+        XCTAssertNil(store.state.droneNotes["ulog:controller"])
+        try store.setDroneNote(nil, forKey: target.key, replacingLegacyKey: target.legacyKey)
+        store.reconcileIdentities(in: [log])
+        XCTAssertTrue(store.state.droneNotes.isEmpty)
+    }
+
+    func testInvalidPersistedNoteIsPreservedAndClockCorrectionsDoNotReverseUpdatedDate() throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("annotations.json")
+        let store = DroneAnnotationStore(url: url)
+        let instant = Date(timeIntervalSince1970: 1_780_000_000)
+        try store.setLogNote("A", forLogID: "log", now: instant)
+        try store.setLogNote("B", forLogID: "log", now: instant.addingTimeInterval(-60))
+        XCTAssertEqual(store.state.logNotes["log"]?.updatedAt, ISO8601DateFormatter().string(from: instant))
+        let invalid = Data(#"{"schemaVersion":1,"logNotes":{"log":{"text":"secret","createdAt":"bad","updatedAt":"bad"}}}"#.utf8)
+        try invalid.write(to: url)
+        let broken = DroneAnnotationStore(url: url)
+        XCTAssertNotNil(broken.errorMessage)
+        XCTAssertThrowsError(try broken.setLogNote("Remplacer", forLogID: "log"))
+        XCTAssertEqual(try Data(contentsOf: url), invalid)
+    }
+
     func testNumbersAndFamiliesPersistAndCanBeReset() throws {
         let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("annotations.json")

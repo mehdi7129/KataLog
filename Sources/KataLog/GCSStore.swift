@@ -1491,6 +1491,20 @@ final class GCSStore: ObservableObject {
         updateBusy()
         if retargeted || !jobs.isEmpty { persist() }
     }
+    /// Conservative snapshot for the collector's destination-volume preflight.
+    /// Drone → GCS progress does not free local capacity; only HTTP bytes count.
+    /// Include old jobs targeting another directory: it may share the volume.
+    /// This can overestimate if active jobs actually target different volumes.
+    /// External writers can still consume space after this admission check.
+    nonisolated static func reservedDownloadBytes(for job: GCSTransfer, active: [GCSTransfer]) -> Int64 {
+        active.filter { $0.id != job.id }.reduce(0) { total, other in
+            let size = max(0, other.size)
+            let remaining = size - min(size, max(0, other.completedBytes))
+            let (sum, overflow) = total.addingReportingOverflow(remaining)
+            return overflow ? Int64.max : sum
+        }
+    }
+
     private func download(id: String, script: URL) async {
         guard let index = queueIDIndex[id] else { return }
         let job = queue[index]
@@ -1512,8 +1526,12 @@ final class GCSStore: ObservableObject {
             // retry. Launch, decoding and incomplete-result errors are permanent.
             diagnosticFailure = .transferFailed
             var downloaded = false
+            let reservedBytes = Self.reservedDownloadBytes(for: job, active: transferTasks.keys.compactMap { activeID in
+                queueIDIndex[activeID].map { queue[$0] }
+            })
             let args = ["download", "--host", job.host, "--port", "1999", "--http-port", "8080", "--uuid", job.droneUUID,
-                        "--remote", job.remotePath, "--size", String(job.size), "--destination", job.destination]
+                        "--remote", job.remotePath, "--size", String(job.size), "--destination", job.destination,
+                        "--reserved-bytes", String(reservedBytes)]
             for try await event in GCSProcessService.events(script: script, arguments: args, writerLibrary: library?.storageDirectory) {
                 try Task.checkCancellation()
                 if event.event == "error" { retryable = event.retryable == true; throw AnalysisError.engine(event.message ?? "Échec de la collecte.") }

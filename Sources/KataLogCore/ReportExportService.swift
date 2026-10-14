@@ -218,14 +218,7 @@ public enum ReportExportService {
                 return sum + parameterCount + eventCount + topicFieldCount + telemetryPointCount
             }
             if detailedItems <= 5_000 {
-                var manifest = ReportScopeManifest.describing(snapshot, mode: capture.request.mode,
-                    scopeDescription: summary.scopeDescription, revision: String(prepared.revision),
-                    includesMaskedMessages: capture.request.query.scope.includeMasked)
-                if !prepared.rawDataIncluded {
-                    manifest.availableSections = ["messages"]
-                    manifest.unavailableSections = ["rawText", "metadata", "identity", "coordinates", "sources", "parameterDetails", "batteryDetails", "gnssDetails", "dropouts"]
-                    manifest.completeness = .summary
-                }
+                let manifest = try JSONDecoder().decode(ReportScopeManifest.self, from: JSONEncoder().encode(prepared.manifest))
                 let candidate = ReportRenderer.cancellableHTML(snapshot, manifest: manifest, isCancelled: { cancellation.isCancelled })
                 try cancellation.check()
                 if candidate.utf8.count <= htmlBudget {
@@ -347,12 +340,16 @@ public enum ReportExportService {
         }
         let familyNote = families.count > 200 ? "200 familles affichées sur \(families.count). Toutes les familles et occurrences sont conservées dans le JSON joint." : "Une famille compte une seule fois par log. Les états failsafe sont comptés séparément."
         let privacy = summary.rawDataIncluded ? "Données brutes incluses dans le JSON intégral." : "Synthèse anonymisée · textes et métadonnées brutes retirés de toutes les pièces."
+        let manifest = try JSONDecoder().decode(ReportScopeManifest.self, from: JSONEncoder().encode(prepared.manifest))
+        let coverage = "Sections disponibles : " + manifest.availableSections.map(ReportScopeManifest.sectionLabel).joined(separator: ", ") + "."
+        let missing = manifest.unavailableSections.isEmpty ? "" : "Sections absentes ou non chargées pour certains logs : " + manifest.unavailableSections.map(ReportScopeManifest.sectionLabel).joined(separator: ", ") + "."
         let files = prepared.files.map { "<li><a href=\"\(h($0.name))\" download>\(h($0.name))</a> · \($0.sizeBytes) octets · SHA256 <code>\(h($0.sha256))</code></li>" }.joined()
         return """
         <!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>KataLog · Synthèse du rapport</title><style>\(ReportStyle.css)</style></head><body><main class="report-shell">
         <section class="hero"><div><p class="eyebrow">KATALOG · RAPPORT CAPTURÉ</p><h1>Les traces de votre flotte.</h1><p class="lede">\(h(summary.scopeDescription))</p></div><div class="meta"><span class="pill">Révision \(prepared.revision)</span><p>\(h(summary.generatedAt))</p></div></section>
         <p class="notice">Le rapport dépasse le budget du document interactif. Cette synthèse est accompagnée des données JSON intégrales de la sélection. Aucun log ni message sélectionné n’a été supprimé pour respecter le budget.</p>
         <p class="muted">\(privacy) Les fichiers ULog originaux restent inchangés. Une alerte n’est pas une panne confirmée.</p>
+        <p class="muted" id="export-coverage">\(h(coverage)) \(h(missing))</p>
         <section class="stats"><div class="stat">\(statLabel("Drones scannés", LibraryHelp.drones))<strong>\(scanned)</strong><small>\(provisional)</small></div><div class="stat">\(statLabel("Fichiers ULog", LibraryHelp.analysisQuality))<strong>\(summary.totalLogs)</strong><small>\(summary.validLogs) lisibles</small></div><div class="stat"><span>Messages sélectionnés</span><strong>\(summary.totalMessages)</strong></div><div class="stat">\(statLabel("Durée enregistrée", LibraryHelp.recordedDuration))<strong>\(String(format: "%.2f", summary.recordedSeconds / 60))<em> min</em></strong><small>Inclut les périodes au sol</small></div><div class="stat">\(statLabel("Temps de vol cumulé", LibraryHelp.flightDuration))<strong>\(flightValue)</strong><small>\(flightCoverage)</small></div></section>
         <section class="panel"><p class="eyebrow">PROFIL DES ALERTES TEXTUELLES</p><div class="heading-with-help"><h2 title="\(h(LibraryHelp.profile))">Les familles présentes</h2>\(help("Profil des alertes", LibraryHelp.profile))</div><div class="family-bars">\(rows.isEmpty ? "<p>Aucun message d’alerte textuel affiché. La couverture de chaque log reste dans le JSON joint.</p>" : rows)</div><p class="muted">\(familyNote)</p><p>\(summary.alertLogs) logs avec alertes · \(summary.failsafeLogs) logs avec failsafe dans le périmètre.</p></section>
         <section class="panel" style="margin-top:20px"><p class="eyebrow">DONNÉES ET TRAÇABILITÉ</p><div class="heading-with-help"><h2>Les pièces du rapport</h2>\(help("Sources et pièces du rapport", LibraryHelp.provenance))</div><ul class="coverage-list">\(files)<li><a href="manifest.json" download>Manifeste versionné et empreintes SHA256</a></li></ul><p>\(summary.detailedCachedLogCount) logs possèdent des détails déjà présents dans le cache au moment de la capture. Les sources n’ont pas été ouvertes pour enrichir ce rapport.</p><p class="muted">\(h(LibraryHelp.provenance))</p><p class="muted">Le document fonctionne hors ligne, en mode clair ou sombre et à l’impression. Les chiffres décrivent la sélection capturée.</p></section></main></body></html>

@@ -3,6 +3,17 @@ import Foundation
 import KataLogCore
 
 struct LibraryStorageInfo: Decodable, Sendable {
+    struct VerifiedBackup: Decodable, Sendable {
+        var createdAt: String
+        var verifiedAt: String
+        var archivePath: String
+        var includeUlog: Bool
+        var logCount: Int
+        var archivedLogCount: Int
+        var missingSourceCount: Int
+        var newLogCount: Int
+        var creationDate: Date? { ISO8601DateFormatter().date(from: createdAt) }
+    }
     struct Source: Decodable, Identifiable, Sendable {
         var logID: String
         var path: String
@@ -27,6 +38,8 @@ struct LibraryStorageInfo: Decodable, Sendable {
     var sources: [Source]
     var nextOffset: Int?
     var recoveries: [Recovery]
+    var lastVerifiedBackup: VerifiedBackup? = nil
+    var backupHistoryError: String? = nil
 }
 
 @MainActor
