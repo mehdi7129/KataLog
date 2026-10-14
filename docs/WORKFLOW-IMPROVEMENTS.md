@@ -1,9 +1,11 @@
 # Améliorations du suivi des logs
 
-Évolutions proposées après la **0.8.5**, dans une PR distincte du suivi GCS
-[#41](https://github.com/mehdi7129/KataLog/pull/41). Aucune nouvelle release
-n'est publiée par cette PR. Le fonctionnement de la collecte Aqua en 0.8.5 a
-été confirmé après les mises à jour des firmwares GCS et drone.
+Fonctions de **0.8.6 (build 25)**, intégrées par la
+[PR #42](https://github.com/mehdi7129/KataLog/pull/42). Leur qualification de
+distribution est suivie dans la [recette 0.8.6](RELEASE-0.8.6.md).
+Le suivi GCS de la [PR #41](https://github.com/mehdi7129/KataLog/pull/41) reste
+distinct. Le fonctionnement de la collecte Aqua en 0.8.5 a été confirmé après
+les mises à jour des firmwares GCS et drone.
 
 ## Parcours
 
@@ -36,7 +38,7 @@ n'est publiée par cette PR. Le fonctionnement de la collecte Aqua en 0.8.5 a
   compteur de nouveaux logs ne mesure pas les modifications de notes/réglages.
   Une erreur d'enregistrement du suivi n'annule pas une sauvegarde déjà vérifiée.
 
-## Validation attendue avant intégration
+## Périmètre des contrôles logiciels
 
 - Persistance des favoris, application en lecture seule, client absent ou encore
   en chargement ; comparaison annulée, détails absents et identités distinctes.
@@ -49,5 +51,6 @@ n'est publiée par cette PR. Le fonctionnement de la collecte Aqua en 0.8.5 a
 - Exports : couverture complète, partielle, résumée et vide ; concordance entre
   les pièces ; rendu natif clair et sombre avec des données synthétiques.
 
-Les résultats exécutés sont consignés dans la PR. Ces contrôles locaux ne
-remplacent pas la qualification d'un futur package ni celle d'une flotte réelle.
+Les résultats exécutés sont consignés dans la PR #42. Ils portent sur les
+sources et les fixtures ; les preuves du package 0.8.6, de la mise à jour et des
+transferts exécutés depuis cette app restent distinctes dans sa recette.

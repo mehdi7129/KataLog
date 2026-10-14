@@ -1,12 +1,14 @@
 # Mises à jour de KataLog
 
-Le flux stable versionné propose **KataLog 0.8.5 (build 24)**, publiée le
-**10 octobre 2026**, pour **macOS 15+ sur Apple Silicon**.
+La version **KataLog 0.8.6 (build 25)** est en qualification pour **macOS 15+
+sur Apple Silicon**. Pendant sa préparation, le flux stable versionné propose
+**0.8.5 (build 24)**. L’activation de 0.8.6 attend les archives finales vérifiées.
 
 La release 0.8.4 (build 23) est publique et immuable. Ce build n’a jamais été
-activé dans le flux. La transition préparée est donc **22 → 24**.
-Les résultats de qualification et de publication figurent dans la
-[recette 0.8.5](../docs/RELEASE-0.8.5.md).
+activé dans le flux. La transition de 0.8.5 était donc **22 → 24** ; celle de
+0.8.6 est prévue pour **24 → 25**, après contrôle du build réellement servi.
+Les résultats figurent dans les recettes
+[0.8.6](../docs/RELEASE-0.8.6.md) et [0.8.5](../docs/RELEASE-0.8.5.md).
 
 Depuis KataLog **0.7.0 ou ultérieur**, utiliser
 **Réglages → Mises à jour → Rechercher une mise à jour**. Les versions antérieures
@@ -20,7 +22,8 @@ Voir [installation et migrations](../docs/UPDATING.md).
 - [Copie versionnée de l’appcast](stable/appcast.xml)
 - [Clé publique Ed25519](stable/public-key.txt)
 - [Release 0.8.5 et archives](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.5)
-- [Qualification et publication 0.8.5](../docs/RELEASE-0.8.5.md)
+- [Qualification et publication 0.8.6](../docs/RELEASE-0.8.6.md)
+- [Qualification historique 0.8.5](../docs/RELEASE-0.8.5.md)
 
 Le flux utilise l’archive ZIP de la release ; le DMG sert à l’installation
 manuelle. Aucune clé privée n’est stockée dans le dépôt.
@@ -33,9 +36,9 @@ Publier les archives finales avant le nouveau flux. Les assets d’une release
 publiée restent immuables. Un feed signé ne doit jamais être reformaté ou modifié
 sans être signé à nouveau avec les outils Sparkle.
 
-Le feed 0.8.5 a été préparé avec le build **24** et `--previous-build 22`, après
-contrôle du dernier build effectivement servi. Les signatures du feed local
-et du ZIP téléchargé publiquement sont vérifiées avec l’outil officiel Sparkle.
-L’activation du feed passe par la fusion de sa PR de publication : après fusion,
+Pour 0.8.6, préparer le build **25** avec `--previous-build 24` seulement après
+contrôle du dernier build effectivement servi. Vérifier avec les outils officiels
+Sparkle les signatures du feed local et du ZIP téléchargé publiquement.
+L’activation passe par la fusion de la publication du flux : après fusion,
 contrôler sans authentification les octets et signatures du flux effectivement
 servi. Cette vérification reste distincte des signatures locales et de celle du ZIP.

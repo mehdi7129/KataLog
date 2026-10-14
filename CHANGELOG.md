@@ -7,6 +7,22 @@ Les sections antérieures conservent l’état de leur version au moment de sa l
 Le flux versionné propose le build **24**, préparé depuis le build 22. Les
 archives et le tag de 0.8.4 restent immuables ; son build 23 n’a jamais été activé.
 
+## 0.8.6 — en préparation
+
+- Filtres favoris : enregistrer et retrouver une vue avec son périmètre client.
+- Comparaison de deux logs du même contrôleur : firmware et écarts de paramètres.
+- Notes personnelles datées sur un log ou un drone, conservées localement et
+  dans les sauvegardes ; les rapports partagés les excluent.
+- Vérification de l'espace disque avant la collecte, avec prise en compte des
+  transferts actifs et des copies partielles vérifiées.
+- Dernière sauvegarde vérifiée et nombre de nouveaux logs depuis celle-ci.
+- Indication cohérente des détails disponibles ou absents entre les exports
+  HTML et JSON, y compris les fiches individuelles et relevés de séries.
+
+Version **0.8.6**, build **25**, en cours de qualification. Parseur **1.4.0**,
+projection SQLite **8** et identité stable de l'app conservés. Voir la
+[recette 0.8.6](docs/RELEASE-0.8.6.md).
+
 ## 0.8.5 — 2026-10-10
 
 - Reconnexion GCS demandée pendant la fermeture de l’ancienne connexion conservée,

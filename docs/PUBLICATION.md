@@ -2,13 +2,33 @@
 
 ## État
 
-Le dépôt est **public**. La version stable actuelle est **0.8.3 (build 22)**,
-publiée le **9 octobre 2026**. Voir la [release et sa qualification](RELEASE-0.8.3.md)
-et le [guide utilisateur](README.md).
+Le dépôt est **public**. La version **0.8.6 (build 25)** est en qualification ;
+la version publique disponible pendant cette préparation reste **0.8.5 (build 24)**.
+Voir la [recette 0.8.6](RELEASE-0.8.6.md), la
+[release 0.8.5](RELEASE-0.8.5.md) et le [guide utilisateur](README.md).
 
 Les contrôles de confidentialité couvrent le contenu publié et son historique,
 pas seulement les fichiers de la branche principale. Les rapports détaillés,
 marqueurs privés et preuves opérationnelles restent hors du dépôt.
+
+### Préparation de 0.8.6
+
+La qualification de cette version doit couvrir les sources du tag, les archives
+finales, les métadonnées de release et le flux stable. Les résultats et empreintes
+sont consignés dans [RELEASE-0.8.6.md](RELEASE-0.8.6.md). Les contrôles des
+versions précédentes ne qualifient pas les nouveaux assets.
+
+Les notes personnelles sont des données locales de bibliothèque. Les sauvegardes
+et les exports privés peuvent les contenir ; toutes les pièces des rapports en
+mode partage les excluent. Les tests utilisent des notes et identifiants fictifs.
+Les bibliothèques, captures et preuves opérationnelles restent hors du dépôt.
+
+### Revue de la release du 10 octobre 2026
+
+La qualification 0.8.5 couvre ses sources, ses quatre assets publiés et ses
+signatures. Les archives téléchargées sans authentification correspondent aux
+fichiers qualifiés. Le détail et les limites, dont la vérification distincte du
+flux réellement servi, restent dans [sa recette](RELEASE-0.8.5.md).
 
 ### Revue de la release du 9 octobre 2026
 
@@ -93,24 +113,18 @@ par cet audit avec les permissions API disponibles.
 
 ## Périmètre de la distribution actuelle
 
-Les contrôles de la release **0.8.3** sont consignés dans
-[RELEASE-0.8.3.md](RELEASE-0.8.3.md). Ils portent sur le code qualifié, le commit
-final et ses archives ; les [contrôles 0.8.2](RELEASE-0.8.2.md) restent historiques.
-Les quatre assets ont été téléchargés sans authentification. Le DMG public,
-avec attribut de quarantaine appliqué, conserve ses octets et passe stapler,
-la signature stricte et Gatekeeper (Notarized Developer ID). La signature
-Sparkle du ZIP public est valide.
+Les preuves de la distribution publique **0.8.5** sont consignées dans
+[RELEASE-0.8.5.md](RELEASE-0.8.5.md). Celles du candidat **0.8.6** sont suivies
+séparément dans [RELEASE-0.8.6.md](RELEASE-0.8.6.md), jusqu’à la vérification des
+archives téléchargées anonymement et du flux effectivement servi.
 
-Le XML stable signé 0.8.3 build 22 pointe vers le ZIP final de 20 896 937 octets.
-Les signatures EdDSA du flux et du ZIP sont vérifiées localement avec l’outil
-officiel Sparkle.
-
-Les fonctionnalités clients n’introduisent aucun compte distant : noms de clients,
-attributions et bibliothèques restent locaux. Les fixtures utilisent des noms et
-identifiants fictifs. Les rapports en mode partage excluent noms et identifiants
-de clients ; les exports privés peuvent en contenir et restent hors Git.
-Les captures d’acceptation de l’interface et les preuves détaillées de recette
-ne sont pas ajoutées aux archives publiques.
+Les fonctionnalités clients, favoris et notes n’introduisent aucun compte
+distant : noms, attributions et bibliothèques restent locaux. Les fixtures
+utilisent des noms et identifiants fictifs. Les rapports en mode partage
+excluent noms et identifiants de clients ainsi que les notes personnelles ;
+les exports privés peuvent les contenir et restent hors Git.
+Les captures d’acceptation et les preuves détaillées ne sont pas ajoutées aux
+archives publiques.
 
 ## Ce qui entre dans le dépôt public
 
@@ -186,9 +200,9 @@ fichiers ; voir [GitHub — visibilité](https://docs.github.com/en/repositories
 
 ## Installation utilisateur
 
-La distribution autonome 0.8.3 se fait **hors App Store** : télécharger le DMG, l'ouvrir,
+La distribution autonome se fait **hors App Store** : télécharger le DMG, l'ouvrir,
 glisser KataLog dans Applications, éjecter puis lancer. Le moteur est embarqué.
 Un appcast public signé permet les updates Sparkle sans compte GitHub utilisateur
 à partir de la release 0.7.0. Les versions 0.6.x nécessitent une première installation
 par DMG ; leur flux était désactivé.
-Voir la [recette 0.8.3](RELEASE-0.8.3.md) et la [procédure de release](RELEASING.md).
+Voir la [recette 0.8.6](RELEASE-0.8.6.md) et la [procédure de release](RELEASING.md).
