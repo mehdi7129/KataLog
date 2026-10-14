@@ -18,6 +18,8 @@ archives et le tag de 0.8.4 restent immuables ; son build 23 n’a jamais été 
 - Dernière sauvegarde vérifiée et nombre de nouveaux logs depuis celle-ci.
 - Indication cohérente des détails disponibles ou absents entre les exports
   HTML et JSON, y compris les fiches individuelles et relevés de séries.
+- Génération d’un rapport uniquement après vérification de l’aperçu correspondant
+  au périmètre et aux options de partage actuels, même après un changement rapide.
 
 Version **0.8.6**, build **25**, en cours de qualification. Parseur **1.4.0**,
 projection SQLite **8** et identité stable de l'app conservés. Voir la
