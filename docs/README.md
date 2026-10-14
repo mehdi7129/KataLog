@@ -1,7 +1,6 @@
 # Documentation de KataLog
 
-La version **0.8.6 (build 25)** est en qualification. La version publique
-disponible pendant cette préparation reste **0.8.5 (build 24)**.
+La version stable actuelle est **0.8.6 (build 25)**, publiée le **14 octobre 2026**.
 Pour installer l’app, commencer par le [README du projet](../README.md#installation).
 
 ## Trouver le bon document
@@ -10,7 +9,7 @@ Pour installer l’app, commencer par le [README du projet](../README.md#install
 | --- | --- |
 | Importer, explorer, exporter ou collecter des logs | [Guide utilisateur](#guide-utilisateur) |
 | Installer une mise à jour et comprendre les migrations | [Mises à jour](UPDATING.md) |
-| Comprendre la version stable et ses contrôles | [Qualification 0.8.6](RELEASE-0.8.6.md), [release 0.8.5](RELEASE-0.8.5.md), [changelog](../CHANGELOG.md) |
+| Comprendre la version stable et ses contrôles | [Release 0.8.6](RELEASE-0.8.6.md), [changelog](../CHANGELOG.md) |
 | Classer les logs par client et gérer le nettoyage | [Clients et interface](CLIENTS-BENTO.md) |
 | Identifier les drones | [Numérotation et identité](STOCK-IDENTITY.md) |
 | Comprendre la collecte et ses limites | [Collecte GCS](GCS-COLLECTION.md) |
@@ -275,12 +274,11 @@ Références du moteur : [pyulog](https://github.com/PX4/pyulog),
 
 Ces documents conservent la version et le contexte de leur rédaction. Leurs
 états « à faire », « privé » ou « feed désactivé » décrivent cette étape et ne
-remplacent pas le suivi actuel de la [qualification 0.8.6](RELEASE-0.8.6.md)
-ou celui de la [release publique 0.8.5](RELEASE-0.8.5.md).
+remplacent pas l’état actuel de la [release 0.8.6](RELEASE-0.8.6.md).
 
 | Étape | Documents |
 | --- | --- |
-| 0.8.6 | [Qualification](RELEASE-0.8.6.md), [suivi des logs](WORKFLOW-IMPROVEMENTS.md) |
+| 0.8.6 | [Release](RELEASE-0.8.6.md), [suivi des logs](WORKFLOW-IMPROVEMENTS.md) |
 | 0.8.5 | [Release](RELEASE-0.8.5.md) |
 | 0.8.4 | [Release](RELEASE-0.8.4.md) |
 | 0.8.3 | [Release](RELEASE-0.8.3.md) |

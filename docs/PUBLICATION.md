@@ -2,21 +2,26 @@
 
 ## État
 
-Le dépôt est **public**. La version **0.8.6 (build 25)** est en qualification ;
-la version publique disponible pendant cette préparation reste **0.8.5 (build 24)**.
-Voir la [recette 0.8.6](RELEASE-0.8.6.md), la
-[release 0.8.5](RELEASE-0.8.5.md) et le [guide utilisateur](README.md).
+Le dépôt est **public**. La version stable actuelle est **0.8.6 (build 25)**,
+publiée le **14 octobre 2026**. Voir la [recette 0.8.6](RELEASE-0.8.6.md)
+et le [guide utilisateur](README.md).
 
 Les contrôles de confidentialité couvrent le contenu publié et son historique,
 pas seulement les fichiers de la branche principale. Les rapports détaillés,
 marqueurs privés et preuves opérationnelles restent hors du dépôt.
 
-### Préparation de 0.8.6
+### Revue de la release du 14 octobre 2026
 
-La qualification de cette version doit couvrir les sources du tag, les archives
-finales, les métadonnées de release et le flux stable. Les résultats et empreintes
-sont consignés dans [RELEASE-0.8.6.md](RELEASE-0.8.6.md). Les contrôles des
-versions précédentes ne qualifient pas les nouveaux assets.
+Les **326 fichiers** de l’archive source correspondent au tag, dont l’arbre
+est identique au candidat qualifié et au merge testé par la CI. Les scans
+Gitleaks des sources exportées et des nouveaux commits ne signalent aucun
+secret. Les quatre jobs CI réussissent ; le package Developer ID final passe
+ses neuf contrôles et sa recette native sur macOS 27.0.1.
+Les quatre assets téléchargés sans authentification sont identiques aux
+fichiers qualifiés ; manifeste SHA-256, digests GitHub et tag concordent. Le
+DMG public sous quarantaine passe signature, ticket et Gatekeeper. Les preuves
+sont consignées dans [RELEASE-0.8.6.md](RELEASE-0.8.6.md). La vérification du
+flux canonique après activation reste distincte de sa préparation signée.
 
 Les notes personnelles sont des données locales de bibliothèque. Les sauvegardes
 et les exports privés peuvent les contenir ; toutes les pièces des rapports en
@@ -113,10 +118,11 @@ par cet audit avec les permissions API disponibles.
 
 ## Périmètre de la distribution actuelle
 
-Les preuves de la distribution publique **0.8.5** sont consignées dans
-[RELEASE-0.8.5.md](RELEASE-0.8.5.md). Celles du candidat **0.8.6** sont suivies
-séparément dans [RELEASE-0.8.6.md](RELEASE-0.8.6.md), jusqu’à la vérification des
-archives téléchargées anonymement et du flux effectivement servi.
+Les preuves de la distribution publique **0.8.6** sont consignées dans
+[RELEASE-0.8.6.md](RELEASE-0.8.6.md). Elles portent sur ses sources, son package
+final et ses archives téléchargées anonymement. Le flux signé build 25 est
+préparé ; sa mise en ligne et sa vérification canonique suivent la fusion de
+la PR de publication. Les [preuves 0.8.5](RELEASE-0.8.5.md) restent historiques.
 
 Les fonctionnalités clients, favoris et notes n’introduisent aucun compte
 distant : noms, attributions et bibliothèques restent locaux. Les fixtures

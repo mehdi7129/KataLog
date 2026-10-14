@@ -23,6 +23,8 @@ La version **0.8.6 (build 25)** ajoute les filtres favoris, la comparaison de
 deux logs du même contrôleur, les notes personnelles de logs et de drones, le
 contrôle d’espace avant collecte et le suivi de la dernière sauvegarde vérifiée.
 Les exports HTML et JSON décrivent les mêmes détails disponibles ou absents.
+Un clic rapide sur la génération après un changement d’options ne réutilise
+plus l’ancien aperçu : il doit correspondre à la configuration courante.
 Voir les [parcours et limites](WORKFLOW-IMPROVEMENTS.md).
 
 Depuis 0.8.5, le parseur **1.4.0** et la projection SQLite **8** sont inchangés.
@@ -37,10 +39,15 @@ anciennes archives invalides. Le compteur mesure les nouveaux logs, sans
 compter les modifications de notes/réglages ni vérifier la présence actuelle
 du fichier de sauvegarde.
 
-La [recette 0.8.6](RELEASE-0.8.6.md) suit le package final, la conservation des
-données depuis 0.8.5 et la publication. Pendant sa qualification, la version
-publique disponible reste **0.8.5** ; le flux 0.8.6 ne doit être activé qu’après
-publication et vérification de ses archives finales.
+La [recette 0.8.6](RELEASE-0.8.6.md) consigne le package final et la
+conservation des données depuis 0.8.5, vérifiée par remplacement manuel dans
+une bibliothèque isolée. Ce contrôle ne constitue pas un cycle d’installation
+Sparkle. L’activation du flux build **25** passe par la fusion de sa PR de
+publication, après vérification des archives finales ; le flux effectivement
+servi doit ensuite être contrôlé séparément.
+Le [DMG 0.8.6](https://github.com/mehdi7129/KataLog/releases/download/v0.8.6/KataLog-0.8.6-macOS-arm64.dmg)
+est disponible depuis le **14 octobre 2026** ; les quatre assets téléchargés
+sans authentification correspondent aux fichiers qualifiés.
 
 ## Passage à 0.8.5
 
@@ -67,10 +74,9 @@ n’empêche ni la fermeture du capot ni la mise en veille explicite.
 La [recette 0.8.5](RELEASE-0.8.5.md) consigne la qualification et ses limites.
 Le [DMG 0.8.5](https://github.com/mehdi7129/KataLog/releases/download/v0.8.5/KataLog-0.8.5-macOS-arm64.dmg)
 est disponible ; les quatre assets de la release ont été vérifiés en accès
-anonyme. Le flux stable versionné propose le build **24**, préparé depuis le
-build **22**. Les signatures du flux local et du ZIP public sont vérifiées avec
-l’outil officiel Sparkle. L’activation passe par la fusion de la publication du
-feed ; après fusion, contrôler séparément le flux effectivement servi en HTTPS.
+anonyme. Son flux stable proposait le build **24**, préparé depuis le build
+**22**. Avant la préparation de 0.8.6, le build 24 effectivement servi a été
+revérifié sans authentification. Les preuves historiques restent dans sa recette.
 
 ## Release 0.8.4 conservée
 

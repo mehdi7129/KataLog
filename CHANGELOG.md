@@ -1,13 +1,13 @@
 # Changelog
 
-Version stable actuelle : [0.8.5](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.5),
-build **24**. [Télécharger le DMG](https://github.com/mehdi7129/KataLog/releases/download/v0.8.5/KataLog-0.8.5-macOS-arm64.dmg)
+Version stable actuelle : [0.8.6](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.6),
+build **25**. [Télécharger le DMG](https://github.com/mehdi7129/KataLog/releases/download/v0.8.6/KataLog-0.8.6-macOS-arm64.dmg)
 ou suivre les [instructions de mise à jour](docs/UPDATING.md).
 Les sections antérieures conservent l’état de leur version au moment de sa livraison.
-Le flux versionné propose le build **24**, préparé depuis le build 22. Les
-archives et le tag de 0.8.4 restent immuables ; son build 23 n’a jamais été activé.
+Le flux versionné propose le build **25**, préparé depuis le build 24. Les
+tags et archives déjà publiés restent immuables ; le build 23 n’a jamais été activé.
 
-## 0.8.6 — en préparation
+## 0.8.6 — 2026-10-14
 
 - Filtres favoris : enregistrer et retrouver une vue avec son périmètre client.
 - Comparaison de deux logs du même contrôleur : firmware et écarts de paramètres.
@@ -21,9 +21,11 @@ archives et le tag de 0.8.4 restent immuables ; son build 23 n’a jamais été 
 - Génération d’un rapport uniquement après vérification de l’aperçu correspondant
   au périmètre et aux options de partage actuels, même après un changement rapide.
 
-Version **0.8.6**, build **25**, en cours de qualification. Parseur **1.4.0**,
-projection SQLite **8** et identité stable de l'app conservés. Voir la
-[recette 0.8.6](docs/RELEASE-0.8.6.md).
+Version **0.8.6**, build **25**, publiée sous le tag `v0.8.6` (`05a2cab`).
+CI, distribution signée et notarisée, migration depuis 0.8.5 et recette native
+validées. Les quatre assets ont été téléchargés et vérifiés sans authentification.
+Parseur **1.4.0**, projection SQLite **8** et identité stable de l’app conservés.
+Voir la [recette 0.8.6](docs/RELEASE-0.8.6.md) pour les contrôles et leurs limites.
 
 ## 0.8.5 — 2026-10-10
 
