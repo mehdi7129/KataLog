@@ -19,9 +19,22 @@ review indépendante.
 
 ## Passage à 0.8.8
 
-La version **0.8.8 (build 27)** simplifie les explications des messages et précise le rôle des commandes de show et de LED. Les vérifications et références restent disponibles à la demande. Les codes non décodés sont identifiés clairement.
+La version **0.8.8 (build 27)** simplifie les explications des messages et
+précise le rôle des commandes de show et de LED. Les vérifications courtes
+se déplient, puis les références techniques dans un second volet. Le catalogue
+v3 distingue **209 définitions documentées**, **108 sens déduits** et **5 fiches
+non résolues**. Les codes non décodés restent clairement identifiés.
 
-Depuis la 0.8.7, le parseur **1.4.1** et la projection **8** sont inchangés. Les nouvelles fiches s’appliquent aux messages déjà importés, sans réimport ni migration. La bibliothèque, les notes, les favoris, les clients, les réglages et les fichiers sources sont conservés. La [recette 0.8.8](RELEASE-0.8.8.md) distingue préparation et publication effective.
+Depuis la 0.8.7, le parseur **1.4.1** et la projection **8** sont inchangés.
+Les nouvelles fiches s’appliquent aux messages déjà importés, sans réimport
+ni migration. La bibliothèque, les notes, les favoris, les clients, les réglages
+et les fichiers sources sont conservés. La [recette 0.8.8](RELEASE-0.8.8.md)
+consigne les contrôles et leurs limites.
+
+Télécharger la [dernière version stable](https://github.com/mehdi7129/KataLog/releases/latest)
+ou rechercher une mise à jour depuis l’app. Le flux signé build **27** est
+préparé depuis le build **26** ; après publication et vérification des archives,
+son activation passe par la fusion du flux et le contrôle canonique servi.
 
 ## Passage à 0.8.7
 
@@ -148,7 +161,7 @@ l’arrêt de la lecture des clients avant de remplacer ou modifier la biblioth�
 ## Changements introduits en 0.8.1
 
 Les changements de **0.8.1 (build 20)** sont inclus lors d’une mise à jour directe
-vers 0.8.7. Le [suivi de qualification 0.8.1](RELEASE-0.8.1.md) conserve les
+vers 0.8.8. Le [suivi de qualification 0.8.1](RELEASE-0.8.1.md) conserve les
 résultats de la Preview approuvée et des contrôles de ce package stable.
 
 La bibliothèque stable, les identités, les clients, les réglages et les dossiers
@@ -164,7 +177,7 @@ y compris ceux qui dépassaient l’ancienne limite d’affichage de 80 logs.
 ## Passage depuis une version antérieure à 0.8.0
 
 Les changements introduits en 0.8.0 sont également inclus lors d’une mise à jour
-directe vers 0.8.7. La [recette 0.8.0](RELEASE-0.8.0.md) conserve les résultats
+directe vers 0.8.8. La [recette 0.8.0](RELEASE-0.8.0.md) conserve les résultats
 de cette release.
 
 La mise à jour conserve la bibliothèque stable, les identifications et les dossiers
@@ -246,7 +259,7 @@ de staging doit être créé et vérifié séparément avant activation.
 Configurer un build de staging :
 
 ```bash
-KATALOG_VERSION=0.8.7 KATALOG_BUILD_NUMBER=26 \
+KATALOG_VERSION=0.8.8 KATALOG_BUILD_NUMBER=27 \
 KATALOG_UPDATE_CHANNEL=staging \
 KATALOG_UPDATE_FEED_URL=https://updates.example.org/staging/appcast.xml \
 KATALOG_UPDATE_PUBLIC_KEY='<cle-publique-base64>' \
@@ -260,11 +273,11 @@ Pour relire un brouillon, une archive ZIP existante suffit :
 
 ```bash
 python3 tools/update-feed.py prepare \
-  --archive dist/KataLog-0.8.7-macOS-arm64.zip \
-  --archive-url https://updates.example.org/KataLog-0.8.7-macOS-arm64.zip \
+  --archive dist/KataLog-0.8.8-macOS-arm64.zip \
+  --archive-url https://updates.example.org/KataLog-0.8.8-macOS-arm64.zip \
   --output /private/tmp/katalog-update-draft \
   --release-notes /private/tmp/katalog-release-notes.txt \
-  --channel staging --previous-build 25 --draft
+  --channel staging --previous-build 26 --draft
 ```
 
 Le brouillon est nommé `appcast.draft.xml` et reste non signé. Pour préparer un
@@ -276,7 +289,7 @@ publique et le même canal. Une seed exportée par Sparkle peut être fournie av
 `--ed-key-file` ; sa clé publique est vérifiée avant signature.
 
 Adapter `--previous-build` au dernier build vérifié du canal réellement utilisé.
-Le flux 0.8.7 est préparé pour la transition **25 → 26**, après vérification du
+Le flux 0.8.8 est préparé pour la transition **26 → 27**, après vérification du
 build réellement servi. La transition historique de 0.8.5 était **22 → 24** :
 le build 23 de 0.8.4 n’a pas été servi. L’exemple de staging ne prouve pas
 l’existence d’un serveur de staging ni une mise à jour installée.
