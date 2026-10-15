@@ -1,12 +1,14 @@
 # Changelog
 
-Version stable : [0.8.7](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.7),
-build **26**. [DMG](https://github.com/mehdi7129/KataLog/releases/download/v0.8.7/KataLog-0.8.7-macOS-arm64.dmg)
-et [instructions de mise à jour](docs/UPDATING.md).
+Version stable : **0.8.8**, build **27**.
+[Télécharger KataLog](https://github.com/mehdi7129/KataLog/releases/latest) ·
+[Instructions de mise à jour](docs/UPDATING.md).
 Les sections antérieures conservent l’état de leur version au moment de sa livraison.
-Le flux stable signé sert le build **26** de la 0.8.7. La 0.8.8 et son build **27** sont préparés séparément ci-dessous. Les tags et archives déjà publiés restent immuables.
+Le flux signé build **27** est préparé depuis le build **26**. L’activation
+suit la vérification des archives publiques, la fusion du flux et son contrôle
+canonique. Les tags et archives déjà publiés restent immuables.
 
-## 0.8.8 — en préparation
+## 0.8.8 — 2026-10-15
 
 - Explications des alertes raccourcies et rendues plus concrètes : sens principal, contrôle ciblé, puis références techniques à la demande.
 - Commande 45008 identifiée comme contrôle du show et séparée de la commande 45000 de couleur LED ; résultat `is ok` explicitement non décodé.

@@ -1,6 +1,10 @@
 # Distribution macOS hors App Store
 
-La préparation courante concerne **0.8.8 (build 27)**, depuis le flux stable **0.8.7 (build 26)**. La [recette 0.8.8](RELEASE-0.8.8.md) suit les preuves du candidat, du package signé et notarisé, de la recette native et de la publication. Le flux stable n’est activé qu’après vérification des quatre archives publiques.
+La version **0.8.8 (build 27)** du **15 octobre 2026** enrichit le catalogue
+et simplifie la présentation des explications. La [recette 0.8.8](RELEASE-0.8.8.md)
+consigne les contrôles du candidat, du package final et de la publication.
+Le flux build **27** succède au build **26** : l’activation suit la vérification
+des quatre archives publiques, puis la fusion et le contrôle du flux canonique.
 
 La distribution conserve le DMG autonome et le flux Sparkle stable signé.
 Toute publication exige la validation de l’historique, des métadonnées GitHub

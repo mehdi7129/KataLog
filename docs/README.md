@@ -1,8 +1,8 @@
 # Documentation de KataLog
 
 Télécharger la [dernière version stable](https://github.com/mehdi7129/KataLog/releases/latest).
-La version publiée est **0.8.7 (build 26)** ; les améliorations du catalogue v3
-et de sa présentation sont préparées pour **0.8.8** dans les sources.
+La version **0.8.8 (build 27)** du **15 octobre 2026** enrichit les explications
+des messages avec le catalogue v3 et une présentation plus courte.
 Pour installer l’app, commencer par le [README du projet](../README.md#installation).
 
 ## Trouver le bon document
@@ -104,7 +104,7 @@ options privées distinctes. Cette fonctionnalité est disponible à partir de l
   déduit d’un CSV et deux UUID portant le même numéro ne sont jamais fusionnés.
 - Les noms apparaissent dans l’historique, les filtres, la carte, la collecte et les
   exports. Le nom source et l’identité d’origine restent consultables.
-- Le **catalogue v3 préparé pour 0.8.8** propose **322 fiches** dans l’inspecteur
+- Le **catalogue v3** propose **322 fiches** dans l’inspecteur
   d’un groupe et la fiche de log : **209 définitions documentées**, **108 sens
   déduits du texte** et **5 fiches au sens exact inconnu**. Les codes reconnus
   mais non résolus ne comptent pas comme des messages expliqués.
@@ -114,7 +114,7 @@ options privées distinctes. Cette fonctionnalité est disponible à partir de l
   Les messages bruts, leurs niveaux et les familles personnalisées sont conservés.
   Les nouveaux textes s’appliquent aux messages existants sans réimport.
   Voir le [catalogue et sa méthode](../research/alerts/README.md) et les
-  [améliorations préparées pour 0.8.8](../research/alerts/CLARITY-20261015.md).
+  [améliorations de 0.8.8](../research/alerts/CLARITY-20261015.md).
 - Une alerte ne prouve pas une cause de panne. La traduction des événements
   binaires nécessite le dictionnaire exact du firmware. Sans définition précise,
   le contexte du module ou le sens inconnu reste indiqué explicitement.
@@ -183,7 +183,7 @@ sans connexion à KataLog, à la GCS ou à un service de graphiques.
   conservés dans le fichier, même lorsqu’un filtre les masque.
 - Groupes dépliables avec explications et liens vers les logs ; historique avec
   messages horodatés, mesures, couverture, identité source, chemins et SHA256.
-  La présentation préparée pour 0.8.8 conserve le sens et la confiance visibles,
+  La présentation conserve le sens et la confiance visibles,
   puis sépare les vérifications des références techniques dans deux volets.
 - **Imprimer / PDF** imprime le périmètre filtré, rappelé en tête, et déplie ses
   détails. Réinitialiser les filtres avant d’imprimer pour inclure toute la
@@ -298,7 +298,7 @@ remplacent pas l’état de la
 
 | Étape | Documents |
 | --- | --- |
-| Préparation 0.8.8 | [Clarté des explications](../research/alerts/CLARITY-20261015.md) |
+| 0.8.8 | [Release](RELEASE-0.8.8.md), [clarté des explications](../research/alerts/CLARITY-20261015.md) |
 | 0.8.7 | [Release](RELEASE-0.8.7.md), [catalogue des alertes](../research/alerts/README.md) |
 | 0.8.6 | [Release](RELEASE-0.8.6.md), [suivi des logs](WORKFLOW-IMPROVEMENTS.md) |
 | 0.8.5 | [Release](RELEASE-0.8.5.md) |
