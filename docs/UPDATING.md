@@ -17,6 +17,12 @@ release une première fois par DMG : leurs builds n’activent pas le flux publi
 Ensuite les mises à jour se font depuis l’app. KataLog Preview reste une app de
 review indépendante.
 
+## Passage à 0.8.8
+
+La version **0.8.8 (build 27)** simplifie les explications des messages et précise le rôle des commandes de show et de LED. Les vérifications et références restent disponibles à la demande. Les codes non décodés sont identifiés clairement.
+
+Depuis la 0.8.7, le parseur **1.4.1** et la projection **8** sont inchangés. Les nouvelles fiches s’appliquent aux messages déjà importés, sans réimport ni migration. La bibliothèque, les notes, les favoris, les clients, les réglages et les fichiers sources sont conservés. La [recette 0.8.8](RELEASE-0.8.8.md) distingue préparation et publication effective.
+
 ## Passage à 0.8.7
 
 La version **0.8.7 (build 26)** enrichit les explications des messages : sens,

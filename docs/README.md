@@ -1,6 +1,8 @@
 # Documentation de KataLog
 
-La version stable actuelle est **0.8.6 (build 25)**, publiée le **14 octobre 2026**.
+Télécharger la [dernière version stable](https://github.com/mehdi7129/KataLog/releases/latest).
+La version publiée est **0.8.7 (build 26)** ; les améliorations du catalogue v3
+et de sa présentation sont préparées pour **0.8.8** dans les sources.
 Pour installer l’app, commencer par le [README du projet](../README.md#installation).
 
 ## Trouver le bon document
@@ -9,7 +11,7 @@ Pour installer l’app, commencer par le [README du projet](../README.md#install
 | --- | --- |
 | Importer, explorer, exporter ou collecter des logs | [Guide utilisateur](#guide-utilisateur) |
 | Installer une mise à jour et comprendre les migrations | [Mises à jour](UPDATING.md) |
-| Comprendre la version stable et ses contrôles | [Release 0.8.6](RELEASE-0.8.6.md), [changelog](../CHANGELOG.md) |
+| Comprendre la version stable et ses contrôles | [Dernière release](https://github.com/mehdi7129/KataLog/releases/latest), [changelog](../CHANGELOG.md) |
 | Classer les logs par client et gérer le nettoyage | [Clients et interface](CLIENTS-BENTO.md) |
 | Identifier les drones | [Numérotation et identité](STOCK-IDENTITY.md) |
 | Comprendre la collecte et ses limites | [Collecte GCS](GCS-COLLECTION.md) |
@@ -68,8 +70,14 @@ La collecte utilise une file SQLite durable et importe exactement les fichiers
 reçus, sans créer automatiquement une seconde archive. Les drones ajoutés lors de la collecte
 restent dans le registre, même sans log ni numéro de stock. La comparaison des paramètres conserve
 les valeurs et types ; elle n’attribue pas une cause de panne.
-Le parseur courant est **1.4.0**, avec projection SQLite **8** depuis 0.8.1
-(**7** en 0.8.0). Les anciennes analyses sont conservées et leur recalcul est explicite.
+Le parseur courant est **1.4.1**, avec projection SQLite **8** depuis 0.8.1
+(**7** en 0.8.0). À l’ouverture d’un détail calculé avec le parseur 1.4.0,
+KataLog le renouvelle depuis une source locale accessible dont le SHA-256
+correspond au log. L’ancienne révision est conservée. Si la source est absente
+ou modifiée, le détail précédent reste consultable et signalé comme ancien.
+Les résumés ne sont pas recalculés globalement et aucun réimport n’est nécessaire.
+Si la liste des événements était déjà ouverte, utiliser **Actualiser** après
+avoir ouvert le détail du log.
 
 Le correctif 0.8.2 adapte le nombre de logs d’une page au budget de réponse,
 y compris les informations sur les dossiers sources. Les totaux restent ceux
@@ -96,11 +104,20 @@ options privées distinctes. Cette fonctionnalité est disponible à partir de l
   déduit d’un CSV et deux UUID portant le même numéro ne sont jamais fusionnés.
 - Les noms apparaissent dans l’historique, les filtres, la carte, la collecte et les
   exports. Le nom source et l’identité d’origine restent consultables.
-- L’inspecteur d’un groupe et la fiche proposent quatre explications ciblées :
-  lecture SMBus, perte Wi-Fi, température LED et incohérence des accéléromètres.
-  Wi-Fi/LED incluent des interprétations sans définition constructeur vérifiée.
-  La provenance et l'applicabilité des explications doivent encore être affinées ;
-  les messages inconnus restent affichés sans diagnostic inventé.
+- Le **catalogue v3 préparé pour 0.8.8** propose **322 fiches** dans l’inspecteur
+  d’un groupe et la fiche de log : **209 définitions documentées**, **108 sens
+  déduits du texte** et **5 fiches au sens exact inconnu**. Les codes reconnus
+  mais non résolus ne comptent pas comme des messages expliqués.
+- Le sens court et le niveau de preuve apparaissent en premier. Ouvrir
+  **Vérifications et sources** pour les contrôles et limites, puis
+  **Références techniques** pour les précisions, la provenance et les liens.
+  Les messages bruts, leurs niveaux et les familles personnalisées sont conservés.
+  Les nouveaux textes s’appliquent aux messages existants sans réimport.
+  Voir le [catalogue et sa méthode](../research/alerts/README.md) et les
+  [améliorations préparées pour 0.8.8](../research/alerts/CLARITY-20261015.md).
+- Une alerte ne prouve pas une cause de panne. La traduction des événements
+  binaires nécessite le dictionnaire exact du firmware. Sans définition précise,
+  le contexte du module ou le sens inconnu reste indiqué explicitement.
 - **Classer…** permet d’attribuer une famille existante ou nouvelle à un texte et
   un niveau, dans les logs présents et futurs. **Rétablir la détection** retire
   l’annotation. Le texte original est conservé.
@@ -166,6 +183,8 @@ sans connexion à KataLog, à la GCS ou à un service de graphiques.
   conservés dans le fichier, même lorsqu’un filtre les masque.
 - Groupes dépliables avec explications et liens vers les logs ; historique avec
   messages horodatés, mesures, couverture, identité source, chemins et SHA256.
+  La présentation préparée pour 0.8.8 conserve le sens et la confiance visibles,
+  puis sépare les vérifications des références techniques dans deux volets.
 - **Imprimer / PDF** imprime le périmètre filtré, rappelé en tête, et déplie ses
   détails. Réinitialiser les filtres avant d’imprimer pour inclure toute la
   bibliothèque exportée.
@@ -274,10 +293,13 @@ Références du moteur : [pyulog](https://github.com/PX4/pyulog),
 
 Ces documents conservent la version et le contexte de leur rédaction. Leurs
 états « à faire », « privé » ou « feed désactivé » décrivent cette étape et ne
-remplacent pas l’état actuel de la [release 0.8.6](RELEASE-0.8.6.md).
+remplacent pas l’état de la
+[dernière release stable](https://github.com/mehdi7129/KataLog/releases/latest).
 
 | Étape | Documents |
 | --- | --- |
+| Préparation 0.8.8 | [Clarté des explications](../research/alerts/CLARITY-20261015.md) |
+| 0.8.7 | [Release](RELEASE-0.8.7.md), [catalogue des alertes](../research/alerts/README.md) |
 | 0.8.6 | [Release](RELEASE-0.8.6.md), [suivi des logs](WORKFLOW-IMPROVEMENTS.md) |
 | 0.8.5 | [Release](RELEASE-0.8.5.md) |
 | 0.8.4 | [Release](RELEASE-0.8.4.md) |
