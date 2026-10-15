@@ -2,13 +2,27 @@
 
 ## État
 
-Le dépôt est **public**. La version stable actuelle est **0.8.6 (build 25)**,
-publiée le **14 octobre 2026**. Voir la [recette 0.8.6](RELEASE-0.8.6.md)
-et le [guide utilisateur](README.md).
+Le dépôt est **public**. La version **0.8.7 (build 26)** du **15 octobre 2026** enrichit les explications
+des messages. Voir la [recette 0.8.7](RELEASE-0.8.7.md)
+et le [guide utilisateur](README.md). La publication des assets et la vérification
+du flux effectivement servi sont suivies séparément.
 
 Les contrôles de confidentialité couvrent le contenu publié et son historique,
 pas seulement les fichiers de la branche principale. Les rapports détaillés,
 marqueurs privés et preuves opérationnelles restent hors du dépôt.
+
+### Revue de la release du 15 octobre 2026
+
+Le candidat `1f544cd722d98c67ccf92a75193356e81035b6af` fournit le package
+0.8.7 signé et notarisé, ses neuf contrôles de distribution et sa recette native.
+Le catalogue public contient les fiches et leurs références ; les fixtures
+publiques sont artificielles. Le corpus réel, ses comptages et les captures
+opérationnelles restent hors du dépôt et des archives sources.
+
+La CI du candidat et la vérification publique des quatre assets sont suivies
+dans la [recette 0.8.7](RELEASE-0.8.7.md). Le flux signé build 26 est préparé ;
+sa fusion est conditionnée à la publication et à la vérification des archives. Les octets et
+signatures du flux canonique seront contrôlés après fusion.
 
 ### Revue de la release du 14 octobre 2026
 
@@ -118,11 +132,12 @@ par cet audit avec les permissions API disponibles.
 
 ## Périmètre de la distribution actuelle
 
-Les preuves de la distribution publique **0.8.6** sont consignées dans
-[RELEASE-0.8.6.md](RELEASE-0.8.6.md). Elles portent sur ses sources, son package
-final et ses archives téléchargées anonymement. Le flux signé build 25 est
-préparé ; sa mise en ligne et sa vérification canonique suivent la fusion de
-la PR de publication. Les [preuves 0.8.5](RELEASE-0.8.5.md) restent historiques.
+Les preuves de **0.8.7** sont consignées dans
+[RELEASE-0.8.7.md](RELEASE-0.8.7.md). Elles portent sur le candidat, son package
+final et sa recette native. Les téléchargements publics sont à rapprocher
+des fichiers qualifiés avant fusion du flux signé build **26** ; le flux
+canonique doit ensuite être vérifié séparément. Les preuves de
+[0.8.6](RELEASE-0.8.6.md) et [0.8.5](RELEASE-0.8.5.md) restent historiques.
 
 Les fonctionnalités clients, favoris et notes n’introduisent aucun compte
 distant : noms, attributions et bibliothèques restent locaux. Les fixtures
@@ -211,4 +226,4 @@ glisser KataLog dans Applications, éjecter puis lancer. Le moteur est embarqué
 Un appcast public signé permet les updates Sparkle sans compte GitHub utilisateur
 à partir de la release 0.7.0. Les versions 0.6.x nécessitent une première installation
 par DMG ; leur flux était désactivé.
-Voir la [recette 0.8.6](RELEASE-0.8.6.md) et la [procédure de release](RELEASING.md).
+Voir la [recette 0.8.7](RELEASE-0.8.7.md) et la [procédure de release](RELEASING.md).

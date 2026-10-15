@@ -1,13 +1,14 @@
 # Changelog
 
-Version stable actuelle : [0.8.6](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.6),
-build **25**. [Télécharger le DMG](https://github.com/mehdi7129/KataLog/releases/download/v0.8.6/KataLog-0.8.6-macOS-arm64.dmg)
-ou suivre les [instructions de mise à jour](docs/UPDATING.md).
+Version stable : [0.8.7](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.7),
+build **26**. [DMG](https://github.com/mehdi7129/KataLog/releases/download/v0.8.7/KataLog-0.8.7-macOS-arm64.dmg)
+et [instructions de mise à jour](docs/UPDATING.md).
 Les sections antérieures conservent l’état de leur version au moment de sa livraison.
-Le flux versionné propose le build **25**, préparé depuis le build 24. Les
-tags et archives déjà publiés restent immuables ; le build 23 n’a jamais été activé.
+Le flux signé build **26** est préparé depuis le build 25. Son activation suit
+la publication et la vérification des archives, puis la fusion du flux et son
+contrôle canonique. Les tags et archives déjà publiés restent immuables.
 
-## 0.8.7 — 2026-10-15 (en préparation)
+## 0.8.7 — 2026-10-15
 
 - Catalogue local d’explications porté de 4 à 321 fiches : sens, vérifications,
   limites, provenance et sources. Les définitions documentées et les
@@ -21,8 +22,10 @@ tags et archives déjà publiés restent immuables ; le build 23 n’a jamais é
 - Parseur 1.4.1 : les détails de l’ancienne version sont recalculés à leur
   prochaine ouverture lorsque la source locale vérifiée est disponible.
 
-Version **0.8.7**, build **26**, en qualification. Les explications des messages
-existants s’affichent sans réimport. Les données de bibliothèque, notes,
+Version **0.8.7**, build **26**, package signé et notarisé : neuf contrôles de
+distribution réussis et recette native validée. Les explications des messages
+existants s’affichent sans réimport. Le catalogue distingue **209 définitions
+documentées** et **112 interprétations**. Les données de bibliothèque, notes,
 clients, réglages, ULogs et la projection SQLite **8** sont conservés.
 Voir la [recette 0.8.7](docs/RELEASE-0.8.7.md).
 
