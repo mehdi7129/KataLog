@@ -13,7 +13,7 @@ public enum AnalysisError: LocalizedError {
 }
 
 public enum AnalysisService {
-    public static let parserVersion = "1.4.0"
+    public static let parserVersion = "1.4.1"
     public static func decode(_ data: Data) throws -> FleetSnapshot {
         let snapshot = try JSONDecoder().decode(FleetSnapshot.self, from: data)
         guard snapshot.schemaVersion == 1 else { throw AnalysisError.schema(snapshot.schemaVersion) }

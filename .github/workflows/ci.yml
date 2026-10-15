@@ -35,6 +35,8 @@ jobs:
           python3 -m pip install --only-binary=:all: --require-hashes -r requirements-runtime.txt
       - name: Record synthetic validation conditions
         run: python3 tools/write-ci-context.py --output reports/ci/context.json --fixture synthetic-and-loopback
+      - name: Alert catalogue data and generated source
+        run: python3 tools/generate-alert-catalogue.py --check
       - name: Python synthetic and loopback suites
         shell: bash
         run: python3 tools/run-python-tests.py --summary reports/ci/python-tests.json 2>&1 | tee reports/ci/python-tests.log

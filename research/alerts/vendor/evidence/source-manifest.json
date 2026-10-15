@@ -1,0 +1,22 @@
+[
+  {
+    "title": "IO_Star3_MUE_v1-2.pdf",
+    "sha256": "cec5819536db3dc3f7f23821262b93d5b11cbb2f2c86bf0a17ba63c4ce890597",
+    "sections": {
+      "20": "LED thermal protection",
+      "30": "Wi-Fi and XBee datalink management",
+      "177": "Battery failsafes message table",
+      "178": "Geocage message table",
+      "179": "Tracking failsafe message table"
+    },
+    "availability": "Local manufacturer document, inspected read only. Original and full text not redistributed."
+  },
+  {
+    "title": "IO-Star-3-Changelogs (1).pdf",
+    "sha256": "1bb6965c706866d40736435e2dc63af98e9a2b0504a66532b606b4e19c20daad",
+    "sections": {
+      "1-3": "FMU 3.6.2 through 3.4.14; telemetry and LED protection context"
+    },
+    "availability": "Local manufacturer document, inspected read only. Original and full text not redistributed."
+  }
+]

@@ -1,0 +1,73 @@
+[
+  {
+    "id": "boat-loiter-reset",
+    "title": "Position de maintien redéfinie",
+    "patterns": [
+      "^\\[boat_pos_control\\] Reset loiter position$"
+    ],
+    "meaning": "Le contrôleur de position du bateau annonce une réinitialisation de la position utilisée pour le maintien sur place (loiter).",
+    "checks": [
+      "Comparer avec le mode de navigation et les consignes de position au même instant.",
+      "Vérifier si le bateau s’est déplacé ou si une nouvelle consigne a été envoyée."
+    ],
+    "limits": "Le texte ne précise ni la nouvelle position ni la raison de la réinitialisation. Il ne démontre pas une erreur GPS.",
+    "confidence": "interpretation",
+    "provenance": "Interprétation du texte constructeur · code boat_pos_control non disponible",
+    "referenceFirmware": null,
+    "sources": [],
+    "syntheticExamples": [
+      "[boat_pos_control] Reset loiter position"
+    ]
+  },
+  {
+    "id": "torqeedo-charge-temperature",
+    "title": "Température incompatible avec la charge",
+    "patterns": [
+      "^\\[uavcan:[0-9]+:\\] Torqeedo: err:48 charging temp error$"
+    ],
+    "meaning": "Le périphérique Torqeedo signale explicitement une erreur de température liée à la charge. Le manuel Travel/Ultralight associe également E48 à une température incompatible avec la charge de la batterie.",
+    "checks": [
+      "Identifier le modèle exact de moteur et de batterie, puis consulter son manuel.",
+      "Comparer l’heure du message avec l’état de charge et les températures réellement enregistrées."
+    ],
+    "limits": "Le modèle Torqeedo et le mapping numérique de la passerelle UAVCAN ne sont pas attestés par ce message. Aucun seuil de température ni état de la propulsion ne peut être déduit ici.",
+    "confidence": "interpretation",
+    "provenance": "Texte constructeur explicite · recoupement manuel Torqeedo Travel/Ultralight, section 10.1 ; compatibilité modèle à confirmer",
+    "referenceFirmware": "Passerelle UAVCAN constructeur · version et mapping non attestés",
+    "sources": [
+      {
+        "title": "Torqeedo Travel/Ultralight · manuel officiel, erreurs E48",
+        "url": "https://media.torqeedo.com/downloads/manuals/039-00537%20BA%20Travel%20Ultralight_de_en_fr_it.pdf"
+      }
+    ],
+    "syntheticExamples": [
+      "[uavcan:0:] Torqeedo: err:48 charging temp error"
+    ]
+  },
+  {
+    "id": "torqeedo-unmapped-error",
+    "title": "Code d’erreur Torqeedo à identifier",
+    "patterns": [
+      "^\\[uavcan:[0-9]+:\\] Torqeedo: err:(?:50|54)$"
+    ],
+    "meaning": "Le module UAVCAN relaie un code d’erreur du périphérique Torqeedo indiqué entre crochets. La correspondance des codes 50 et 54 n’a pas pu être établie pour le modèle et la passerelle utilisés.",
+    "checks": [
+      "Relever le code, le modèle moteur/batterie et la version de la passerelle.",
+      "Consulter le manuel de ce modèle ou demander la table de correspondance au constructeur.",
+      "Comparer les messages voisins et la télémétrie du périphérique."
+    ],
+    "limits": "Ne pas appliquer une table d’erreurs d’un autre modèle ou d’une autre marque. Le code seul ne permet pas d’identifier une cause, un seuil ou une pièce défectueuse.",
+    "confidence": "interpretation",
+    "provenance": "Sens du message de passerelle uniquement · correspondance numérique non identifiée dans les sources primaires consultées",
+    "referenceFirmware": "Passerelle UAVCAN constructeur · mapping non attesté",
+    "sources": [
+      {
+        "title": "Torqeedo · manuels officiels par modèle",
+        "url": "https://www.torqeedo.com/us/en-us/service-center/manuals.html"
+      }
+    ],
+    "syntheticExamples": [
+      "[uavcan:0:] Torqeedo: err:50"
+    ]
+  }
+]

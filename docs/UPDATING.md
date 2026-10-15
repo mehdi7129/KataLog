@@ -17,6 +17,23 @@ release une première fois par DMG : leurs builds n’activent pas le flux publi
 Ensuite les mises à jour se font depuis l’app. KataLog Preview reste une app de
 review indépendante.
 
+## Passage à 0.8.7 — en préparation
+
+La version **0.8.7 (build 26)** enrichit les explications des messages : sens,
+contrôles, limites et sources, avec un niveau de preuve propre à chaque fiche.
+Ces explications sont disponibles pour les messages déjà importés, sans réimport.
+
+Le parseur passe de **1.4.0 à 1.4.1** pour renouveler les anciens détails et
+appliquer la correction des dictionnaires d’événements compressés. À la prochaine
+ouverture du détail, KataLog utilise la source locale accessible dont le SHA-256
+correspond au log. Si la source est absente, l’ancien détail est conservé et
+reste signalé comme ancien. La projection SQLite **8**, les analyses précédentes,
+clients, notes, réglages et ULogs sont conservés ; aucun réimport global n’est lancé.
+
+La [recette 0.8.7](RELEASE-0.8.7.md) suit les contrôles de cette version.
+Le flux stable conserve la version publique précédente jusqu’à la fin de
+qualification et la vérification des nouvelles archives.
+
 ## Passage à 0.8.6
 
 La version **0.8.6 (build 25)** ajoute les filtres favoris, la comparaison de

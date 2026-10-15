@@ -1,0 +1,206 @@
+{
+  "firmware": "v1.14.0",
+  "commit": "b8c541dd7277ed735139d7d1bfb829d61fbe29fb",
+  "archive": "https://codeload.github.com/PX4/PX4-Autopilot/tar.gz/refs/tags/v1.14.0",
+  "verifiedSourceFileCount": 49,
+  "entryCount": 208,
+  "patternCount": 275,
+  "files": {
+    "src/modules/ekf2/EKF/gps_control.cpp": {
+      "sha256": "8186286267677a43951cb9de39f06320bec56228d359173dcdc0124e589e8e85",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/ekf2/EKF/gps_control.cpp"
+    },
+    "src/modules/sensors/vehicle_imu/VehicleIMU.cpp": {
+      "sha256": "e83b5c2b7e9e0d04b5ebce0f13779bdb432d68784eafe8dd3a8bbe6d5c8798bb",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/sensors/vehicle_imu/VehicleIMU.cpp"
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/estimatorCheck.cpp": {
+      "sha256": "f344e4ecdfda4f9f9ea03a6ad47d7cc098994260468dfd0af0b62f82b3952bcf",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/HealthAndArmingChecks/checks/estimatorCheck.cpp"
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/failureDetectorCheck.cpp": {
+      "sha256": "f823f2a6898687ac34910c7130e86a61333296557309000c0b74af201bf991ed",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/HealthAndArmingChecks/checks/failureDetectorCheck.cpp"
+    },
+    "src/modules/commander/failure_detector/FailureDetector.cpp": {
+      "sha256": "43c4790de5f5ec657c0c61263bc62a2c07f6841d0f1fc2ed91ea38d4c4f16cde",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/failure_detector/FailureDetector.cpp"
+    },
+    "src/modules/commander/failsafe/framework.cpp": {
+      "sha256": "eb3bc7ecf6b8b82c6f2d8bc2d4f688e1a071bcd43fec7804beb1033557f50f6d",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/failsafe/framework.cpp"
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/sdcardCheck.cpp": {
+      "sha256": "e8e4e487fd98183bf28d7855615834831740a29a5cfad2be772d1177a4761e0a",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/HealthAndArmingChecks/checks/sdcardCheck.cpp"
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/accelerometerCheck.cpp": {
+      "sha256": "1e529b8ad800e3c3b7fa4745ade32e654e2dc54b9a0af3826aa1c08aac3b4182",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/HealthAndArmingChecks/checks/accelerometerCheck.cpp"
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/gyroCheck.cpp": {
+      "sha256": "50d0e063bd65940e259e147c775e3c8d6e79ba5bf00f98e6762aaaccc6ac4617",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/HealthAndArmingChecks/checks/gyroCheck.cpp"
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/magnetometerCheck.cpp": {
+      "sha256": "839f002260c1fa41860e05e6c6e498f65ba14e9d321c85c63fbe585c96ffe2f5",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/HealthAndArmingChecks/checks/magnetometerCheck.cpp"
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/imuConsistencyCheck.cpp": {
+      "sha256": "4cca50f9754279f5e4d6fcb97cf6cc5e8a3c290c39d41b4387c0c5a8a579bad0",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/HealthAndArmingChecks/checks/imuConsistencyCheck.cpp"
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/baroCheck.cpp": {
+      "sha256": "83d0a7b21d772b932324836b15f73d090929e41cc06bd3ea6a653c6034dd935d",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/HealthAndArmingChecks/checks/baroCheck.cpp"
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/distanceSensorChecks.cpp": {
+      "sha256": "5b18e83ce4c2256ed1f1f109de46eec3bcd91f67f4012e3015a28adb3c79ae3f",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/HealthAndArmingChecks/checks/distanceSensorChecks.cpp"
+    },
+    "src/modules/ekf2/EKF/gps_checks.cpp": {
+      "sha256": "f1830788e35fdc363d89b95da3e151546ef6922eb649f3652963f900f4dcdfca",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/ekf2/EKF/gps_checks.cpp"
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/cpuResourceCheck.cpp": {
+      "sha256": "6515120a1f16fac2fc9ccd1a30005cce212860f787bb597cc7d7dabe153a8894",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/HealthAndArmingChecks/checks/cpuResourceCheck.cpp"
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/powerCheck.cpp": {
+      "sha256": "648e7eab6c03e40287b55c696aa90d846790cd0668388b786cfe4483b8e6f0ac",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/HealthAndArmingChecks/checks/powerCheck.cpp"
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/batteryCheck.cpp": {
+      "sha256": "fd235839b233a90774aa33b14e245b6e01e66d8b3b39cb00ee021a1cc439ff29",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/HealthAndArmingChecks/checks/batteryCheck.cpp"
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/escCheck.cpp": {
+      "sha256": "4f7ac39afff3c59fd37f6ad681a57598c31da23b721747457baf6efdf2011344",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/HealthAndArmingChecks/checks/escCheck.cpp"
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/systemCheck.cpp": {
+      "sha256": "de287a823dd453b2c76da8b3d771ec6f8fc05c79339ebe0116cc3cfa8bb9b5ca",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/HealthAndArmingChecks/checks/systemCheck.cpp"
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/manualControlCheck.cpp": {
+      "sha256": "24cf20b227488303faa6c2d13e696ae1867c06465b5e6d93235a854964e50913",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/HealthAndArmingChecks/checks/manualControlCheck.cpp"
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/geofenceCheck.cpp": {
+      "sha256": "4157f209cb70246e6ca987a571f971fe5f87c5bc17857443cc76ce2a6541a793",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/HealthAndArmingChecks/checks/geofenceCheck.cpp"
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/parachuteCheck.cpp": {
+      "sha256": "6b323542d026e74122fae79fb0c789d1aee98a1ba24642fd8137b8a03e960dec",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/HealthAndArmingChecks/checks/parachuteCheck.cpp"
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/rcAndDataLinkCheck.cpp": {
+      "sha256": "b0c26faf7d0b360d71fe75c991591c0a93f230e391a56934cec60d98c4340c39",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/HealthAndArmingChecks/checks/rcAndDataLinkCheck.cpp"
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/flightTimeCheck.cpp": {
+      "sha256": "66dcc55495c1c2cbc458e1ef31800a9b9c5edbbcaa6016ab4fe3fc0a06eb16fe",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/HealthAndArmingChecks/checks/flightTimeCheck.cpp"
+    },
+    "src/modules/ekf2/EKF/mag_control.cpp": {
+      "sha256": "5cc13d1c535113407611fcd2a3ac1d455b0d00f1f860432db115b43c5627acc4",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/ekf2/EKF/mag_control.cpp"
+    },
+    "src/modules/ekf2/EKF/ekf_helper.cpp": {
+      "sha256": "f5d3ba2ed2cdfaea497104d4553922b2c87f3c0ea4f032903be5b4037b2e4790",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/ekf2/EKF/ekf_helper.cpp"
+    },
+    "src/modules/ekf2/EKF/height_control.cpp": {
+      "sha256": "6785186b2145ffd01d35226fdee30578581efb4507037ebdd8ba4dcc94fe4318",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/ekf2/EKF/height_control.cpp"
+    },
+    "src/modules/ekf2/EKF/fake_pos_control.cpp": {
+      "sha256": "d12b2bc047542399e021948b3406fd18308040ca53daa0a508c817f2413d3353",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/ekf2/EKF/fake_pos_control.cpp"
+    },
+    "src/modules/ekf2/EKF/fake_height_control.cpp": {
+      "sha256": "2bad4312fe79b42bc0a922188faed95078f5c386d0e522ea0974ed72bb2dd1aa",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/ekf2/EKF/fake_height_control.cpp"
+    },
+    "src/modules/ekf2/EKF/ev_control.cpp": {
+      "sha256": "c1f66e7c8099fe41f82ee366353e457ffcbec583931ae66c352b498bf7123032",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/ekf2/EKF/ev_control.cpp"
+    },
+    "src/modules/ekf2/EKF/optical_flow_control.cpp": {
+      "sha256": "1d747b632db361fe5f78dc826965e62e13d3902390261fa7c2ec1ed3ead68fd9",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/ekf2/EKF/optical_flow_control.cpp"
+    },
+    "src/modules/ekf2/EKF/airspeed_fusion.cpp": {
+      "sha256": "e0fcc1353ec7db144b7b0fe7ae68e1e560d68601cde7e3cfe888281ded8e78a7",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/ekf2/EKF/airspeed_fusion.cpp"
+    },
+    "src/modules/ekf2/EKF/baro_height_control.cpp": {
+      "sha256": "7c0c21c27143ffec9cc5aeb50117ba61ff2364829a48539e88078bbe5a82d7c1",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/ekf2/EKF/baro_height_control.cpp"
+    },
+    "src/modules/ekf2/EKF/gnss_height_control.cpp": {
+      "sha256": "654c4c1fd6a613263a08e0436c20c46628721acf444bf30f68340cc8ccadd481",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/ekf2/EKF/gnss_height_control.cpp"
+    },
+    "src/modules/ekf2/EKF/range_height_control.cpp": {
+      "sha256": "56b8e380c2cce5a7a7ee82c493b38c2b05c9ee5d6bf0e13efad8331814f27d97",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/ekf2/EKF/range_height_control.cpp"
+    },
+    "src/modules/commander/Commander.cpp": {
+      "sha256": "db2285a42d4fe4db16a903df0f3ddccaf6a22228562cd226e8a1bcb70377aaa1",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/Commander.cpp"
+    },
+    "src/modules/navigator/rtl.cpp": {
+      "sha256": "0fa26d838806cf83c836e64f2b5ee83adf5b16c590fee75e846a25b79d5a3126",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/navigator/rtl.cpp"
+    },
+    "src/modules/logger/log_writer_file.cpp": {
+      "sha256": "7dcad943d26759447de844b5f304df861a3056542666eef2997e653d84ec2b89",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/logger/log_writer_file.cpp"
+    },
+    "src/modules/logger/logger.cpp": {
+      "sha256": "282f733b1632a94472e5a3fe32123cada0d604276b374789a2b1444eda5808bc",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/logger/logger.cpp"
+    },
+    "src/modules/ekf2/EKF2Selector.cpp": {
+      "sha256": "74dc3b06255cec46e08be0603c41af538163db974f938f9e72d010b0d9e26a8f",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/ekf2/EKF2Selector.cpp"
+    },
+    "src/modules/navigator/navigator_main.cpp": {
+      "sha256": "565225b0170f18575b0e5dfc63f96c48e3461db554eec5b602debff547b5d930",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/navigator/navigator_main.cpp"
+    },
+    "src/modules/navigator/takeoff.cpp": {
+      "sha256": "561c648c9a4bcbaa5e4e4bfb0a255239329cf6c3aba8d2bd9abf0da74d3b57d6",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/navigator/takeoff.cpp"
+    },
+    "src/modules/navigator/precland.cpp": {
+      "sha256": "1a038829ca9816e80fa3ac0d7c3596f92669f25e1bd0092d75f8725802b2dc36",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/navigator/precland.cpp"
+    },
+    "src/modules/commander/failsafe/framework.h": {
+      "sha256": "70df6f58680d75408af631b3d7fab8b7733e0cd4109f57892239292907fc8215",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/commander/failsafe/framework.h"
+    },
+    "src/modules/load_mon/LoadMon.cpp": {
+      "sha256": "c8a6e79fc92e974f517c5e0f341da336794fdae43869fdd86fcfc14fb3e90c84",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/modules/load_mon/LoadMon.cpp"
+    },
+    "src/lib/mixer_module/mixer_module.cpp": {
+      "sha256": "0a1e86e59a6515ff78d44f6880a82d62d9e08efdc933ef5469e7958d636ab372",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/lib/mixer_module/mixer_module.cpp"
+    },
+    "src/drivers/gps/gps.cpp": {
+      "sha256": "dd6007c40a301af5c37c91a1d3a4f8b283fd266d4394d54d3ed3749bd381088b",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/src/drivers/gps/gps.cpp"
+    },
+    "msg/SensorGps.msg": {
+      "sha256": "e933f874683b395f99551f024df3cb4fa1dcf0c74785eda720743db60cb67497",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/msg/SensorGps.msg"
+    },
+    "msg/GpsInjectData.msg": {
+      "sha256": "7b151f2d22056117c9dfe5e3c75b6f0cbc0434344aed4d6ab540e9ac43b6d347",
+      "url": "https://raw.githubusercontent.com/PX4/PX4-Autopilot/b8c541dd7277ed735139d7d1bfb829d61fbe29fb/msg/GpsInjectData.msg"
+    }
+  }
+}

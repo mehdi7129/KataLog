@@ -78,6 +78,20 @@ Pour collecter directement sur une GCS, ouvrir **Collecte GCS**, renseigner son
 adresse, se connecter et choisir **Tout collecter**. Le client destinataire et
 le dossier de copie sont explicites. Voir le [guide de collecte](docs/README.md#collecter-depuis-une-gcs).
 
+## Version 0.8.7 en préparation
+
+Le catalogue d’explications passe de quatre à **321 fiches**, avec sens du
+message, vérifications, limites et sources. Chaque fiche distingue une
+**définition documentée** d’une **interprétation du texte**. Le contexte d’un
+module reste disponible lorsqu’une définition précise manque. Les messages,
+leurs niveaux et leur classement restent conservés.
+
+La lecture des dictionnaires d’événements compressés est corrigée. Les
+explications des messages existants ne nécessitent aucun réimport ; les
+anciens détails sont renouvelés à l’ouverture depuis une source locale vérifiée.
+[Recherche et méthode](research/alerts/README.md) ·
+[Qualification 0.8.7](docs/RELEASE-0.8.7.md).
+
 ## Nouveautés de 0.8.6
 
 - **Filtres favoris** : enregistrer une sélection de client, drones, dates et

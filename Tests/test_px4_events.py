@@ -111,6 +111,25 @@ class EventTests(unittest.TestCase):
         log = ulog(); log.msg_info_multiple_dict['metadata_events'].append([b'other'])
         self.assertEqual(events.extract_events(log, 10)['dictionary']['status'], 'invalid')
 
+    def test_64_mib_xz_dictionary_allows_decoder_overhead_and_translates(self):
+        # Public synthetic definitions only: a small JSON may still advertise
+        # a 64 MiB LZMA2 dictionary, as firmware-built XZ artifacts can do.
+        definitions = definition()
+        payload = lzma.compress(json.dumps(definitions).encode(), filters=[
+            {'id': lzma.FILTER_LZMA2, 'dict_size': 64 * 1024 * 1024},
+        ])
+        with self.assertRaisesRegex(lzma.LZMAError, 'Memory usage limit exceeded'):
+            legacy = lzma.LZMADecompressor(memlimit=64 * 1024 * 1024)
+            legacy.decompress(payload)
+        self.assertEqual(events._definitions(payload), definitions)
+        log = ulog()
+        log.msg_info_multiple_dict = {'metadata_events': [[payload]]}
+        log.msg_info_dict['metadata_events_sha256'] = hashlib.sha256(payload).hexdigest()
+        result = events.extract_events(log, 10)
+        self.assertEqual(result['dictionary']['status'], 'ready')
+        self.assertEqual(result['events'][0]['translationStatus'], 'translated')
+        self.assertEqual(result['events'][0]['message'], 'Voltage 12.50 state ready')
+
     def test_malformed_arguments_do_not_invent_padding_or_discard_id(self):
         data = dataset(ids=[123]); del data.data['arguments[3]']
         result = events.extract_events(ulog([data]), 10)['events'][0]

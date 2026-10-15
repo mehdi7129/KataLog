@@ -1,6 +1,7 @@
 """GPS units/gaps/budgets and detail-cache invariants independent of network."""
 import importlib.util
 import json
+import lzma
 import os
 from pathlib import Path
 import shutil
@@ -16,6 +17,7 @@ RESOURCE = Path(__file__).resolve().parents[1] / 'Sources/KataLog/Resources'
 sys.path.insert(0, str(RESOURCE))
 import flight_data
 import analyzer
+import px4_events
 from fixture_ulog import synthetic_ulog
 
 
@@ -244,6 +246,72 @@ class TelemetryIntegrationTests(unittest.TestCase):
         self.file.unlink()
         with self.assertRaisesRegex(ValueError, 'absente ou modifiée'):
             analyzer.telemetry_series(self.log['id'], self.database, {'recipe': 'battery'})
+
+
+class EventCacheUpgradeTests(unittest.TestCase):
+    """A real bounded decoder failure must not survive a parser upgrade."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix='katalog-event-cache-upgrade-')
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name).resolve()
+        self.source = self.root / 'source'; self.source.mkdir()
+        self.file = self.source / 'public.ulg'
+        compress = lzma.compress
+        # A public fixture containing a genuine 64 MiB XZ dictionary reproduces
+        # the 0.8.6 decoder failure without private logs or fabricated events.
+        with patch('fixture_ulog.lzma.compress', side_effect=lambda value: compress(
+                value, filters=[{'id': lzma.FILTER_LZMA2, 'dict_size': 64 * 1024 * 1024}])):
+            self.file.write_bytes(synthetic_ulog(samples=8))
+        self.database = self.root / 'library.sqlite'
+        with patch.object(analyzer, 'PARSER_VERSION', '1.4.0'), patch.object(
+                px4_events, 'MAX_DECODER_MEMORY_BYTES', 64 * 1024 * 1024):
+            self.log = analyzer.scan(self.source, self.database)['logs'][0]
+            self.previous = analyzer.detail(self.log['id'], self.database)
+        self.assertEqual(self.previous['eventDictionary']['status'], 'invalid')
+        self.assertEqual(self.previous['eventDictionary']['reason'], 'Memory usage limit exceeded')
+        self.assertEqual(self.previous['events'][0]['translationStatus'], 'invalid')
+
+    def test_memory_limited_legacy_cache_retranslates_on_open_with_verified_source(self):
+        self.assertNotEqual(analyzer.PARSER_VERSION, '1.4.0')
+        source_bytes = self.file.read_bytes()
+        current = analyzer.detail(self.log['id'], self.database)
+        self.assertEqual(current['metadata']['detailParserVersion'], analyzer.PARSER_VERSION)
+        self.assertEqual(current['metadata']['detailCacheStatus'], 'current')
+        self.assertEqual(current['eventDictionary']['status'], 'ready')
+        self.assertEqual(current['events'][0]['translationStatus'], 'translated')
+        self.assertEqual(current['events'][0]['message'], 'Synthetic voltage 16.0')
+        for key in ('eventID', 'argumentsHex', 'rawTimestamp', 'logLevels', 'sequence'):
+            self.assertEqual(current['events'][0][key], self.previous['events'][0][key])
+        for key in ('id', 'droneID', 'droneName', 'date', 'dateSource', 'fileName'):
+            self.assertEqual(current[key], self.log[key])
+        self.assertEqual(self.file.read_bytes(), source_bytes)
+        db = analyzer.open_database(self.database, read_only=True)
+        try:
+            row = db.execute('SELECT parser_version FROM flight_details').fetchone()
+            self.assertEqual(row[0], analyzer.PARSER_VERSION)
+            self.assertEqual(db.execute('SELECT parser_version FROM logs').fetchone()[0], '1.4.0',
+                             'Opening one detail must not reanalyze the canonical library summaries.')
+            revisions = {row[0] for row in db.execute(
+                "SELECT parser_version FROM analysis_revisions WHERE log_id=? AND kind='detail'", (self.log['id'],))}
+            self.assertEqual(revisions, {'1.4.0', analyzer.PARSER_VERSION})
+        finally:
+            db.close()
+
+    def test_memory_limited_legacy_cache_is_preserved_when_source_is_missing(self):
+        self.file.unlink()
+        with patch.object(analyzer, 'analyze_file', side_effect=AssertionError('missing source reparsed')):
+            result = analyzer.detail(self.log['id'], self.database)
+        self.assertEqual(result['metadata']['detailParserVersion'], '1.4.0')
+        self.assertEqual(result['metadata']['detailCacheStatus'], 'previous')
+        self.assertEqual(result['eventDictionary'], self.previous['eventDictionary'])
+        self.assertEqual(result['events'], self.previous['events'])
+        db = analyzer.open_database(self.database, read_only=True)
+        try:
+            row = db.execute('SELECT parser_version,summary FROM flight_details').fetchone()
+            self.assertEqual(row[0], '1.4.0')
+            self.assertEqual(json.loads(row[1])['events'], self.previous['events'])
+        finally:
+            db.close()
 
 
 class CanonicalDetailTests(unittest.TestCase):

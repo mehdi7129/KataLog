@@ -36,7 +36,7 @@ _mount_spec = importlib.util.spec_from_file_location("katalog_dmg_mount", Path(_
 dmg_mount = importlib.util.module_from_spec(_mount_spec)
 _mount_spec.loader.exec_module(dmg_mount)
 
-PARSER_VERSION = "1.4.0"
+PARSER_VERSION = "1.4.1"
 SPARKLE_VERSION = "2.10.0"
 HELPER_BUNDLE = Path("Contents/Helpers/KataLogEngine.app")
 HELPER_EXECUTABLE = HELPER_BUNDLE / "Contents/MacOS/KataLogEngine"

@@ -41,7 +41,7 @@ from local_files import (CLOUD_SOURCE_DETAIL, CloudSourceUnavailableError,
                          atomic_json as _atomic_json)
 
 SCHEMA_VERSION = 1
-PARSER_VERSION = "1.4.0"
+PARSER_VERSION = "1.4.1"
 MESSAGE_FAMILIES = ("Batterie", "Communication", "GNSS", "Capteurs", "Propulsion", "Navigation", "Système", "Éclairage", "Température", "Autres")
 LEVELS = ("EMERGENCY", "ALERT", "CRITICAL", "ERROR", "WARNING", "NOTICE", "INFO", "DEBUG")
 GAP_SECONDS = 10.0

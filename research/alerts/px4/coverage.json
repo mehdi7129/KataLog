@@ -1,0 +1,21 @@
+{
+  "entryCount": 208,
+  "patternCount": 275,
+  "confidenceCounts": {
+    "documented": 206,
+    "interpretation": 2
+  },
+  "matchedOccurrences": 5892,
+  "matchedAnonymizedVariants": 343,
+  "ambiguousAnonymizedVariants": 0,
+  "matchedAlertOccurrences": 2863,
+  "matchedInfoOccurrences": 3029,
+  "coveredModulesCompletely": [
+    "ekf2",
+    "health_and_arming_checks",
+    "vehicle_imu",
+    "logger",
+    "load_mon",
+    "mixer_module"
+  ]
+}
