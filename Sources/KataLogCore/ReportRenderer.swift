@@ -134,10 +134,7 @@ public enum ReportRenderer {
             let explanation = AlertKnowledge.explanation(for: message)
             out.append("<details class=\"alert-group\" data-group=\"\(h(group.id))\" id=\"group-\(groupIndex)\"><summary>\(severity(group.level))<span class=\"group-heading\"><strong>\(h(group.title))</strong><small>\(h(group.family))</small></span><span class=\"group-count\">\(group.logCount) logs · \(group.messageCount) messages</span></summary><div class=\"group-body\">")
             if group.isAlert {
-                out.append("<div class=\"explanation\"><p class=\"eyebrow\">COMPRENDRE CE MESSAGE</p><h3>\(h(explanation.title))</h3><p>\(h(explanation.meaning))</p><ul class=\"checks\">\(items(explanation.checks))</ul><p class=\"limits\">\(h(explanation.limits))</p><small>\(h(explanation.provenance))</small><div class=\"source-links\">\(explanation.sources.map { "<a href=\"\(h($0.url.absoluteString))\" target=\"_blank\" rel=\"noopener noreferrer\">\(h($0.title)) ↗</a>" }.joined())</div></div>")
-            }
-            if group.isAlert {
-                out.append("<p class=\"muted\">\(h(explanation.confidence.label)) · catalogue \(explanation.catalogueVersion)\(explanation.referenceFirmware.map { " · " + h($0) } ?? "")</p>")
+                out.append(explanationHTML(explanation, sourceLevel: group.level, escape: h))
             }
             if let source = message.sourceFamily { out.append("<p class=\"muted\">Famille attribuée manuellement : \(h(message.family)). Famille détectée : \(h(source)).</p>") }
             out.append("<p class=\"raw\">\(h(message.text))</p><p class=\"muted\">Même texte et même niveau ; le nombre de répétitions ne mesure pas le nombre d’incidents.</p><noscript class=\"occurrence-fallback\"><div class=\"table-wrap\"><table><thead><tr><th>Drone</th><th>Log</th><th>Messages</th></tr></thead><tbody>")
@@ -223,6 +220,21 @@ public enum ReportRenderer {
         \(enhancement)
         </body></html>
         """
+    }
+
+    private static func explanationHTML(_ explanation: AlertExplanation, sourceLevel: String,
+                                        escape h: (String) -> String) -> String {
+        var parts = ["<div class=\"explanation\"><p class=\"eyebrow\">COMPRENDRE CE MESSAGE</p><h3>\(h(explanation.title))</h3><p class=\"explanation-meaning\">\(h(explanation.meaning))</p><p class=\"explanation-status\">\(h(explanation.confidence.summaryLabel))</p>"]
+        parts.append("<details class=\"explanation-details\"><summary>Vérifications et sources</summary><div class=\"explanation-evidence\"><h4>À vérifier</h4><ul class=\"checks\">\(explanation.checks.map { "<li>\(h($0))</li>" }.joined())</ul><p class=\"limits\">\(h(explanation.limits))</p>")
+        parts.append("<details class=\"explanation-references\"><summary>Références techniques</summary><div class=\"explanation-evidence\">")
+        if let details = explanation.technicalDetails { parts.append("<p>\(h(details))</p>") }
+        parts.append("<p class=\"muted\">Niveau enregistré par le firmware : \(h(sourceLevel)).</p><p class=\"muted\">\(h(explanation.provenance))</p>")
+        if let firmware = explanation.referenceFirmware { parts.append("<p class=\"muted\">\(h(firmware))</p>") }
+        parts.append("<p class=\"muted\">\(h(explanation.confidence.label)) · catalogue \(explanation.catalogueVersion)</p>")
+        let links = explanation.sources.map { "<a href=\"\(h($0.url.absoluteString))\" target=\"_blank\" rel=\"noopener noreferrer\">\(h($0.title)) ↗</a>" }.joined()
+        if !links.isEmpty { parts.append("<div class=\"source-links\">\(links)</div>") }
+        parts.append("</div></details></div></details></div>")
+        return parts.joined()
     }
 
     private static func detailedSections(_ log: FlightLog, escape h: (String) -> String,

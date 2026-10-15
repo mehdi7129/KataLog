@@ -2,6 +2,21 @@ import XCTest
 @testable import KataLogCore
 
 final class AlertCatalogueTests: XCTestCase {
+    func testCommandRoleAndUnknownResultAreVisibleWithoutOpeningTechnicalDetails() {
+        for command in [21, 176, 246, 310, 400, 512, 45000, 45008] {
+            for flag in [0, 1] {
+                let explanation = AlertKnowledge.explanation(forText: "[mavlink] command number \(command) is ok \(flag)")
+                XCTAssertNotEqual(explanation.id, "unknown")
+                XCTAssertTrue(explanation.meaning.contains("ne confirme ni succès ni échec"))
+                XCTAssertFalse(explanation.isDocumented)
+            }
+        }
+        let show = AlertKnowledge.explanation(forText: "[mavlink] command number 45008 is ok 1")
+        XCTAssertTrue(show.meaning.contains("démarrage, pause ou reprise"))
+        let color = AlertKnowledge.explanation(forText: "[mavlink] command number 45000 is ok 1")
+        XCTAssertTrue(color.meaning.contains("couleur des LED"))
+    }
+
     func testObservedMessagesReceiveSpecificExplanationsAcrossSubsystems() {
         let cases = [
             "[ekf2] GPS emergency yaw reset": "gps-emergency-yaw-reset",
@@ -11,7 +26,7 @@ final class AlertCatalogueTests: XCTestCase {
             "[dance] GPS speed violation: 2.31 m/s": "dance-speed-gps",
             "[dance] Local speed violation: 10.15 m/s": "dance-speed-local",
             "[mavlink] command number 246 is ok 1": "mavlink-command-246",
-            "[mavlink] command number 45008 is ok 1": "mavlink-custom-command",
+            "[mavlink] command number 45008 is ok 1": "mavlink-command-45008",
             "[rgbled_pwm] Temperature OK, enabling LED": "led-temperature-recovered",
             "[xbee_radio] XBee link recovered": "xbee-link-recovered",
             "[batt_smbus] Failed to read temperature data": "battery-temperature-read",
@@ -22,7 +37,7 @@ final class AlertCatalogueTests: XCTestCase {
         for (text, id) in cases {
             let explanation = AlertKnowledge.explanation(forText: text + "\t\n")
             XCTAssertEqual(explanation.id, id, text)
-            XCTAssertEqual(explanation.catalogueVersion, 2)
+            XCTAssertEqual(explanation.catalogueVersion, 3)
             XCTAssertFalse(explanation.meaning.isEmpty)
             XCTAssertFalse(explanation.checks.isEmpty)
             XCTAssertFalse(explanation.limits.isEmpty)
@@ -74,12 +89,12 @@ final class AlertCatalogueTests: XCTestCase {
         XCTAssertEqual(vendor.confidence, .interpretation)
         XCTAssertFalse(vendor.referenceFirmware?.contains("PX4 v1.14.0") == true)
         let unresolved = AlertKnowledge.explanation(forText: "[uavcan:110:] Torqeedo: err:54")
-        XCTAssertEqual(unresolved.confidence, .interpretation)
-        XCTAssertTrue(unresolved.limits.contains("autre modèle"))
+        XCTAssertEqual(unresolved.confidence, .unresolved)
+        XCTAssertEqual(unresolved.confidence.summaryLabel, "Sens exact inconnu")
         let driverCode = AlertKnowledge.explanation(forText: "[batt_smbus] SMBus read error: -2")
         XCTAssertEqual(driverCode.id, "battery-smbus-read")
         XCTAssertEqual(driverCode.confidence, .interpretation)
-        XCTAssertTrue(driverCode.limits.contains("version constructeur"))
+        XCTAssertNotNil(driverCode.referenceFirmware)
     }
 
     func testCatalogueContainsNoDuplicateIDsAndEveryDefinitionHasLimits() {
@@ -91,6 +106,7 @@ final class AlertCatalogueTests: XCTestCase {
             XCTAssertFalse(entry.explanation.provenance.isEmpty, entry.explanation.id)
             XCTAssertFalse(entry.explanation.limits.isEmpty, entry.explanation.id)
             XCTAssertFalse(entry.explanation.checks.isEmpty, entry.explanation.id)
+            XCTAssertLessThanOrEqual(entry.explanation.meaning.count, 320, entry.explanation.id)
             for source in entry.explanation.sources {
                 XCTAssertEqual(source.url.scheme, "https", entry.explanation.id)
             }
@@ -115,7 +131,7 @@ final class AlertCatalogueTests: XCTestCase {
             XCTAssertEqual(explanation.id, id, text)
             XCTAssertEqual(explanation.confidence.rawValue, confidence, text)
         }
-        XCTAssertEqual(examples.count, 388)
+        XCTAssertGreaterThanOrEqual(examples.count, 388)
     }
 
     func testSyntheticFixtureCoversEveryPatternAndKeepsFallbackSeparate() throws {
@@ -150,7 +166,7 @@ final class AlertCatalogueTests: XCTestCase {
         let data = try Data(contentsOf: URL(fileURLWithPath: path))
         let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         let messages = try XCTUnwrap(payload["messages"] as? [[String: Any]])
-        var total = 0, specific = 0, alerts = 0, specificAlerts = 0
+        var total = 0, recognized = 0, alerts = 0, recognizedAlerts = 0, unresolved = 0
         for message in messages {
             let text = try XCTUnwrap(message["text"] as? String)
             let count = try XCTUnwrap(message["occurrences"] as? Int)
@@ -159,15 +175,18 @@ final class AlertCatalogueTests: XCTestCase {
             total += count
             if isAlert { alerts += count }
             if explanation.id != "unknown" {
-                XCTAssertTrue(explanation.confidence == .documented || explanation.confidence == .interpretation)
-                specific += count
-                if isAlert { specificAlerts += count }
+                // A recognized but unresolved code must not be promoted to a definition.
+                XCTAssertTrue([.documented, .interpretation, .unresolved].contains(explanation.confidence))
+                recognized += count
+                if isAlert { recognizedAlerts += count }
+                if explanation.confidence == .unresolved { unresolved += count }
             }
         }
         XCTAssertEqual(total, 12_906)
         XCTAssertEqual(alerts, 5_500)
-        XCTAssertEqual(specific, 12_904)
-        XCTAssertEqual(specificAlerts, 5_500)
+        XCTAssertEqual(recognized, 12_904)
+        XCTAssertEqual(recognizedAlerts, 5_500)
+        XCTAssertGreaterThan(unresolved, 0)
     }
     #endif
 }

@@ -8,6 +8,26 @@ import XCTest
 /// browser profile, network dependency, or operational log fixture.
 @MainActor
 final class ReportDOMTests: XCTestCase {
+    func testExplanationShowsMeaningAndUncertaintyBeforeCollapsedEvidence() async throws {
+        let page = try await load(snapshot([log("unresolved", messages: [message("raw", text: "Synthetic unknown fault")])]))
+        try await page.evaluateJavaScript("document.querySelector('.alert-group').open=true")
+        assertTrue(try await text(".explanation-meaning", in: page).contains("pas encore été identifiée"))
+        assertEqual(try await text(".explanation-status", in: page), "Sens exact inconnu")
+        assertEqual(try await page.evaluateJavaScript("document.querySelector('.explanation-details').open") as? Bool, false)
+        let closedHeight = (try await page.evaluateJavaScript("document.querySelector('.explanation-details').getBoundingClientRect().height") as? NSNumber)?.doubleValue ?? .infinity
+        try await page.evaluateJavaScript("document.querySelector('.explanation-details > summary').focus();document.activeElement.click()")
+        assertEqual(try await page.evaluateJavaScript("document.querySelector('.explanation-details').open") as? Bool, true)
+        assertEqual(try await page.evaluateJavaScript("document.querySelector('.explanation-references').open") as? Bool, false)
+        let openHeight = (try await page.evaluateJavaScript("document.querySelector('.explanation-details').getBoundingClientRect().height") as? NSNumber)?.doubleValue ?? 0
+        assertTrue(openHeight > closedHeight + 20)
+        assertTrue(try await text(".explanation-evidence", in: page).contains("Niveau enregistré par le firmware : ERROR"))
+        assertTrue(try await text(".explanation-evidence", in: page).contains("Relever le texte complet"))
+        try await page.evaluateJavaScript("document.querySelector('.explanation-details').open=false;window.dispatchEvent(new Event('beforeprint'))")
+        assertEqual(try await page.evaluateJavaScript("document.querySelector('.explanation-details').open") as? Bool, true)
+        try await page.evaluateJavaScript("window.dispatchEvent(new Event('afterprint'))")
+        assertEqual(try await page.evaluateJavaScript("document.querySelector('.explanation-details').open") as? Bool, false)
+    }
+
     func testFilteredOccurrenceCellsAndResetUseTheSameMessages() async throws {
         let page = try await load(snapshot([
             log("one", messages: [message("a", text: "GPS error"), message("b", text: "GPS  error")]),

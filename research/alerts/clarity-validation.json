@@ -1,0 +1,84 @@
+{
+  "date": "2026-10-15",
+  "sourceBase": "1b82e5de0a1a273f504e1fa5ad2eca3056027b07",
+  "catalogueVersion": 3,
+  "catalogueEntries": 322,
+  "completeMessagePatterns": 390,
+  "definitionsByConfidence": {
+    "documented": 209,
+    "interpretation": 108,
+    "unresolved": 5
+  },
+  "maximumMeaningCharacters": 207,
+  "meanMeaningCharacters": 110.0,
+  "maximumTitleCharacters": 52,
+  "swiftTargetedGate": {
+    "testsRun": 35,
+    "skipped": 0,
+    "failures": 0,
+    "exitCode": 0,
+    "nativeGatePassed": true
+  },
+  "swiftScope": [
+    "AlertKnowledgeTests",
+    "AlertCatalogueTests",
+    "ReportDOMTests",
+    "ReportRendererTests"
+  ],
+  "javascriptGate": {
+    "testsRun": 18,
+    "failures": 0,
+    "skipped": 0
+  },
+  "independentReview": {
+    "syntheticExamplesMatched": 390,
+    "adversarialSuffixCasesRejected": 780,
+    "duplicateIDs": 0,
+    "blockingFindings": 0
+  },
+  "historicalCorpusSnapshot": {
+    "observedAt": "2026-10-15T11:10:43+00:00",
+    "coverage": {
+      "all": {
+        "occurrences": 12906,
+        "sourceVariants": 1840,
+        "documentedOccurrences": 6054,
+        "documentedSourceVariants": 733,
+        "interpretationOccurrences": 6701,
+        "interpretationSourceVariants": 1082,
+        "unresolvedOccurrences": 149,
+        "unresolvedSourceVariants": 23,
+        "without_matching_entryOccurrences": 2,
+        "without_matching_entrySourceVariants": 2,
+        "withoutEstablishedMeaningOccurrences": 151,
+        "establishedMeaningOccurrences": 12755,
+        "withoutEstablishedMeaningSourceVariants": 25,
+        "establishedMeaningSourceVariants": 1815
+      },
+      "alerts": {
+        "occurrences": 5500,
+        "sourceVariants": 531,
+        "documentedOccurrences": 2866,
+        "documentedSourceVariants": 59,
+        "interpretationOccurrences": 2600,
+        "interpretationSourceVariants": 466,
+        "unresolvedOccurrences": 34,
+        "unresolvedSourceVariants": 6,
+        "withoutEstablishedMeaningOccurrences": 34,
+        "establishedMeaningOccurrences": 5466,
+        "withoutEstablishedMeaningSourceVariants": 6,
+        "establishedMeaningSourceVariants": 525
+      }
+    },
+    "overlappingMatches": 0
+  },
+  "nativeComponentReview": {
+    "actualProductionView": true,
+    "syntheticMessages": 4,
+    "collapsedAndExpandedChecksObserved": true,
+    "technicalReferencesSeparatelyCollapsed": true,
+    "productionLibraryLoaded": false
+  },
+  "generatedSourceCheck": "passed",
+  "deliveryState": "Source correction prepared; application release and installed library unchanged"
+}

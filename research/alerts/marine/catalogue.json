@@ -1,18 +1,17 @@
 [
   {
     "id": "boat-loiter-reset",
-    "title": "Position de maintien redéfinie",
+    "title": "Point de maintien réinitialisé",
     "patterns": [
       "^\\[boat_pos_control\\] Reset loiter position$"
     ],
-    "meaning": "Le contrôleur de position du bateau annonce une réinitialisation de la position utilisée pour le maintien sur place (loiter).",
+    "meaning": "Le contrôleur du bateau réinitialise le point utilisé pour maintenir sa position en mode loiter.",
     "checks": [
-      "Comparer avec le mode de navigation et les consignes de position au même instant.",
-      "Vérifier si le bateau s’est déplacé ou si une nouvelle consigne a été envoyée."
+      "Vérifier le mode actif et la consigne de position à cet instant."
     ],
-    "limits": "Le texte ne précise ni la nouvelle position ni la raison de la réinitialisation. Il ne démontre pas une erreur GPS.",
+    "limits": "Le message ne donne ni la nouvelle position ni la raison de ce changement.",
     "confidence": "interpretation",
-    "provenance": "Interprétation du texte constructeur · code boat_pos_control non disponible",
+    "provenance": "Lecture du message boat_pos_control · déclencheur exact non identifié",
     "referenceFirmware": null,
     "sources": [],
     "syntheticExamples": [
@@ -21,53 +20,72 @@
   },
   {
     "id": "torqeedo-charge-temperature",
-    "title": "Température incompatible avec la charge",
+    "title": "Charge : température hors plage",
     "patterns": [
       "^\\[uavcan:[0-9]+:\\] Torqeedo: err:48 charging temp error$"
     ],
-    "meaning": "Le périphérique Torqeedo signale explicitement une erreur de température liée à la charge. Le manuel Travel/Ultralight associe également E48 à une température incompatible avec la charge de la batterie.",
+    "meaning": "La batterie signale une température incompatible avec la charge.",
     "checks": [
-      "Identifier le modèle exact de moteur et de batterie, puis consulter son manuel.",
-      "Comparer l’heure du message avec l’état de charge et les températures réellement enregistrées."
+      "Vérifier la température batterie et la présence d’un chargeur au moment du message.",
+      "Attendre le retour dans la plage de charge du modèle concerné avant de relancer la charge."
     ],
-    "limits": "Le modèle Torqeedo et le mapping numérique de la passerelle UAVCAN ne sont pas attestés par ce message. Aucun seuil de température ni état de la propulsion ne peut être déduit ici.",
+    "limits": "Le log ne donne ni la température mesurée ni le seuil appliqué.",
     "confidence": "interpretation",
-    "provenance": "Texte constructeur explicite · recoupement manuel Torqeedo Travel/Ultralight, section 10.1 ; compatibilité modèle à confirmer",
-    "referenceFirmware": "Passerelle UAVCAN constructeur · version et mapping non attestés",
+    "provenance": "Libellé explicite recoupé avec le driver ArduPilot TQ Bus et les manuels Torqeedo · passerelle Drotek non attestée",
+    "referenceFirmware": "ArduPilot TQ Bus b032bcbde31a8649d748baa5e5910208a76460f2 · version de la passerelle UAVCAN inconnue",
     "sources": [
       {
-        "title": "Torqeedo Travel/Ultralight · manuel officiel, erreurs E48",
-        "url": "https://media.torqeedo.com/downloads/manuals/039-00537%20BA%20Travel%20Ultralight_de_en_fr_it.pdf"
+        "title": "ArduPilot TQ Bus · traduction du code maître 48",
+        "url": "https://github.com/ArduPilot/ardupilot/blob/b032bcbde31a8649d748baa5e5910208a76460f2/libraries/AP_Torqeedo/AP_Torqeedo_TQBus.cpp#L165-L245"
+      },
+      {
+        "title": "Torqeedo Travel 503/1003/1103 · E48, page 95 du PDF",
+        "url": "https://media.torqeedo.com/downloads/manuals/torqeedo-Travel-manual-DE-EN.pdf#page=95"
+      },
+      {
+        "title": "Torqeedo Ultralight 403 · E48, page 75 du PDF",
+        "url": "https://media.torqeedo.com/downloads/manuals/torqeedo-ultralight-403-manual-DE-EN.pdf#page=75"
       }
     ],
     "syntheticExamples": [
       "[uavcan:0:] Torqeedo: err:48 charging temp error"
-    ]
+    ],
+    "technicalDetails": "Le driver ArduPilot associe le code maître 48 à ce libellé. Les manuels Travel 503/1003/1103 et Ultralight 403 décrivent E48 comme une température de batterie incompatible avec la charge ; ils indiquent une reprise entre 0 et 45 °C. Cette plage ne doit être appliquée qu’aux modèles couverts par ces manuels. Le modèle et le firmware de la passerelle Drotek ne sont pas identifiés ; ce message seul ne confirme ni une charge en cours ni un arrêt de la propulsion."
   },
   {
     "id": "torqeedo-unmapped-error",
-    "title": "Code d’erreur Torqeedo à identifier",
+    "title": "Défaut Torqeedo non identifié",
     "patterns": [
-      "^\\[uavcan:[0-9]+:\\] Torqeedo: err:(?:50|54)$"
+      "^\\[uavcan:[0-9]+:\\] Torqeedo: err:50$",
+      "^\\[uavcan:[0-9]+:\\] Torqeedo: err:54$"
     ],
-    "meaning": "Le module UAVCAN relaie un code d’erreur du périphérique Torqeedo indiqué entre crochets. La correspondance des codes 50 et 54 n’a pas pu être établie pour le modèle et la passerelle utilisés.",
+    "meaning": "Torqeedo signale un défaut sans fournir d’explication. La cause associée à ce code reste inconnue pour cette installation.",
     "checks": [
-      "Relever le code, le modèle moteur/batterie et la version de la passerelle.",
-      "Consulter le manuel de ce modèle ou demander la table de correspondance au constructeur.",
-      "Comparer les messages voisins et la télémétrie du périphérique."
+      "Relever le modèle moteur/batterie et la version de la passerelle UAVCAN.",
+      "Transmettre le code et ces références au support Torqeedo ou au fabricant de la passerelle."
     ],
-    "limits": "Ne pas appliquer une table d’erreurs d’un autre modèle ou d’une autre marque. Le code seul ne permet pas d’identifier une cause, un seuil ou une pièce défectueuse.",
-    "confidence": "interpretation",
-    "provenance": "Sens du message de passerelle uniquement · correspondance numérique non identifiée dans les sources primaires consultées",
-    "referenceFirmware": "Passerelle UAVCAN constructeur · mapping non attesté",
+    "limits": "Aucune pièce défectueuse ni cause précise ne peut être déduite de ce code seul.",
+    "confidence": "unresolved",
+    "provenance": "Code sans traduction dans le driver TQ Bus consulté et sans définition dans les manuels examinés · sens exact inconnu",
+    "referenceFirmware": "ArduPilot TQ Bus b032bcbde31a8649d748baa5e5910208a76460f2 · version de la passerelle UAVCAN inconnue",
     "sources": [
       {
-        "title": "Torqeedo · manuels officiels par modèle",
-        "url": "https://www.torqeedo.com/us/en-us/service-center/manuals.html"
+        "title": "ArduPilot TQ Bus · codes maîtres sans traduction",
+        "url": "https://github.com/ArduPilot/ardupilot/blob/b032bcbde31a8649d748baa5e5910208a76460f2/libraries/AP_Torqeedo/AP_Torqeedo_TQBus.cpp#L165-L245"
+      },
+      {
+        "title": "Torqeedo Travel 503/1003/1103 · erreurs, page 95 du PDF",
+        "url": "https://media.torqeedo.com/downloads/manuals/torqeedo-Travel-manual-DE-EN.pdf#page=95"
+      },
+      {
+        "title": "Torqeedo · assistance technique officielle",
+        "url": "https://www.torqeedo.com/us/en-us/c-service-center"
       }
     ],
     "syntheticExamples": [
-      "[uavcan:0:] Torqeedo: err:50"
-    ]
+      "[uavcan:0:] Torqeedo: err:50",
+      "[uavcan:0:] Torqeedo: err:54"
+    ],
+    "technicalDetails": "Dans ArduPilot TQ Bus, err est un code maître sur un octet, distinct des flags moteur : 50 et 54 ne doivent pas être décomposés en bits selon cette source. Ces valeurs n’ont pas de traduction dans sa table, qui produit alors un message numérique seul. Le texte correspond au format observé, sans prouver l’identité du firmware Drotek. Les manuels Travel, Ultralight 403 et Cruise examinés ne définissent pas ces deux codes ; une table d’un autre protocole ou modèle ne suffit pas."
   }
 ]

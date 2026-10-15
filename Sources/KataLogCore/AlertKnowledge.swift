@@ -15,19 +15,39 @@ public struct AlertExplanation: Sendable {
     public let sources: [AlertSource]
     public let confidence: AlertConfidence
     public let referenceFirmware: String?
+    public let technicalDetails: String?
     public var catalogueVersion: Int { AlertKnowledge.catalogueVersion }
     public var isDocumented: Bool { confidence == .documented }
+
+    init(id: String, title: String, meaning: String, checks: [String], limits: String,
+         provenance: String, sources: [AlertSource], confidence: AlertConfidence,
+         referenceFirmware: String?, technicalDetails: String? = nil) {
+        self.id = id; self.title = title; self.meaning = meaning; self.checks = checks
+        self.limits = limits; self.provenance = provenance; self.sources = sources
+        self.confidence = confidence; self.referenceFirmware = referenceFirmware
+        self.technicalDetails = technicalDetails
+    }
 }
 
 public enum AlertConfidence: String, Codable, Sendable {
-    case documented, interpretation, context, raw
+    case documented, interpretation, unresolved, context, raw
 
     public var label: String {
         switch self {
         case .documented: "Définition documentée"
         case .interpretation: "Interprétation du texte"
+        case .unresolved: "Sens exact inconnu"
         case .context: "Contexte du module uniquement"
         case .raw: "Message source"
+        }
+    }
+
+    public var summaryLabel: String {
+        switch self {
+        case .documented: "Documenté"
+        case .interpretation: "Sens déduit du texte"
+        case .unresolved, .raw: "Sens exact inconnu"
+        case .context: "Contexte uniquement"
         }
     }
 }
@@ -35,7 +55,7 @@ public enum AlertConfidence: String, Codable, Sendable {
 /// An upstream definition explains a message, not the cause of a failure on a
 /// particular vehicle. The manufacturer's build is never inferred from a label.
 public enum AlertKnowledge {
-    public static let catalogueVersion = 2
+    public static let catalogueVersion = 3
 
     public static func explanation(for message: LogMessage) -> AlertExplanation {
         explanation(forText: message.text)
@@ -57,21 +77,19 @@ public enum AlertKnowledge {
             let baseModule = module.lowercased().split(separator: ":").first.map(String.init) ?? module.lowercased()
             if let context = AlertCatalogueData.moduleContexts[baseModule] {
                 return AlertExplanation(
-                    id: "unknown", title: "Message du module \(module)",
-                    meaning: context,
-                    checks: ["Lire le texte source et les messages voisins pour identifier ce qui s’est produit.",
-                             "Comparer avec les mesures du même instant et les autres logs du même drone."],
-                    limits: "Ce contexte décrit le rôle du module. La signification précise de ce message et sa cause ne sont pas établies ; son niveau ne prouve pas une panne.",
+                    id: "unknown", title: "Message \(module) à identifier",
+                    meaning: "Le sens exact de ce message reste inconnu. \(context)",
+                    checks: ["Relever le texte complet et la version du firmware pour rechercher sa définition."],
+                    limits: "Le rôle du module ne permet pas de déduire le sens du message ni sa gravité réelle.",
                     provenance: "Contexte technique uniquement · message sans définition spécifique dans le catalogue",
                     sources: [], confidence: .context, referenceFirmware: nil)
             }
         }
         return AlertExplanation(
-            id: "unknown", title: "Message à interpréter",
-            meaning: "Le texte source décrit un événement enregistré par le firmware. Sa signification précise n’est pas encore établie dans le catalogue local.",
-            checks: ["Lire les messages voisins et les mesures disponibles dans le log.",
-                     "Rechercher ce texte exact dans les sources correspondant à la version du firmware."],
-            limits: "La famille et le niveau facilitent le tri ; ils ne déterminent pas une cause. Une définition constructeur ou un dictionnaire d’événements correspondant exactement au firmware peut être nécessaire.",
+            id: "unknown", title: "Sens du message à identifier",
+            meaning: "La signification de ce message n’a pas encore été identifiée.",
+            checks: ["Relever le texte complet et la version du firmware pour rechercher sa définition."],
+            limits: "Le niveau enregistré ne suffit pas à identifier une panne ou sa cause.",
             provenance: "Message source uniquement · définition spécifique non identifiée",
             sources: [], confidence: .raw, referenceFirmware: nil)
     }

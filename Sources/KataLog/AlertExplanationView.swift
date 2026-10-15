@@ -4,6 +4,7 @@ import KataLogCore
 struct AlertExplanationView: View {
     let message: LogMessage
     @State private var expanded = false
+    @State private var referencesExpanded = false
     private var explanation: AlertExplanation { AlertKnowledge.explanation(for: message) }
 
     var body: some View {
@@ -11,8 +12,11 @@ struct AlertExplanationView: View {
             Label(explanation.title, systemImage: explanation.isDocumented ? "text.book.closed" : "info.circle")
                 .font(.system(size: 13, weight: .semibold))
             Text(explanation.meaning).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
-            DisclosureGroup("Vérifications et limites", isExpanded: $expanded) {
+            Text(explanation.confidence.summaryLabel)
+                .font(.caption2).foregroundStyle(.secondary)
+            DisclosureGroup("Vérifications et sources", isExpanded: $expanded) {
                 VStack(alignment: .leading, spacing: 9) {
+                    Text("À vérifier").fontWeight(.medium)
                     ForEach(explanation.checks, id: \.self) { check in
                         HStack(alignment: .top, spacing: 7) {
                             Text("•").foregroundStyle(.secondary)
@@ -20,25 +24,36 @@ struct AlertExplanationView: View {
                         }
                     }
                     Text(explanation.limits).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    DisclosureGroup("Références techniques", isExpanded: $referencesExpanded) {
+                        VStack(alignment: .leading, spacing: 9) {
+                            if let details = explanation.technicalDetails {
+                                Text(details).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            }
+                            Text(explanation.provenance).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if let firmware = explanation.referenceFirmware {
+                                Text(firmware).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Text("\(explanation.confidence.label) · catalogue \(explanation.catalogueVersion)")
+                                .foregroundStyle(.secondary)
+                            ForEach(explanation.sources, id: \.url) { source in
+                                Link(destination: source.url) {
+                                    Label(source.title, systemImage: "arrow.up.right")
+                                }.tint(.primary)
+                            }
+                        }.font(.caption2).padding(.top, 8)
+                    }
                 }.font(.system(size: 12)).padding(.top, 8)
             }.font(.system(size: 12, weight: .medium))
-            Text(explanation.provenance).font(.system(size: 10)).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("\(explanation.confidence.label) · catalogue \(explanation.catalogueVersion)")
-                .font(.caption2).foregroundStyle(.secondary)
-            if let firmware = explanation.referenceFirmware {
-                Text(firmware).font(.caption2).foregroundStyle(.secondary)
-            }
-            ForEach(explanation.sources, id: \.url) { source in
-                Link(destination: source.url) {
-                    Label(source.title, systemImage: "arrow.up.right").font(.system(size: 11))
-                }.tint(.primary)
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(.primary.opacity(0.07), lineWidth: 1))
-        .onChange(of: message.groupKey) { _, _ in expanded = false }
+        .onChange(of: message.groupKey) { _, _ in
+            expanded = false
+            referencesExpanded = false
+        }
     }
 }

@@ -10,13 +10,11 @@
       ],
       "module": "batt_smbus",
       "message": "^\\[batt_smbus\\] SMBus read error: -[0-9]+$",
-      "meaning": "Le pilote de batterie signale qu’une lecture de données par le bus SMBus/I²C a échoué. Des mesures peuvent manquer ou ne pas être renouvelées à cet instant.",
+      "meaning": "Une lecture de la batterie par le bus SMBus/I²C a échoué. Certaines mesures peuvent ne plus être actualisées à cet instant.",
       "checks": [
-        "Vérifier si les erreurs se répètent et si la télémétrie de batterie reste disponible à ces instants.",
-        "Comparer les autres logs de la même batterie si son numéro de série est enregistré.",
-        "En cas de répétition, contrôler le connecteur de communication et le pack selon la procédure constructeur."
+        "Vérifier la répétition du message et les lacunes de tension, courant ou charge au même instant."
       ],
-      "limits": "Le nombre négatif est le retour du pilote ; sa signification exacte exige le code de cette version constructeur. −1 ne désigne pas une cause précise. Ce message seul ne prouve ni panne du pack, ni coupure de son alimentation.",
+      "limits": "Le code négatif ne donne pas une cause fiable sans la version du pilote. Une erreur de lecture ne prouve pas une coupure d’alimentation.",
       "confidence": "interpretation",
       "provenance": "Interprétation du message constructeur ; contexte technique vérifié dans le pilote PX4 v1.14.0, où le texte exact est absent.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
@@ -28,7 +26,8 @@
       ],
       "syntheticExamples": [
         "[batt_smbus] SMBus read error: -0"
-      ]
+      ],
+      "technicalDetails": "Le nombre négatif est le retour du pilote ; sa signification exacte exige le code de cette version constructeur. −1 ne désigne pas une cause précise. Ce message seul ne prouve ni panne du pack, ni coupure de son alimentation."
     },
     {
       "id": "battery-temperature-read",
@@ -38,13 +37,11 @@
       ],
       "module": "batt_smbus",
       "message": "^\\[batt_smbus\\] Failed to read temperature data$",
-      "meaning": "Le pilote n’a pas obtenu les données de température demandées à la batterie. Il s’agit d’une absence de mesure, pas d’une alerte de température élevée.",
+      "meaning": "La température de la batterie n’a pas pu être lue. Ce message ne signale pas une température trop élevée.",
       "checks": [
-        "Vérifier si les erreurs se répètent et si la télémétrie de batterie reste disponible à ces instants.",
-        "Comparer les autres logs de la même batterie si son numéro de série est enregistré.",
-        "En cas de répétition, contrôler le connecteur de communication et le pack selon la procédure constructeur."
+        "Regarder si la température de batterie reste absente après ce message."
       ],
-      "limits": "Le message ne donne ni température, ni code de retour, ni cause. Les autres grandeurs de batterie peuvent rester disponibles.",
+      "limits": "Aucune température ni cause n’est fournie. Les autres mesures de batterie peuvent rester disponibles.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
@@ -56,7 +53,8 @@
       ],
       "syntheticExamples": [
         "[batt_smbus] Failed to read temperature data"
-      ]
+      ],
+      "technicalDetails": "Le message ne donne ni température, ni code de retour, ni cause. Les autres grandeurs de batterie peuvent rester disponibles."
     },
     {
       "id": "battery-main-data-read",
@@ -66,13 +64,11 @@
       ],
       "module": "batt_smbus",
       "message": "^\\[batt_smbus\\] Error reading battery SoC and voltage and current\\.$",
-      "meaning": "Le pilote signale un échec de lecture concernant l’état de charge (SoC), la tension et le courant de la batterie.",
+      "meaning": "La lecture de la charge, de la tension ou du courant de la batterie a échoué.",
       "checks": [
-        "Vérifier si les erreurs se répètent et si la télémétrie de batterie reste disponible à ces instants.",
-        "Comparer les autres logs de la même batterie si son numéro de série est enregistré.",
-        "En cas de répétition, contrôler le connecteur de communication et le pack selon la procédure constructeur."
+        "Vérifier si tension, courant et charge continuent d’être actualisés."
       ],
-      "limits": "Ce texte ne permet pas d’isoler la grandeur fautive, de connaître la cause, ni de conclure que l’alimentation du drone s’est interrompue.",
+      "limits": "La grandeur fautive et la cause ne sont pas isolées par ce message.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
@@ -84,7 +80,8 @@
       ],
       "syntheticExamples": [
         "[batt_smbus] Error reading battery SoC and voltage and current."
-      ]
+      ],
+      "technicalDetails": "Ce texte ne permet pas d’isoler la grandeur fautive, de connaître la cause, ni de conclure que l’alimentation du drone s’est interrompue."
     },
     {
       "id": "wifi-link-lost",
@@ -94,20 +91,19 @@
       ],
       "module": "wifi_broadcom",
       "message": "^\\[wifi_broadcom\\] Wifi link lost$",
-      "meaning": "Le module Wi-Fi signale la perte de sa liaison à cet instant.",
+      "meaning": "La liaison Wi-Fi vient d’être perdue.",
       "checks": [
-        "Rechercher les messages suivants de connexion, de récupération de liaison et de heartbeat GCS.",
-        "Comparer avec les autres drones au même instant et avec le journal du point d’accès si disponible.",
-        "Vérifier le réseau prévu et les mesures radio enregistrées ; le message seul ne désigne pas un défaut de couverture."
+        "Chercher « Wifi link regained » et comparer les autres drones au même instant."
       ],
-      "limits": "Le message ne donne pas la durée de la coupure. Sur l’IO Star 3 du manuel v1.2, le Wi-Fi et XBee sont deux liaisons distinctes ; perdre le Wi-Fi ne prouve donc pas la perte de XBee, des corrections RTCM ou un failsafe.",
+      "limits": "La durée et la cause ne sont pas indiquées. La liaison XBee peut rester disponible.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible. Contexte : Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, §3.6.3 p.30.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[wifi_broadcom] Wifi link lost"
-      ]
+      ],
+      "technicalDetails": "Le message ne donne pas la durée de la coupure. Sur l’IO Star 3 du manuel v1.2, le Wi-Fi et XBee sont deux liaisons distinctes ; perdre le Wi-Fi ne prouve donc pas la perte de XBee, des corrections RTCM ou un failsafe."
     },
     {
       "id": "wifi-link-regained",
@@ -117,20 +113,19 @@
       ],
       "module": "wifi_broadcom",
       "message": "^\\[wifi_broadcom\\] Wifi link regained$",
-      "meaning": "Le module Wi-Fi annonce avoir récupéré sa liaison après une perte.",
+      "meaning": "La liaison Wi-Fi est de nouveau détectée.",
       "checks": [
-        "Rechercher les messages suivants de connexion, de récupération de liaison et de heartbeat GCS.",
-        "Comparer avec les autres drones au même instant et avec le journal du point d’accès si disponible.",
-        "Vérifier le réseau prévu et les mesures radio enregistrées ; le message seul ne désigne pas un défaut de couverture."
+        "Vérifier le retour du heartbeat GCS et de la télémétrie."
       ],
-      "limits": "Le rétablissement radio ne prouve pas à lui seul le retour de toutes les communications applicatives, du heartbeat GCS ou du RTK.",
+      "limits": "Le retour radio ne confirme pas encore le retour du heartbeat GCS ou du RTK.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[wifi_broadcom] Wifi link regained"
-      ]
+      ],
+      "technicalDetails": "Le rétablissement radio ne prouve pas à lui seul le retour de toutes les communications applicatives, du heartbeat GCS ou du RTK."
     },
     {
       "id": "wifi-associate-failed",
@@ -140,20 +135,19 @@
       ],
       "module": "wifi_broadcom",
       "message": "^\\[wifi_broadcom\\] (?:Wifi )?Associate failed$",
-      "meaning": "Le module n’a pas réussi l’étape d’association au réseau Wi-Fi lors de cette tentative.",
+      "meaning": "La tentative de connexion au point d’accès Wi-Fi a échoué.",
       "checks": [
-        "Rechercher les messages suivants de connexion, de récupération de liaison et de heartbeat GCS.",
-        "Comparer avec les autres drones au même instant et avec le journal du point d’accès si disponible.",
-        "Vérifier le réseau prévu et les mesures radio enregistrées ; le message seul ne désigne pas un défaut de couverture."
+        "Chercher une connexion réussie ensuite et comparer les journaux du point d’accès si disponibles."
       ],
-      "limits": "Aucune raison technique n’est fournie : ce message ne permet pas de choisir entre réseau absent, refus, signal insuffisant ou problème de pilote. Il ne prouve pas une panne du drone.",
+      "limits": "Le message ne précise pas pourquoi l’association a échoué.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[wifi_broadcom] Associate failed"
-      ]
+      ],
+      "technicalDetails": "Aucune raison technique n’est fournie : ce message ne permet pas de choisir entre réseau absent, refus, signal insuffisant ou problème de pilote. Il ne prouve pas une panne du drone."
     },
     {
       "id": "wifi-scan-status-failed",
@@ -163,13 +157,11 @@
       ],
       "module": "wifi_broadcom",
       "message": "^\\[wifi_broadcom\\] wapi_scan_stat\\(\\) failed: -[0-9]+, sleeptries: [0-9]+$",
-      "meaning": "Le module n’a pas obtenu l’état attendu du scan des réseaux Wi-Fi. Il affiche le retour de l’appel et un compteur interne de tentatives ou d’attentes.",
+      "meaning": "La recherche de réseaux Wi-Fi n’a pas fourni le résultat attendu. Le message affiche un code de retour et un compteur d’attentes.",
       "checks": [
-        "Rechercher les messages suivants de connexion, de récupération de liaison et de heartbeat GCS.",
-        "Comparer avec les autres drones au même instant et avec le journal du point d’accès si disponible.",
-        "Vérifier le réseau prévu et les mesures radio enregistrées ; le message seul ne désigne pas un défaut de couverture."
+        "Vérifier si une nouvelle recherche ou connexion réussit ensuite."
       ],
-      "limits": "Le compteur sleeptries n’est pas une durée. Dans NuttX public, EAGAIN signifie données pas encore prêtes et peut être converti en retour 1 ; le −11 observé ne peut donc pas être interprété avec certitude sans la version constructeur.",
+      "limits": "Le code −11 et le compteur sleeptries ne permettent pas de déduire une cause ou une durée fiable.",
       "confidence": "interpretation",
       "provenance": "Interprétation du message constructeur ; API publique NuttX consultée le 15 octobre 2026, version exacte du firmware inconnue.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
@@ -185,7 +177,8 @@
       ],
       "syntheticExamples": [
         "[wifi_broadcom] wapi_scan_stat() failed: -0, sleeptries: 0"
-      ]
+      ],
+      "technicalDetails": "Le compteur sleeptries n’est pas une durée. Dans NuttX public, EAGAIN signifie données pas encore prêtes et peut être converti en retour 1 ; le −11 observé ne peut donc pas être interprété avec certitude sans la version constructeur."
     },
     {
       "id": "wifi-scan-failed",
@@ -195,20 +188,19 @@
       ],
       "module": "wifi_broadcom",
       "message": "^\\[wifi_broadcom\\] Scan failed$",
-      "meaning": "Le module signale l’échec d’une tentative de recherche des réseaux Wi-Fi.",
+      "meaning": "La recherche de réseaux Wi-Fi a échoué lors de cette tentative.",
       "checks": [
-        "Rechercher les messages suivants de connexion, de récupération de liaison et de heartbeat GCS.",
-        "Comparer avec les autres drones au même instant et avec le journal du point d’accès si disponible.",
-        "Vérifier le réseau prévu et les mesures radio enregistrées ; le message seul ne désigne pas un défaut de couverture."
+        "Vérifier si la recherche suivante trouve le réseau prévu."
       ],
-      "limits": "Aucun réseau, code d’erreur ou motif précis n’est indiqué. Ce message ne prouve pas qu’aucun point d’accès n’était présent.",
+      "limits": "Le motif n’est pas donné ; ce texte ne prouve pas l’absence de tout point d’accès.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[wifi_broadcom] Scan failed"
-      ]
+      ],
+      "technicalDetails": "Aucun réseau, code d’erreur ou motif précis n’est indiqué. Ce message ne prouve pas qu’aucun point d’accès n’était présent."
     },
     {
       "id": "wifi-scanning",
@@ -218,20 +210,19 @@
       ],
       "module": "wifi_broadcom",
       "message": "^\\[wifi_broadcom\\] Scanning for wifi network prio #[0-9]+$",
-      "meaning": "Le module recherche un réseau de sa liste de priorités Wi-Fi. Le nombre est l’indice de priorité affiché par le firmware.",
+      "meaning": "Le drone recherche un réseau Wi-Fi de sa liste de priorités. Le numéro indique sa priorité dans cette liste.",
       "checks": [
-        "Rechercher les messages suivants de connexion, de récupération de liaison et de heartbeat GCS.",
-        "Comparer avec les autres drones au même instant et avec le journal du point d’accès si disponible.",
-        "Vérifier le réseau prévu et les mesures radio enregistrées ; le message seul ne désigne pas un défaut de couverture."
+        "Vérifier quel réseau est finalement rejoint."
       ],
-      "limits": "Il s’agit d’une étape de connexion ; elle ne démontre ni connexion réussie, ni absence du réseau, ni panne.",
+      "limits": "Cette recherche ne préjuge pas de son résultat.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[wifi_broadcom] Scanning for wifi network prio #0"
-      ]
+      ],
+      "technicalDetails": "Il s’agit d’une étape de connexion ; elle ne démontre ni connexion réussie, ni absence du réseau, ni panne."
     },
     {
       "id": "wifi-connect-attempt",
@@ -241,20 +232,19 @@
       ],
       "module": "wifi_broadcom",
       "message": "^\\[wifi_broadcom\\] Trying to connect to wifi [^\\r\\n]+ \\(prio #[0-9]+\\)$",
-      "meaning": "Le module tente de rejoindre le réseau Wi-Fi nommé dans le message, avec l’indice de priorité indiqué.",
+      "meaning": "Le drone tente de rejoindre le réseau Wi-Fi indiqué. La connexion n’est pas encore confirmée par cette ligne.",
       "checks": [
-        "Rechercher les messages suivants de connexion, de récupération de liaison et de heartbeat GCS.",
-        "Comparer avec les autres drones au même instant et avec le journal du point d’accès si disponible.",
-        "Vérifier le réseau prévu et les mesures radio enregistrées ; le message seul ne désigne pas un défaut de couverture."
+        "Chercher le résultat de la tentative dans les lignes suivantes."
       ],
-      "limits": "Ce message décrit une tentative et non son résultat. Le nom du réseau ne suffit pas à établir sa disponibilité ou la qualité du signal.",
+      "limits": "Une tentative ne prouve pas une connexion réussie.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[wifi_broadcom] Trying to connect to wifi a (prio #0)"
-      ]
+      ],
+      "technicalDetails": "Ce message décrit une tentative et non son résultat. Le nom du réseau ne suffit pas à établir sa disponibilité ou la qualité du signal."
     },
     {
       "id": "wifi-heartbeat-timeout",
@@ -264,13 +254,11 @@
       ],
       "module": "wifi_broadcom",
       "message": "^\\[wifi_broadcom\\] Timeout waiting for GCS heartbeat$",
-      "meaning": "Le module Wi-Fi a atteint son délai d’attente sans recevoir le heartbeat attendu de la station de contrôle.",
+      "meaning": "Le signal de présence périodique de la GCS (heartbeat) n’a pas été reçu dans le délai attendu.",
       "checks": [
-        "Rechercher les messages suivants de connexion, de récupération de liaison et de heartbeat GCS.",
-        "Comparer avec les autres drones au même instant et avec le journal du point d’accès si disponible.",
-        "Vérifier le réseau prévu et les mesures radio enregistrées ; le message seul ne désigne pas un défaut de couverture."
+        "Comparer l’état Wi-Fi, le heartbeat GCS et les autres drones au même instant."
       ],
-      "limits": "Le délai exact et les actions déclenchées ne sont pas précisés. Une connexion Wi-Fi peut exister sans que le heartbeat applicatif soit reçu ; ce message seul ne prouve pas la perte de tous les canaux radio.",
+      "limits": "La durée du délai et l’action éventuelle de sécurité ne sont pas précisées.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
@@ -282,7 +270,8 @@
       ],
       "syntheticExamples": [
         "[wifi_broadcom] Timeout waiting for GCS heartbeat"
-      ]
+      ],
+      "technicalDetails": "Le délai exact et les actions déclenchées ne sont pas précisés. Une connexion Wi-Fi peut exister sans que le heartbeat applicatif soit reçu ; ce message seul ne prouve pas la perte de tous les canaux radio."
     },
     {
       "id": "wifi-ipv6-address",
@@ -292,20 +281,19 @@
       ],
       "module": "wifi_broadcom",
       "message": "^\\[wifi_broadcom\\] ip6_addr=[0-9A-Fa-f:]+$",
-      "meaning": "Le module affiche une adresse IPv6 de son interface Wi-Fi.",
+      "meaning": "L’interface Wi-Fi affiche son adresse IPv6.",
       "checks": [
-        "Rechercher les messages suivants de connexion, de récupération de liaison et de heartbeat GCS.",
-        "Comparer avec les autres drones au même instant et avec le journal du point d’accès si disponible.",
-        "Vérifier le réseau prévu et les mesures radio enregistrées ; le message seul ne désigne pas un défaut de couverture."
+        "Pour un problème de connexion, vérifier ensuite la réception du heartbeat GCS."
       ],
-      "limits": "L’existence d’une adresse ne prouve pas que la GCS soit joignable, qu’un heartbeat ait été reçu ou que le Wi-Fi fonctionne sans interruption.",
+      "limits": "Une adresse attribuée ne prouve pas que la GCS soit joignable.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[wifi_broadcom] ip6_addr=0"
-      ]
+      ],
+      "technicalDetails": "L’existence d’une adresse ne prouve pas que la GCS soit joignable, qu’un heartbeat ait été reçu ou que le Wi-Fi fonctionne sans interruption."
     },
     {
       "id": "led-temperature",
@@ -315,20 +303,19 @@
       ],
       "module": "rgbled_pwm",
       "message": "^\\[rgbled_pwm\\] Temperature too high,? disabling LED$",
-      "meaning": "Le pilote annonce avoir coupé l’éclairage pour le protéger d’une température jugée trop élevée.",
+      "meaning": "L’éclairage est désactivé par la protection thermique des LED.",
       "checks": [
-        "Comparer avec la température d’éclairage enregistrée si elle est disponible et avec les couleurs/intensités du show.",
-        "Rechercher une indication de réactivation puis vérifier la répétition de la protection.",
-        "Si le comportement se répète, contrôler le système d’éclairage selon les consignes constructeur."
+        "Comparer la température LED et les intensités du show ; chercher la réactivation des LED."
       ],
-      "limits": "Le message seul ne donne ni mesure ni seuil. Pour l’IO Star 3 du manuel v1.2, la protection coupe au-dessus de 90 °C et permet le retour sous 70 °C ; ces valeurs de référence ne sont pas attestées pour toutes les versions ou les Aqua Drones.",
+      "limits": "Le message ne donne ni mesure ni seuil. Les valeurs du manuel IO Star 3 ne s’appliquent pas automatiquement aux autres versions.",
       "confidence": "interpretation",
       "provenance": "Sens du texte et protection thermique décrite dans Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, §3.4.3 p.20 ; correspondance exacte du firmware non attestée.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[rgbled_pwm] Temperature too high disabling LED"
-      ]
+      ],
+      "technicalDetails": "Le message seul ne donne ni mesure ni seuil. Pour l’IO Star 3 du manuel v1.2, la protection coupe au-dessus de 90 °C et permet le retour sous 70 °C ; ces valeurs de référence ne sont pas attestées pour toutes les versions ou les Aqua Drones."
     },
     {
       "id": "led-temperature-recovered",
@@ -338,20 +325,19 @@
       ],
       "module": "rgbled_pwm",
       "message": "^\\[rgbled_pwm\\] Temperature OK, enabling LED$",
-      "meaning": "Le pilote indique que la condition thermique autorise de nouveau l’éclairage et qu’il le réactive.",
+      "meaning": "La température permet de réactiver les LED. Le pilote annonce leur remise en service.",
       "checks": [
-        "Comparer avec la température d’éclairage enregistrée si elle est disponible et avec les couleurs/intensités du show.",
-        "Rechercher une indication de réactivation puis vérifier la répétition de la protection.",
-        "Si le comportement se répète, contrôler le système d’éclairage selon les consignes constructeur."
+        "Vérifier si de nouvelles coupures thermiques apparaissent ensuite."
       ],
-      "limits": "Ce message ne donne pas la température mesurée ni la lumière effectivement visible. Il ne prouve pas que tout le drone était en surchauffe.",
+      "limits": "La température mesurée et l’éclairage réellement visible ne sont pas confirmés par cette ligne.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte ; comportement de retour après refroidissement décrit dans Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, §3.4.3 p.20.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[rgbled_pwm] Temperature OK, enabling LED"
-      ]
+      ],
+      "technicalDetails": "Ce message ne donne pas la température mesurée ni la lumière effectivement visible. Il ne prouve pas que tout le drone était en surchauffe."
     },
     {
       "id": "arm-shutdown-denied",
@@ -361,12 +347,11 @@
       ],
       "module": "ArmStateMachine",
       "message": "^\\[ArmStateMachine\\] Transition denied: Armed to Shutdown$",
-      "meaning": "La machine d’états refuse de passer directement de Armed (armé) à Shutdown (arrêt). Dans PX4 v1.14, cette transition n’est pas autorisée.",
+      "meaning": "La demande d’arrêt a été refusée car le contrôleur est dans l’état armé.",
       "checks": [
-        "Comparer l’heure avec une commande de reboot/arrêt et l’état d’armement enregistré.",
-        "Lire les messages voisins pour connaître l’origine de la demande et le résultat final."
+        "Comparer avec la demande de reboot/arrêt et l’état d’armement au même instant."
       ],
-      "limits": "Ce message annonce un refus, pas un arrêt exécuté ni une panne de moteur. La source de la demande et l’état de vol physique ne sont pas fournis.",
+      "limits": "Le refus n’est pas un arrêt exécuté. L’origine de la demande reste à vérifier.",
       "confidence": "interpretation",
       "provenance": "Transition interdite documentée dans PX4 v1.14.0 ; préfixe de log constructeur différent de la version publique.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
@@ -378,7 +363,8 @@
       ],
       "syntheticExamples": [
         "[ArmStateMachine] Transition denied: Armed to Shutdown"
-      ]
+      ],
+      "technicalDetails": "Ce message annonce un refus, pas un arrêt exécuté ni une panne de moteur. La source de la demande et l’état de vol physique ne sont pas fournis."
     },
     {
       "id": "dance-speed-gps",
@@ -388,19 +374,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] GPS speed violation: [+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+) m/s$",
-      "meaning": "Le module de show signale une violation de son critère de vitesse calculé depuis les données GPS et affiche une valeur en m/s.",
+      "meaning": "Le contrôle de vitesse du show signale une violation à partir des données GPS. La valeur affichée est en m/s.",
       "checks": [
-        "Comparer avec les vitesses enregistrées dans le repère correspondant et les limites du show ou du firmware.",
-        "Rechercher les messages de suivi de trajectoire, geocage et failsafe au même instant."
+        "Comparer les vitesses GPS, les limites enregistrées et les messages de suivi ou de failsafe voisins."
       ],
-      "limits": "Le calcul exact, le seuil et la durée du dépassement ne sont pas donnés. Ce message seul n’établit ni vitesse dangereuse universelle, ni panne de capteur, ni action RTL/Kill.",
+      "limits": "Le calcul et le seuil exacts ne sont pas donnés. Aucune action de sécurité ne peut être déduite de cette seule ligne.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] GPS speed violation: 0 m/s"
-      ]
+      ],
+      "technicalDetails": "Le calcul exact, le seuil et la durée du dépassement ne sont pas donnés. Ce message seul n’établit ni vitesse dangereuse universelle, ni panne de capteur, ni action RTL/Kill."
     },
     {
       "id": "dance-speed-local",
@@ -410,19 +396,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Local speed violation: [+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+) m/s$",
-      "meaning": "Le module de show signale une violation de son critère de vitesse calculé depuis l’estimation locale et affiche une valeur en m/s.",
+      "meaning": "Le contrôle de vitesse du show signale une violation à partir de l’estimation locale. La valeur affichée est en m/s.",
       "checks": [
-        "Comparer avec les vitesses enregistrées dans le repère correspondant et les limites du show ou du firmware.",
-        "Rechercher les messages de suivi de trajectoire, geocage et failsafe au même instant."
+        "Comparer les vitesses locales, les limites enregistrées et les messages de suivi ou de failsafe voisins."
       ],
-      "limits": "Le calcul exact, le seuil et la durée du dépassement ne sont pas donnés. Ce message seul n’établit ni vitesse dangereuse universelle, ni panne de capteur, ni action RTL/Kill.",
+      "limits": "Le calcul et le seuil exacts ne sont pas donnés. Aucune action de sécurité ne peut être déduite de cette seule ligne.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Local speed violation: 0 m/s"
-      ]
+      ],
+      "technicalDetails": "Le calcul exact, le seuil et la durée du dépassement ne sont pas donnés. Ce message seul n’établit ni vitesse dangereuse universelle, ni panne de capteur, ni action RTL/Kill."
     },
     {
       "id": "dance-state-dance",
@@ -432,19 +418,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] (?:Standby|Ready|Takeoff|Transition|Dance|RTL|Land|Kill|Reverse|Replacement) -> Dance$",
-      "meaning": "Le module enregistre un passage vers l’état Dance, utilisé pour suivre la chorégraphie.",
+      "meaning": "Le contrôleur passe à Dance : suivi de la chorégraphie.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer cet état aux commandes précédentes et au déroulement prévu du show."
       ],
-      "limits": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages.",
+      "limits": "Cet état logiciel ne confirme pas la fin du mouvement ou l’effet matériel. Sa cause doit être lue dans les messages voisins.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible. États courants décrits dans Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, §3.2 p.13 ; Reverse/Replacement non définis dans cette édition.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Standby -> Dance"
-      ]
+      ],
+      "technicalDetails": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages."
     },
     {
       "id": "dance-state-rtl",
@@ -454,19 +440,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] (?:Standby|Ready|Takeoff|Transition|Dance|RTL|Land|Kill|Reverse|Replacement) -> RTL$",
-      "meaning": "Le module enregistre un passage vers RTL, l’état de retour vers la zone de départ.",
+      "meaning": "Le contrôleur passe à RTL : retour vers la zone de départ.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer cet état aux commandes précédentes et au déroulement prévu du show."
       ],
-      "limits": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages.",
+      "limits": "Cet état logiciel ne confirme pas la fin du mouvement ou l’effet matériel. Sa cause doit être lue dans les messages voisins.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible. États courants décrits dans Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, §3.2 p.13 ; Reverse/Replacement non définis dans cette édition.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Standby -> RTL"
-      ]
+      ],
+      "technicalDetails": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages."
     },
     {
       "id": "dance-state-land",
@@ -476,19 +462,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] (?:Standby|Ready|Takeoff|Transition|Dance|RTL|Land|Kill|Reverse|Replacement) -> Land$",
-      "meaning": "Le module enregistre un passage vers Land, l’état d’atterrissage.",
+      "meaning": "Le contrôleur passe à Land : phase d’atterrissage.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer cet état aux commandes précédentes et au déroulement prévu du show."
       ],
-      "limits": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages.",
+      "limits": "Cet état logiciel ne confirme pas la fin du mouvement ou l’effet matériel. Sa cause doit être lue dans les messages voisins.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible. États courants décrits dans Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, §3.2 p.13 ; Reverse/Replacement non définis dans cette édition.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Standby -> Land"
-      ]
+      ],
+      "technicalDetails": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages."
     },
     {
       "id": "dance-state-standby",
@@ -498,19 +484,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] (?:Standby|Ready|Takeoff|Transition|Dance|RTL|Land|Kill|Reverse|Replacement) -> Standby$",
-      "meaning": "Le module enregistre un passage vers Standby, l’état d’attente du show.",
+      "meaning": "Le contrôleur passe à Standby : attente du show.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer cet état aux commandes précédentes et au déroulement prévu du show."
       ],
-      "limits": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages.",
+      "limits": "Cet état logiciel ne confirme pas la fin du mouvement ou l’effet matériel. Sa cause doit être lue dans les messages voisins.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible. États courants décrits dans Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, §3.2 p.13 ; Reverse/Replacement non définis dans cette édition.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Standby -> Standby"
-      ]
+      ],
+      "technicalDetails": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages."
     },
     {
       "id": "dance-state-kill",
@@ -520,19 +506,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] (?:Standby|Ready|Takeoff|Transition|Dance|RTL|Land|Kill|Reverse|Replacement) -> Kill$",
-      "meaning": "Le module enregistre un passage vers Kill, l’état de terminaison ou coupure défini par le firmware.",
+      "meaning": "Le contrôleur passe à Kill : état de terminaison ou de coupure prévu par le firmware.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Vérifier les commandes, l’armement et les retours moteurs au même instant."
       ],
-      "limits": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages.",
+      "limits": "Cet état logiciel ne confirme pas la fin du mouvement ou l’effet matériel. Sa cause doit être lue dans les messages voisins.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible. États courants décrits dans Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, §3.2 p.13 ; Reverse/Replacement non définis dans cette édition.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Standby -> Kill"
-      ]
+      ],
+      "technicalDetails": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages."
     },
     {
       "id": "dance-state-ready",
@@ -542,19 +528,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] (?:Standby|Ready|Takeoff|Transition|Dance|RTL|Land|Kill|Reverse|Replacement) -> Ready$",
-      "meaning": "Le module enregistre un passage vers Ready, l’état prêt pour le démarrage du show.",
+      "meaning": "Le contrôleur passe à Ready : le show est prêt pour son démarrage.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Vérifier la suite du compte à rebours et le passage à Takeoff ou Transition."
       ],
-      "limits": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages.",
+      "limits": "Cet état logiciel ne confirme pas la fin du mouvement ou l’effet matériel. Sa cause doit être lue dans les messages voisins.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible. États courants décrits dans Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, §3.2 p.13 ; Reverse/Replacement non définis dans cette édition.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Standby -> Ready"
-      ]
+      ],
+      "technicalDetails": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages."
     },
     {
       "id": "dance-state-takeoff",
@@ -564,19 +550,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] (?:Standby|Ready|Takeoff|Transition|Dance|RTL|Land|Kill|Reverse|Replacement) -> Takeoff$",
-      "meaning": "Le module enregistre un passage vers la phase Takeoff (décollage).",
+      "meaning": "Le contrôleur passe à Takeoff : phase de décollage.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer cet état aux commandes précédentes et au déroulement prévu du show."
       ],
-      "limits": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages.",
+      "limits": "Cet état logiciel ne confirme pas la fin du mouvement ou l’effet matériel. Sa cause doit être lue dans les messages voisins.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible. États courants décrits dans Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, §3.2 p.13 ; Reverse/Replacement non définis dans cette édition.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Standby -> Takeoff"
-      ]
+      ],
+      "technicalDetails": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages."
     },
     {
       "id": "dance-state-transition",
@@ -586,19 +572,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] (?:Standby|Ready|Takeoff|Transition|Dance|RTL|Land|Kill|Reverse|Replacement) -> Transition$",
-      "meaning": "Le module enregistre un passage vers la phase Transition du show.",
+      "meaning": "Le contrôleur passe à la phase Transition du show.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer cet état aux commandes précédentes et au déroulement prévu du show."
       ],
-      "limits": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages.",
+      "limits": "Cet état logiciel ne confirme pas la fin du mouvement ou l’effet matériel. Sa cause doit être lue dans les messages voisins.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible. États courants décrits dans Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, §3.2 p.13 ; Reverse/Replacement non définis dans cette édition.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Standby -> Transition"
-      ]
+      ],
+      "technicalDetails": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages."
     },
     {
       "id": "dance-state-reverse",
@@ -608,19 +594,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] (?:Standby|Ready|Takeoff|Transition|Dance|RTL|Land|Kill|Reverse|Replacement) -> Reverse$",
-      "meaning": "Le module enregistre un passage vers Reverse, l’état de lecture en sens inverse du show.",
+      "meaning": "Le contrôleur passe à Reverse : retour en arrière dans le show.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer cet état aux commandes précédentes et au déroulement prévu du show."
       ],
-      "limits": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages.",
+      "limits": "Cet état logiciel ne confirme pas la fin du mouvement ou l’effet matériel. Sa cause doit être lue dans les messages voisins.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible. États courants décrits dans Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, §3.2 p.13 ; Reverse/Replacement non définis dans cette édition.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Standby -> Reverse"
-      ]
+      ],
+      "technicalDetails": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages."
     },
     {
       "id": "dance-state-replacement",
@@ -630,19 +616,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] (?:Standby|Ready|Takeoff|Transition|Dance|RTL|Land|Kill|Reverse|Replacement) -> Replacement$",
-      "meaning": "Le module enregistre un passage vers Replacement, associé dans ces logs à un repositionnement vers un temps de show.",
+      "meaning": "Le contrôleur passe à Replacement : repositionnement vers un temps du show.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer cet état aux commandes précédentes et au déroulement prévu du show."
       ],
-      "limits": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages.",
+      "limits": "Cet état logiciel ne confirme pas la fin du mouvement ou l’effet matériel. Sa cause doit être lue dans les messages voisins.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible. États courants décrits dans Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, §3.2 p.13 ; Reverse/Replacement non définis dans cette édition.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Standby -> Replacement"
-      ]
+      ],
+      "technicalDetails": "Ce changement d’état logiciel ne prouve pas à lui seul que le déplacement, l’atterrissage ou la coupure matérielle soit terminé. La raison du changement doit être recherchée dans les autres messages."
     },
     {
       "id": "dance-takeoff-aborted",
@@ -652,19 +638,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Transition -> Takeoff aborted$",
-      "meaning": "Le module indique qu’un passage de Transition vers Takeoff a été abandonné.",
+      "meaning": "Le passage de la phase Transition à la phase Takeoff a été abandonné.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Lire les contrôles et commandes précédents pour identifier la raison de l’abandon."
       ],
-      "limits": "La cause de l’abandon et les mouvements éventuellement déjà effectués ne sont pas indiqués.",
+      "limits": "La raison de l’abandon n’est pas fournie.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Transition -> Takeoff aborted"
-      ]
+      ],
+      "technicalDetails": "La cause de l’abandon et les mouvements éventuellement déjà effectués ne sont pas indiqués."
     },
     {
       "id": "dance-finished",
@@ -674,19 +660,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Dance finished: (?:RTL|Land)$",
-      "meaning": "Le module annonce la fin de la chorégraphie avec la phase finale RTL ou Land indiquée dans le message.",
+      "meaning": "La chorégraphie est déclarée terminée. La suite prévue est RTL (retour) ou Land (atterrissage), selon le texte affiché.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer cet état aux commandes précédentes et au déroulement prévu du show."
       ],
-      "limits": "Ce texte ne prouve pas que le retour ou l’atterrissage soit déjà terminé. Il ne décrit pas à lui seul un incident.",
+      "limits": "Le retour ou l’atterrissage n’est pas encore confirmé terminé.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Dance finished: RTL"
-      ]
+      ],
+      "technicalDetails": "Ce texte ne prouve pas que le retour ou l’atterrissage soit déjà terminé. Il ne décrit pas à lui seul un incident."
     },
     {
       "id": "dance-update-params",
@@ -696,19 +682,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Update params$",
-      "meaning": "Le module annonce une mise à jour des paramètres utilisés pour le show.",
+      "meaning": "Le contrôleur annonce une mise à jour des paramètres du show.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer avec les paramètres reçus et l’accusé de réception éventuel."
       ],
-      "limits": "La liste des paramètres, leurs valeurs et l’issue complète de la mise à jour ne sont pas données par ce texte.",
+      "limits": "Les paramètres modifiés et leur validation finale ne sont pas détaillés.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Update params"
-      ]
+      ],
+      "technicalDetails": "La liste des paramètres, leurs valeurs et l’issue complète de la mise à jour ne sont pas données par ce texte."
     },
     {
       "id": "dance-params-received",
@@ -718,19 +704,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Dance parameters received\\. Geocage alt: [+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+) m$",
-      "meaning": "Le module annonce la réception des paramètres de show et affiche l’altitude de geocage annoncée, en mètres.",
+      "meaning": "Les paramètres du show sont reçus. Le message affiche l’altitude de geocage annoncée, en mètres.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer l’altitude annoncée avec les paramètres prévus pour ce show."
       ],
-      "limits": "Le repère vertical et les autres limites ne sont pas fournis ; cette réception ne prouve pas la validation complète du show.",
+      "limits": "La réception ne vaut pas validation complète ; le repère vertical n’est pas précisé.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Dance parameters received. Geocage alt: 0 m"
-      ]
+      ],
+      "technicalDetails": "Le repère vertical et les autres limites ne sont pas fournis ; cette réception ne prouve pas la validation complète du show."
     },
     {
       "id": "dance-control-received",
@@ -740,19 +726,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Received show control command: [0-9]+$",
-      "meaning": "Le module a reçu une commande de contrôle du show et en affiche le code numérique.",
+      "meaning": "Une commande de contrôle du show est reçue. Son numéro est affiché, mais cette fiche ne décode pas son action exacte.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Chercher le message nommé qui suit : pause, reprise, reverse ou repositionnement."
       ],
-      "limits": "Le catalogue public ne fournit pas le sens de chaque code constructeur. Rechercher le message nommé qui suit (pause, reprise, reverse, repositionnement) ; la réception ne prouve pas l’exécution.",
-      "confidence": "interpretation",
+      "limits": "Le sous-code constructeur et le résultat de la commande restent à confirmer.",
+      "confidence": "unresolved",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Received show control command: 0"
-      ]
+      ],
+      "technicalDetails": "Le catalogue public ne fournit pas le sens de chaque code constructeur. Rechercher le message nommé qui suit (pause, reprise, reverse, repositionnement) ; la réception ne prouve pas l’exécution."
     },
     {
       "id": "dance-command-pause",
@@ -762,19 +748,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Received show pause command$",
-      "meaning": "Le module annonce avoir reçu une demande de pause du show.",
+      "meaning": "Une demande de pause du show est reçue.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Vérifier l’instant d’application et les changements d’état qui suivent la commande."
       ],
-      "limits": "Il s’agit de la réception d’une demande, pas d’une preuve de déplacement ni de prise d’effet immédiate. La synchronisation et les états suivants déterminent son application.",
+      "limits": "Une demande reçue n’est pas une exécution confirmée ; vérifier son horaire d’application.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Received show pause command"
-      ]
+      ],
+      "technicalDetails": "Il s’agit de la réception d’une demande, pas d’une preuve de déplacement ni de prise d’effet immédiate. La synchronisation et les états suivants déterminent son application."
     },
     {
       "id": "dance-command-resume",
@@ -784,19 +770,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Received show resume command$",
-      "meaning": "Le module annonce avoir reçu une demande de reprise du show.",
+      "meaning": "Une demande de reprise du show est reçue.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Vérifier l’instant d’application et les changements d’état qui suivent la commande."
       ],
-      "limits": "Il s’agit de la réception d’une demande, pas d’une preuve de déplacement ni de prise d’effet immédiate. La synchronisation et les états suivants déterminent son application.",
+      "limits": "Une demande reçue n’est pas une exécution confirmée ; vérifier son horaire d’application.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Received show resume command"
-      ]
+      ],
+      "technicalDetails": "Il s’agit de la réception d’une demande, pas d’une preuve de déplacement ni de prise d’effet immédiate. La synchronisation et les états suivants déterminent son application."
     },
     {
       "id": "dance-command-reverse",
@@ -806,19 +792,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Received show reverse command$",
-      "meaning": "Le module annonce avoir reçu une demande de lecture du show en sens inverse.",
+      "meaning": "Une demande de retour en arrière dans le show est reçue.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Vérifier l’instant d’application et les changements d’état qui suivent la commande."
       ],
-      "limits": "Il s’agit de la réception d’une demande, pas d’une preuve de déplacement ni de prise d’effet immédiate. La synchronisation et les états suivants déterminent son application.",
+      "limits": "Une demande reçue n’est pas une exécution confirmée ; vérifier son horaire d’application.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Received show reverse command"
-      ]
+      ],
+      "technicalDetails": "Il s’agit de la réception d’une demande, pas d’une preuve de déplacement ni de prise d’effet immédiate. La synchronisation et les états suivants déterminent son application."
     },
     {
       "id": "dance-command-replacement",
@@ -828,19 +814,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Received show replacement command$",
-      "meaning": "Le module annonce avoir reçu une demande de repositionnement dans le show.",
+      "meaning": "Une demande de repositionnement dans le show est reçue.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Vérifier l’instant d’application et les changements d’état qui suivent la commande."
       ],
-      "limits": "Il s’agit de la réception d’une demande, pas d’une preuve de déplacement ni de prise d’effet immédiate. La synchronisation et les états suivants déterminent son application.",
+      "limits": "Une demande reçue n’est pas une exécution confirmée ; vérifier son horaire d’application.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Received show replacement command"
-      ]
+      ],
+      "technicalDetails": "Il s’agit de la réception d’une demande, pas d’une preuve de déplacement ni de prise d’effet immédiate. La synchronisation et les états suivants déterminent son application."
     },
     {
       "id": "dance-control-duplicate",
@@ -850,19 +836,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Duplicate show control command received, ignoring$",
-      "meaning": "Le module reconnaît une commande de contrôle déjà reçue et indique ignorer cette répétition.",
+      "meaning": "Une commande de show déjà reçue est détectée. Cette répétition est ignorée.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Vérifier le résultat de la première commande dans les messages voisins."
       ],
-      "limits": "Le message ne prouve pas l’échec de la première commande. La répétition peut provenir des mécanismes de diffusion ou de retransmission.",
+      "limits": "L’ignorance du doublon ne signifie pas que la première commande a échoué.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Duplicate show control command received, ignoring"
-      ]
+      ],
+      "technicalDetails": "Le message ne prouve pas l’échec de la première commande. La répétition peut provenir des mécanismes de diffusion ou de retransmission."
     },
     {
       "id": "dance-control-time",
@@ -872,19 +858,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Received show control time: [0-9]+ s, [0-9]+\\s?ms$",
-      "meaning": "Le module affiche l’instant reçu pour une commande de contrôle, sous la forme secondes et millisecondes.",
+      "meaning": "Le contrôleur reçoit un instant de contrôle du show, exprimé en secondes et millisecondes.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer cet instant avec les messages de pause ou de reprise correspondants."
       ],
-      "limits": "La réception d’un instant ne garantit ni une synchronisation parfaite de l’horloge ni l’exécution de la commande à cet instant.",
+      "limits": "La réception d’un horaire ne prouve pas son application ni la précision de synchronisation.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Received show control time: 0 s, 0ms"
-      ]
+      ],
+      "technicalDetails": "La réception d’un instant ne garantit ni une synchronisation parfaite de l’horloge ni l’exécution de la commande à cet instant."
     },
     {
       "id": "dance-pause-at",
@@ -894,19 +880,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Pause show at [0-9]+$",
-      "meaning": "Le module enregistre un instant associé à la pause du show.",
+      "meaning": "Le contrôleur enregistre l’instant associé à la pause du show.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer avec la commande de pause et l’évolution du temps de show."
       ],
-      "limits": "Le texte n’explicite ni l’unité ni la base de temps du nombre affiché. Il ne faut pas convertir ce nombre en heure locale sans connaître le protocole constructeur.",
+      "limits": "L’unité et la base de temps du nombre ne sont pas explicites.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Pause show at 0"
-      ]
+      ],
+      "technicalDetails": "Le texte n’explicite ni l’unité ni la base de temps du nombre affiché. Il ne faut pas convertir ce nombre en heure locale sans connaître le protocole constructeur."
     },
     {
       "id": "dance-pause-duration",
@@ -916,19 +902,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Pause duration: [0-9]+$",
-      "meaning": "Le module affiche une valeur de durée associée à la pause du show.",
+      "meaning": "Le contrôleur affiche la durée associée à une pause du show.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer avec les instants de pause et de reprise correspondants."
       ],
-      "limits": "L’unité n’est pas donnée dans ce message ; ne pas présenter arbitrairement cette valeur comme des secondes ou des millisecondes.",
+      "limits": "L’unité n’est pas indiquée : ne pas la convertir arbitrairement en secondes ou millisecondes.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Pause duration: 0"
-      ]
+      ],
+      "technicalDetails": "L’unité n’est pas donnée dans ce message ; ne pas présenter arbitrairement cette valeur comme des secondes ou des millisecondes."
     },
     {
       "id": "dance-resume-at",
@@ -938,19 +924,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Resume show at [0-9]+(?: from an explicit show time [0-9]+)?$",
-      "meaning": "Le module enregistre un instant de reprise et, lorsque la suite du message est présente, une position temporelle de show explicitement demandée.",
+      "meaning": "Le contrôleur enregistre un instant de reprise. Le message peut aussi préciser le temps du show auquel reprendre.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer avec la demande de reprise et le temps de show effectivement repris."
       ],
-      "limits": "Le texte seul ne précise pas les unités ou la base de temps des valeurs et ne prouve pas un mouvement physique effectif.",
+      "limits": "L’unité et la base de temps ne sont pas explicites dans cette ligne.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Resume show at 0"
-      ]
+      ],
+      "technicalDetails": "Le texte seul ne précise pas les unités ou la base de temps des valeurs et ne prouve pas un mouvement physique effectif."
     },
     {
       "id": "dance-current-time",
@@ -960,19 +946,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] current time: [0-9]+$",
-      "meaning": "Le module affiche son repère temporel courant dans un message de diagnostic.",
+      "meaning": "Le contrôleur affiche son repère temporel courant pour le diagnostic du show.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer les repères de temps voisins si un problème de synchronisation est observé."
       ],
-      "limits": "L’unité et la base de temps ne sont pas explicitées. Le niveau WARNING enregistré ne suffit pas à déduire un retard ou une anomalie d’horloge.",
+      "limits": "Le niveau WARNING ne suffit pas à conclure à un retard ou à une erreur d’horloge.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] current time: 0"
-      ]
+      ],
+      "technicalDetails": "L’unité et la base de temps ne sont pas explicitées. Le niveau WARNING enregistré ne suffit pas à déduire un retard ou une anomalie d’horloge."
     },
     {
       "id": "dance-reposition-start",
@@ -982,19 +968,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Replacement to T=[0-9]+ ms started, distance [+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+) m$",
-      "meaning": "Le module annonce le début d’un repositionnement vers le temps T du show et affiche une distance en mètres.",
+      "meaning": "Un repositionnement vers le temps T du show est annoncé. Le message indique aussi la distance en mètres.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Chercher « Replacement arrived » et vérifier le temps cible du show."
       ],
-      "limits": "Replacement désigne ici un état logiciel de repositionnement ; ce message ne signifie pas qu’un autre drone remplace physiquement le véhicule. Le déplacement terminé doit être confirmé séparément.",
+      "limits": "Le déplacement n’est pas encore annoncé terminé. Replacement ne signifie pas remplacement matériel d’un drone.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Replacement to T=0 ms started, distance 0 m"
-      ]
+      ],
+      "technicalDetails": "Replacement désigne ici un état logiciel de repositionnement ; ce message ne signifie pas qu’un autre drone remplace physiquement le véhicule. Le déplacement terminé doit être confirmé séparément."
     },
     {
       "id": "dance-reposition-arrived",
@@ -1004,19 +990,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Replacement arrived, show time frozen at [0-9]+ ms$",
-      "meaning": "Le module annonce avoir atteint le repositionnement demandé et maintenir le temps de show figé à la valeur indiquée en millisecondes.",
+      "meaning": "Le contrôleur annonce la fin du repositionnement. Le temps de show reste figé à la valeur indiquée.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Vérifier le temps de show figé puis la commande de reprise."
       ],
-      "limits": "Il s’agit du résultat déclaré par le module. Ce message ne garantit pas une précision physique particulière et ne signifie pas que la lecture du show a repris.",
+      "limits": "La précision physique et la reprise de lecture du show ne sont pas garanties par cette annonce.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Replacement arrived, show time frozen at 0 ms"
-      ]
+      ],
+      "technicalDetails": "Il s’agit du résultat déclaré par le module. Ce message ne garantit pas une précision physique particulière et ne signifie pas que la lecture du show a repris."
     },
     {
       "id": "dance-battery-rtl-disabled",
@@ -1026,13 +1012,11 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] RTL disabled, [0-9]+ ms until end of show$",
-      "meaning": "Le module annonce une inhibition du retour RTL à l’approche de la fin du show. Le manuel IO Star 3 v1.2 rattache ce message à l’inhibition RTL/Land pour les failsafes batterie près de la fin du show.",
+      "meaning": "Près de la fin du show, le contrôleur annonce l’inhibition du RTL. Le manuel IO Star 3 rattache ce message aux protections batterie RTL/Land.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte.",
-        "Comparer la charge et les autres alertes batterie ainsi que le temps restant de show."
+        "Comparer le temps de show restant et les alertes batterie voisines."
       ],
-      "limits": "Ce message n’annonce pas la désactivation de toutes les protections ni un failsafe batterie déjà déclenché. La durée exacte et le comportement de cette version constructeur doivent être vérifiés.",
+      "limits": "Ce message ne désactive pas toutes les protections. La référence documentaire concerne l’IO Star 3 du manuel v1.2.",
       "confidence": "documented",
       "provenance": "Texte correspondant dans la table des messages du Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, §8.8.1 p.177, rubrique Battery failsafes.",
       "referenceFirmware": "Drotek IO Star 3 : manuel MUE v1.2 (copie locale novembre 2025) ; autres matériels et révisions non attestés.",
@@ -1044,7 +1028,8 @@
       },
       "syntheticExamples": [
         "[dance] RTL disabled, 0 ms until end of show"
-      ]
+      ],
+      "technicalDetails": "Ce message n’annonce pas la désactivation de toutes les protections ni un failsafe batterie déjà déclenché. La durée exacte et le comportement de cette version constructeur doivent être vérifiés."
     },
     {
       "id": "dance-tracking-failsafe",
@@ -1054,20 +1039,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Tracking failsafe$",
-      "meaning": "Le module signale la protection liée au suivi de la trajectoire du show.",
+      "meaning": "La protection de suivi de trajectoire est signalée.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte.",
-        "Comparer position et consigne, vent estimé et éventuelles saturations de commande disponibles dans le log."
+        "Comparer les positions mesurées à la trajectoire demandée et chercher l’action de sécurité suivante."
       ],
-      "limits": "Le texte ne donne ni seuil de suivi, ni cause, ni action finale. Le vent est une piste à vérifier, pas une cause établie.",
+      "limits": "Le seuil, la cause et l’action finale ne sont pas indiqués.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible. Suivi de trajectoire discuté dans Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, pp.166 et 179.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Tracking failsafe"
-      ]
+      ],
+      "technicalDetails": "Le texte ne donne ni seuil de suivi, ni cause, ni action finale. Le vent est une piste à vérifier, pas une cause établie."
     },
     {
       "id": "dance-tracking-rtl",
@@ -1077,20 +1061,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Tracking failsafe: RTL, wind speed: [ ]+N : [+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+) m/s, E : [+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+) m/s$",
-      "meaning": "Le module annonce un retour RTL lié à sa protection de suivi de trajectoire et affiche deux composantes de vent estimé (Nord et Est), en m/s.",
+      "meaning": "Le suivi de trajectoire déclenche un retour RTL annoncé. Les valeurs N et E sont les composantes Nord/Est du vent estimé, en m/s.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte.",
-        "Comparer l’écart à la trajectoire, les consignes et les données de vent estimé disponibles."
+        "Comparer l’écart à la trajectoire et les estimations de vent au même instant."
       ],
-      "limits": "Les valeurs N/E sont des composantes, pas la vitesse totale. Leur présence ne prouve pas que le vent soit la cause unique du failsafe ; le seuil exact reste propre au firmware.",
+      "limits": "Le vent affiché est une estimation ; sa présence ne prouve pas qu’il soit l’unique cause.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte complet ; sens de Tracking failsafe: RTL confirmé dans Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, §8.8.1 p.179.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Tracking failsafe: RTL, wind speed:  N : 0 m/s, E : 0 m/s"
-      ]
+      ],
+      "technicalDetails": "Les valeurs N/E sont des composantes, pas la vitesse totale. Leur présence ne prouve pas que le vent soit la cause unique du failsafe ; le seuil exact reste propre au firmware."
     },
     {
       "id": "dance-geocage-horizontal",
@@ -1100,13 +1083,11 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Geocage horizontal EKF/GNSS violation!$",
-      "meaning": "Le contrôle de geocage annonce une détection de dérive ou de fuite horizontale (flyaway), à partir du GNSS et des autres capteurs utilisés par l’EKF.",
+      "meaning": "Le contrôle geocage détecte une dérive ou fuite horizontale (flyaway), à partir du GNSS et des autres capteurs de l’EKF.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte.",
-        "Comparer les positions enregistrées avec la geocage effectivement chargée et leur repère."
+        "Comparer la position estimée, la trajectoire demandée et les limites du show chargé."
       ],
-      "limits": "Le message exprime la détection du contrôleur sans donner le critère, le seuil ou les coordonnées. Il ne prouve pas à lui seul le franchissement d’une frontière géométrique ; une erreur d’estimation de position ou de configuration doit être évaluée séparément.",
+      "limits": "Cette détection ne prouve pas le franchissement d’une frontière géométrique. Le critère et le seuil ne sont pas donnés.",
       "confidence": "documented",
       "provenance": "Message correspondant dans Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, §8.8.1 p.178, rubrique Geocage.",
       "referenceFirmware": "Drotek IO Star 3 : manuel MUE v1.2 (copie locale novembre 2025) ; autres matériels et révisions non attestés.",
@@ -1118,7 +1099,8 @@
       },
       "syntheticExamples": [
         "[dance] Geocage horizontal EKF/GNSS violation!"
-      ]
+      ],
+      "technicalDetails": "Le message exprime la détection du contrôleur sans donner le critère, le seuil ou les coordonnées. Il ne prouve pas à lui seul le franchissement d’une frontière géométrique ; une erreur d’estimation de position ou de configuration doit être évaluée séparément."
     },
     {
       "id": "dance-crc-mismatch",
@@ -1128,20 +1110,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] (?:CRC mismatch, dance not started|CRC32 error)$",
-      "meaning": "Le contrôle d’intégrité CRC du fichier dance échoue. Lorsque le texte précise dance not started, le module indique ne pas démarrer la danse pour cette raison.",
+      "meaning": "Le contrôle d’intégrité du fichier dance échoue. Si le texte précise « dance not started », le démarrage est refusé pour cette raison.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte.",
-        "Comparer les empreintes annoncées à la réception et au contrôle puis la réussite du chargement du fichier attendu."
+        "Comparer les CRC distant/local et vérifier le résultat d’un chargement complet du fichier attendu."
       ],
-      "limits": "Un CRC différent indique une incohérence des données vérifiées, pas sa cause. Ce seul message ne distingue pas transfert incomplet, mauvais fichier ou erreur de stockage.",
+      "limits": "Le CRC révèle une incohérence des données, sans en donner la cause.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] CRC mismatch, dance not started"
-      ]
+      ],
+      "technicalDetails": "Un CRC différent indique une incohérence des données vérifiées, pas sa cause. Ce seul message ne distingue pas transfert incomplet, mauvais fichier ou erreur de stockage."
     },
     {
       "id": "dance-crc-values",
@@ -1151,19 +1132,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] CRC-32: dist: [0-9]+ local : [0-9]+$",
-      "meaning": "Le module affiche l’empreinte CRC-32 annoncée à distance et celle calculée localement pour le fichier dance.",
+      "meaning": "Le contrôleur compare deux empreintes CRC-32 du fichier dance : celle annoncée à distance et celle calculée localement.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer les deux nombres affichés et chercher un éventuel message « CRC mismatch »."
       ],
-      "limits": "Comparer les deux nombres affichés : égaux, ils concordent pour ce contrôle ; différents, ils ne concordent pas. Le message n’identifie pas la cause d’un écart ni la validation de tous les paramètres du show.",
+      "limits": "Des CRC égaux valident cette comparaison, pas l’ensemble du show.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] CRC-32: dist: 0 local : 0"
-      ]
+      ],
+      "technicalDetails": "Comparer les deux nombres affichés : égaux, ils concordent pour ce contrôle ; différents, ils ne concordent pas. Le message n’identifie pas la cause d’un écart ni la validation de tous les paramètres du show."
     },
     {
       "id": "dance-file-received",
@@ -1173,19 +1154,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Received dance file with CRC: [0-9]+$",
-      "meaning": "Le module annonce la réception d’un fichier dance avec l’empreinte CRC indiquée.",
+      "meaning": "La réception d’un fichier dance est annoncée avec son empreinte CRC.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Vérifier la comparaison des CRC et l’acceptation du démarrage."
       ],
-      "limits": "Cette annonce ne prouve pas à elle seule la concordance avec le fichier attendu ni l’acceptation du démarrage du show.",
+      "limits": "La réception annoncée ne suffit pas à valider le fichier ou le démarrage du show.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Received dance file with CRC: 0"
-      ]
+      ],
+      "technicalDetails": "Cette annonce ne prouve pas à elle seule la concordance avec le fichier attendu ni l’acceptation du démarrage du show."
     },
     {
       "id": "dance-file-reloaded",
@@ -1195,19 +1176,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Dance file reloaded: t_first [0-9]+ ms, transition end [0-9]+ ms$",
-      "meaning": "Le module annonce le rechargement du fichier dance et affiche les repères temporels du premier événement et de fin de transition, en millisecondes.",
+      "meaning": "Le fichier dance est rechargé. Les temps du premier événement et de fin de transition sont affichés en millisecondes.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer les deux temps avec la transition prévue dans le fichier show."
       ],
-      "limits": "Ces repères de show ne sont pas des heures absolues et ne prouvent pas la précision de l’exécution physique.",
+      "limits": "Ces repères temporels de show ne sont pas des heures absolues.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Dance file reloaded: t_first 0 ms, transition end 0 ms"
-      ]
+      ],
+      "technicalDetails": "Ces repères de show ne sont pas des heures absolues et ne prouvent pas la précision de l’exécution physique."
     },
     {
       "id": "dance-ready-countdown",
@@ -1217,19 +1198,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Dance ready, starting in [0-9]+ seconds$",
-      "meaning": "Le module annonce que la danse est prête et indique le délai restant avant son démarrage, en secondes.",
+      "meaning": "Le show est déclaré prêt. Le message donne le nombre de secondes avant son démarrage prévu.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Vérifier le passage suivant vers la phase de décollage ou de transition."
       ],
-      "limits": "Cette annonce ne prouve pas qu’un décollage ait ensuite été autorisé ou effectué.",
+      "limits": "Le décollage prévu peut encore être refusé par les contrôles suivants.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Dance ready, starting in 0 seconds"
-      ]
+      ],
+      "technicalDetails": "Cette annonce ne prouve pas qu’un décollage ait ensuite été autorisé ou effectué."
     },
     {
       "id": "dance-file-frame",
@@ -1239,19 +1220,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Fram len : [0-9]+, offset: [0-9]+$",
-      "meaning": "Le module affiche une longueur et un offset dans son traitement des données dance.",
+      "meaning": "Le traitement du fichier dance affiche une longueur et un offset. La nature exacte de ce diagnostic « Fram » reste inconnue.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "En cas d’échec de chargement, examiner les messages CRC et de réception du fichier."
       ],
-      "limits": "Le rôle exact du bloc et la signification de Fram ne sont pas documentés. Une longueur nulle dans ce diagnostic ne suffit pas à conclure à un transfert corrompu.",
-      "confidence": "interpretation",
+      "limits": "Le rôle de Fram et l’unité des champs ne sont pas établis. Cette ligne seule ne signale pas une corruption.",
+      "confidence": "unresolved",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Fram len : 0, offset: 0"
-      ]
+      ],
+      "technicalDetails": "Le rôle exact du bloc et la signification de Fram ne sont pas documentés. Une longueur nulle dans ce diagnostic ne suffit pas à conclure à un transfert corrompu."
     },
     {
       "id": "dance-file-section",
@@ -1261,19 +1242,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Section : [0-9]+ Start : [0-9]+ End : [0-9]+ MaxIndex : [0-9]+$",
-      "meaning": "Le module affiche l’identifiant d’une section de données dance, ses bornes Start/End et une valeur MaxIndex.",
+      "meaning": "Le contrôleur affiche les bornes et l’index maximal d’une section du fichier dance.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "En cas d’échec de chargement, comparer les sections annoncées et le résultat du CRC."
       ],
-      "limits": "Ce diagnostic de structure ne signale pas en lui-même une erreur. L’unité des bornes et le rôle exact de l’index exigent le format de cette version.",
+      "limits": "L’unité des bornes et le rôle de MaxIndex dépendent du format constructeur.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Section : 0 Start : 0 End : 0 MaxIndex : 0"
-      ]
+      ],
+      "technicalDetails": "Ce diagnostic de structure ne signale pas en lui-même une erreur. L’unité des bornes et le rôle exact de l’index exigent le format de cette version."
     },
     {
       "id": "dance-file-header",
@@ -1283,19 +1264,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] mg nb : 0x[0-9A-Fa-f]+, len : 0x[0-9A-Fa-f]+, nb_sections : 0x[0-9A-Fa-f]+$",
-      "meaning": "Le module affiche des champs d’en-tête en hexadécimal : une signature, une longueur et un nombre de sections.",
+      "meaning": "Le contrôleur affiche la signature, la longueur et le nombre de sections d’un fichier dance, en hexadécimal.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "En cas d’échec de chargement, vérifier les messages de structure et de CRC voisins."
       ],
-      "limits": "Ces champs décrivent le fichier ; aucun échec de lecture ou d’intégrité n’est annoncé par ce message seul.",
+      "limits": "Ce diagnostic d’en-tête ne signale pas à lui seul une erreur.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] mg nb : 0x0, len : 0x0, nb_sections : 0x0"
-      ]
+      ],
+      "technicalDetails": "Ces champs décrivent le fichier ; aucun échec de lecture ou d’intégrité n’est annoncé par ce message seul."
     },
     {
       "id": "dance-pyro-start",
@@ -1305,18 +1286,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] Starting Pyro Event on channel [0-9]+$",
-      "meaning": "Le module annonce le lancement logiciel d’un événement pyro sur le canal indiqué.",
+      "meaning": "Le logiciel annonce un événement pyro sur le canal indiqué.",
       "checks": [
-        "Comparer le canal et le temps prévus dans le fichier show avec les messages et accusés de réception déjà enregistrés."
+        "Comparer le canal et le temps de l’événement avec le show programmé et les retours déjà enregistrés."
       ],
-      "limits": "Le message ne prouve ni un signal électrique reçu ni une mise à feu physique. Le canal et son branchement doivent être interprétés selon le matériel et la configuration du show.",
+      "limits": "Un événement logiciel ne confirme pas une mise à feu physique.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] Starting Pyro Event on channel 0"
-      ]
+      ],
+      "technicalDetails": "Le message ne prouve ni un signal électrique reçu ni une mise à feu physique. Le canal et son branchement doivent être interprétés selon le matériel et la configuration du show."
     },
     {
       "id": "dance-pyro-can-sent",
@@ -1326,18 +1308,19 @@
       ],
       "module": "dance",
       "message": "^\\[dance\\] CAN message sent for pyro event$",
-      "meaning": "Le module annonce avoir envoyé un message sur le bus CAN pour un événement pyro.",
+      "meaning": "Le logiciel annonce l’envoi d’un message CAN pour un événement pyro.",
       "checks": [
-        "Comparer avec l’événement de show et les données de réception déjà enregistrées par l’équipement destinataire."
+        "Comparer avec l’événement prévu et les retours déjà enregistrés du destinataire CAN."
       ],
-      "limits": "Un envoi logiciel n’est pas une preuve de réception, de signal électrique ni de mise à feu physique.",
+      "limits": "L’envoi annoncé ne prouve ni réception CAN ni mise à feu.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[dance] CAN message sent for pyro event"
-      ]
+      ],
+      "technicalDetails": "Un envoi logiciel n’est pas une preuve de réception, de signal électrique ni de mise à feu physique."
     },
     {
       "id": "sequencer-late",
@@ -1347,20 +1330,19 @@
       ],
       "module": "demosequencerlite",
       "message": "^\\[demosequencerlite\\] Cmd [0-9]+ms late \\(start: [0-9]+ size: [0-9]+ idx: [0-9]+/[0-9]+\\)$",
-      "meaning": "Le séquenceur annonce qu’une commande est en retard du nombre de millisecondes affiché par rapport à sa planification.",
+      "meaning": "Une commande du séquenceur a du retard sur son horaire prévu. Le retard est indiqué en millisecondes.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte.",
-        "Comparer les autres retards, la charge système et les éventuelles interruptions de données disponibles."
+        "Comparer les autres retards et la charge système au même instant, si elle est enregistrée."
       ],
-      "limits": "Les champs start/size/idx sont des diagnostics internes. Ce message seul ne donne ni cause du retard, ni étendue de ses conséquences sur le mouvement ou l’éclairage.",
+      "limits": "La cause du retard et ses conséquences sur le show ne sont pas précisées.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[demosequencerlite] Cmd 0ms late (start: 0 size: 0 idx: 0/0)"
-      ]
+      ],
+      "technicalDetails": "Les champs start/size/idx sont des diagnostics internes. Ce message seul ne donne ni cause du retard, ni étendue de ses conséquences sur le mouvement ou l’éclairage."
     },
     {
       "id": "sequencer-stopped",
@@ -1370,19 +1352,19 @@
       ],
       "module": "demosequencerlite",
       "message": "^\\[demosequencerlite\\] (?:Sequencer|Choreography) stopped$",
-      "meaning": "Le séquenceur indique avoir arrêté sa lecture ou la chorégraphie.",
+      "meaning": "La lecture du séquenceur ou de la chorégraphie est arrêtée.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Lire la commande ou l’événement précédent pour distinguer fin normale et interruption."
       ],
-      "limits": "Il ne s’agit pas d’une confirmation d’arrêt physique du véhicule. La cause (fin normale, commande ou protection) doit être cherchée dans le contexte.",
+      "limits": "L’arrêt du séquenceur ne confirme pas l’arrêt physique des moteurs.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[demosequencerlite] Sequencer stopped"
-      ]
+      ],
+      "technicalDetails": "Il ne s’agit pas d’une confirmation d’arrêt physique du véhicule. La cause (fin normale, commande ou protection) doit être cherchée dans le contexte."
     },
     {
       "id": "mavlink-command-21",
@@ -1392,12 +1374,11 @@
       ],
       "module": "mavlink",
       "message": "^\\[mavlink\\] command number 21 is ok [01]$",
-      "meaning": "Le module journalise le traitement de la commande MAVLink 21, associée à l’action « atterrissage » dans le protocole standard.",
+      "meaning": "Commande d’atterrissage. « is ok » n’est pas décodé : cette ligne seule ne confirme ni succès ni échec.",
       "checks": [
-        "Lire les messages de réponse et les changements d’état associés à la commande.",
-        "Comparer l’état demandé à l’état enregistré dans la suite du log."
+        "Vérifier la réponse à la commande et le changement d’état réellement enregistré."
       ],
-      "limits": "Le suffixe constructeur is ok 0/1 n’est pas documenté : ne pas l’assimiler à MAV_RESULT ou à un accusé de succès. Le niveau ERROR source et cette ligne ne prouvent pas que l’action ait échoué ou réussi.",
+      "limits": "Le suffixe « is ok » n’est pas décodé. Le niveau ERROR ne suffit pas à conclure à l’échec de la commande.",
       "confidence": "interpretation",
       "provenance": "Identifiant standard documenté par MAVLink ; diagnostic constructeur interprété, signification de is ok non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
@@ -1409,7 +1390,8 @@
       ],
       "syntheticExamples": [
         "[mavlink] command number 21 is ok 0"
-      ]
+      ],
+      "technicalDetails": "Le suffixe constructeur is ok 0/1 n’est pas documenté : ne pas l’assimiler à MAV_RESULT ou à un accusé de succès. Le niveau ERROR source et cette ligne ne prouvent pas que l’action ait échoué ou réussi."
     },
     {
       "id": "mavlink-command-176",
@@ -1419,12 +1401,11 @@
       ],
       "module": "mavlink",
       "message": "^\\[mavlink\\] command number 176 is ok [01]$",
-      "meaning": "Le module journalise le traitement de la commande MAVLink 176, associée à l’action « changement de mode » dans le protocole standard.",
+      "meaning": "Commande de changement de mode. « is ok » n’est pas décodé : cette ligne seule ne confirme ni succès ni échec.",
       "checks": [
-        "Lire les messages de réponse et les changements d’état associés à la commande.",
-        "Comparer l’état demandé à l’état enregistré dans la suite du log."
+        "Vérifier la réponse à la commande et le changement d’état réellement enregistré."
       ],
-      "limits": "Le suffixe constructeur is ok 0/1 n’est pas documenté : ne pas l’assimiler à MAV_RESULT ou à un accusé de succès. Le niveau ERROR source et cette ligne ne prouvent pas que l’action ait échoué ou réussi.",
+      "limits": "Le suffixe « is ok » n’est pas décodé. Le niveau ERROR ne suffit pas à conclure à l’échec de la commande.",
       "confidence": "interpretation",
       "provenance": "Identifiant standard documenté par MAVLink ; diagnostic constructeur interprété, signification de is ok non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
@@ -1436,7 +1417,8 @@
       ],
       "syntheticExamples": [
         "[mavlink] command number 176 is ok 0"
-      ]
+      ],
+      "technicalDetails": "Le suffixe constructeur is ok 0/1 n’est pas documenté : ne pas l’assimiler à MAV_RESULT ou à un accusé de succès. Le niveau ERROR source et cette ligne ne prouvent pas que l’action ait échoué ou réussi."
     },
     {
       "id": "mavlink-command-246",
@@ -1446,12 +1428,11 @@
       ],
       "module": "mavlink",
       "message": "^\\[mavlink\\] command number 246 is ok [01]$",
-      "meaning": "Le module journalise le traitement de la commande MAVLink 246, associée à l’action « reboot ou arrêt de composants » dans le protocole standard.",
+      "meaning": "Commande de redémarrage ou d’arrêt d’un composant. « is ok » n’est pas décodé : cette ligne seule ne confirme ni succès ni échec.",
       "checks": [
-        "Lire les messages de réponse et les changements d’état associés à la commande.",
-        "Comparer l’état demandé à l’état enregistré dans la suite du log."
+        "Vérifier la réponse à la commande et le changement d’état réellement enregistré."
       ],
-      "limits": "Le suffixe constructeur is ok 0/1 n’est pas documenté : ne pas l’assimiler à MAV_RESULT ou à un accusé de succès. Le niveau ERROR source et cette ligne ne prouvent pas que l’action ait échoué ou réussi.",
+      "limits": "Le suffixe « is ok » n’est pas décodé. Le niveau ERROR ne suffit pas à conclure à l’échec de la commande.",
       "confidence": "interpretation",
       "provenance": "Identifiant standard documenté par MAVLink ; diagnostic constructeur interprété, signification de is ok non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
@@ -1463,7 +1444,8 @@
       ],
       "syntheticExamples": [
         "[mavlink] command number 246 is ok 0"
-      ]
+      ],
+      "technicalDetails": "Le suffixe constructeur is ok 0/1 n’est pas documenté : ne pas l’assimiler à MAV_RESULT ou à un accusé de succès. Le niveau ERROR source et cette ligne ne prouvent pas que l’action ait échoué ou réussi."
     },
     {
       "id": "mavlink-command-310",
@@ -1473,12 +1455,11 @@
       ],
       "module": "mavlink",
       "message": "^\\[mavlink\\] command number 310 is ok [01]$",
-      "meaning": "Le module journalise le traitement de la commande MAVLink 310, associée à l’action « test d’actionneur » dans le protocole standard.",
+      "meaning": "Commande de test d’un actionneur. « is ok » n’est pas décodé : cette ligne seule ne confirme ni succès ni échec.",
       "checks": [
-        "Lire les messages de réponse et les changements d’état associés à la commande.",
-        "Comparer l’état demandé à l’état enregistré dans la suite du log."
+        "Vérifier la réponse à la commande et le changement d’état réellement enregistré."
       ],
-      "limits": "Le suffixe constructeur is ok 0/1 n’est pas documenté : ne pas l’assimiler à MAV_RESULT ou à un accusé de succès. Le niveau ERROR source et cette ligne ne prouvent pas que l’action ait échoué ou réussi.",
+      "limits": "Le suffixe « is ok » n’est pas décodé. Le niveau ERROR ne suffit pas à conclure à l’échec de la commande.",
       "confidence": "interpretation",
       "provenance": "Identifiant standard documenté par MAVLink ; diagnostic constructeur interprété, signification de is ok non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
@@ -1490,7 +1471,8 @@
       ],
       "syntheticExamples": [
         "[mavlink] command number 310 is ok 0"
-      ]
+      ],
+      "technicalDetails": "Le suffixe constructeur is ok 0/1 n’est pas documenté : ne pas l’assimiler à MAV_RESULT ou à un accusé de succès. Le niveau ERROR source et cette ligne ne prouvent pas que l’action ait échoué ou réussi."
     },
     {
       "id": "mavlink-command-400",
@@ -1500,12 +1482,11 @@
       ],
       "module": "mavlink",
       "message": "^\\[mavlink\\] command number 400 is ok [01]$",
-      "meaning": "Le module journalise le traitement de la commande MAVLink 400, associée à l’action « armement ou désarmement » dans le protocole standard.",
+      "meaning": "Commande d’armement ou de désarmement. « is ok » n’est pas décodé : cette ligne seule ne confirme ni succès ni échec.",
       "checks": [
-        "Lire les messages de réponse et les changements d’état associés à la commande.",
-        "Comparer l’état demandé à l’état enregistré dans la suite du log."
+        "Vérifier la réponse à la commande et le changement d’état réellement enregistré."
       ],
-      "limits": "Le suffixe constructeur is ok 0/1 n’est pas documenté : ne pas l’assimiler à MAV_RESULT ou à un accusé de succès. Le niveau ERROR source et cette ligne ne prouvent pas que l’action ait échoué ou réussi.",
+      "limits": "Le suffixe « is ok » n’est pas décodé. Le niveau ERROR ne suffit pas à conclure à l’échec de la commande.",
       "confidence": "interpretation",
       "provenance": "Identifiant standard documenté par MAVLink ; diagnostic constructeur interprété, signification de is ok non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
@@ -1517,7 +1498,8 @@
       ],
       "syntheticExamples": [
         "[mavlink] command number 400 is ok 0"
-      ]
+      ],
+      "technicalDetails": "Le suffixe constructeur is ok 0/1 n’est pas documenté : ne pas l’assimiler à MAV_RESULT ou à un accusé de succès. Le niveau ERROR source et cette ligne ne prouvent pas que l’action ait échoué ou réussi."
     },
     {
       "id": "mavlink-command-512",
@@ -1527,12 +1509,11 @@
       ],
       "module": "mavlink",
       "message": "^\\[mavlink\\] command number 512 is ok [01]$",
-      "meaning": "Le module journalise le traitement de la commande MAVLink 512, associée à l’action « demande d’un message MAVLink » dans le protocole standard.",
+      "meaning": "Commande demandant l’envoi d’un message. « is ok » n’est pas décodé : cette ligne seule ne confirme ni succès ni échec.",
       "checks": [
-        "Lire les messages de réponse et les changements d’état associés à la commande.",
-        "Comparer l’état demandé à l’état enregistré dans la suite du log."
+        "Vérifier la réponse à la commande et le changement d’état réellement enregistré."
       ],
-      "limits": "Le suffixe constructeur is ok 0/1 n’est pas documenté : ne pas l’assimiler à MAV_RESULT ou à un accusé de succès. Le niveau ERROR source et cette ligne ne prouvent pas que l’action ait échoué ou réussi.",
+      "limits": "Le suffixe « is ok » n’est pas décodé. Le niveau ERROR ne suffit pas à conclure à l’échec de la commande.",
       "confidence": "interpretation",
       "provenance": "Identifiant standard documenté par MAVLink ; diagnostic constructeur interprété, signification de is ok non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
@@ -1544,28 +1525,52 @@
       ],
       "syntheticExamples": [
         "[mavlink] command number 512 is ok 0"
-      ]
+      ],
+      "technicalDetails": "Le suffixe constructeur is ok 0/1 n’est pas documenté : ne pas l’assimiler à MAV_RESULT ou à un accusé de succès. Le niveau ERROR source et cette ligne ne prouvent pas que l’action ait échoué ou réussi."
     },
     {
       "id": "mavlink-custom-command",
-      "title": "Commande MAVLink constructeur journalisée",
+      "title": "Commande 45000 : réglage des LED",
       "patterns": [
-        "^\\[mavlink\\] command number (?:45000|45008) is ok [01]$"
+        "^\\[mavlink\\] command number 45000 is ok [01]$"
       ],
       "module": "mavlink",
-      "message": "^\\[mavlink\\] command number (?:45000|45008) is ok [01]$",
-      "meaning": "Le module journalise une commande propre au constructeur avec son identifiant numérique.",
+      "message": "^\\[mavlink\\] command number 45000 is ok [01]$",
+      "meaning": "Commande de réglage de la couleur des LED. « is ok » n’est pas décodé : cette ligne seule ne confirme ni succès ni échec.",
       "checks": [
-        "Lire les messages voisins de contrôle du show et les éventuels changements d’état."
+        "Comparer avec la commande de couleur prévue et les messages d’éclairage suivants."
       ],
-      "limits": "Le catalogue public ne définit pas ces commandes ni le suffixe is ok. Cette ligne ne doit pas être présentée comme un accusé de réussite ou d’échec.",
+      "limits": "Le suffixe « is ok » n’est pas décodé : ni succès ni échec établi. Le niveau ERROR vient du firmware.",
       "confidence": "interpretation",
-      "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
-      "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
+      "provenance": "Rôle de l’ID établi dans le binaire primaire Drotek GCS ; suffixe « is ok » non résolu.",
+      "referenceFirmware": "Pont radio Drotek GCS · image du 5 juin 2026 ; compatibilité avec le firmware émetteur non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[mavlink] command number 45000 is ok 0"
-      ]
+      ],
+      "technicalDetails": "Dans le pont radio Drotek étudié, 45000 correspond à COLOR_LED. Le réglage exact des couleurs dépend des paramètres de la commande, absents de cette ligne. La version exacte du firmware émetteur et la signification de is ok restent à vérifier. La preuve binaire et ses empreintes figurent dans le dossier de recherche."
+    },
+    {
+      "id": "mavlink-command-45008",
+      "title": "Commande 45008 : contrôle du show",
+      "patterns": [
+        "^\\[mavlink\\] command number 45008 is ok [01]$"
+      ],
+      "module": "mavlink",
+      "message": "^\\[mavlink\\] command number 45008 is ok [01]$",
+      "meaning": "Commande de contrôle du show : démarrage, pause ou reprise. « is ok » n’est pas décodé : cette ligne seule ne confirme ni succès ni échec.",
+      "checks": [
+        "Comparer avec les demandes de pause, reprise ou démarrage et les changements d’état du show."
+      ],
+      "limits": "« is ok 1 » n’est pas décodé : ni succès ni échec établi. Le niveau ERROR vient du firmware.",
+      "confidence": "interpretation",
+      "provenance": "Rôle de l’ID établi dans le binaire primaire Drotek GCS ; suffixe « is ok » non résolu.",
+      "referenceFirmware": "Pont radio Drotek GCS · image du 5 juin 2026 ; compatibilité avec le firmware émetteur non attestée.",
+      "sources": [],
+      "syntheticExamples": [
+        "[mavlink] command number 45008 is ok 1"
+      ],
+      "technicalDetails": "Dans le pont radio Drotek étudié, 45008 correspond à SHOW_CONTROL. Ses paramètres distinguent pause, reprise et démarrage. La ligne de log ne contient pas ces paramètres : le « 1 » après is ok ne désigne pas une pause. La version exacte du firmware émetteur et la signification de is ok restent à vérifier. La preuve binaire et ses empreintes figurent dans le dossier de recherche."
     },
     {
       "id": "mavlink-command-unacknowledged",
@@ -1575,11 +1580,11 @@
       ],
       "module": "mavlink",
       "message": "^\\[mavlink\\] Command [0-9]+ not acknowledged$",
-      "meaning": "Le module indique qu’il n’a pas reçu l’accusé de réception attendu pour la commande numérique affichée.",
+      "meaning": "L’accusé de réception attendu pour cette commande n’a pas été reçu.",
       "checks": [
-        "Comparer avec les tentatives suivantes, l’état des liaisons et les messages de réponse disponibles."
+        "Vérifier les retransmissions, les réponses suivantes et l’état des liaisons."
       ],
-      "limits": "L’absence d’accusé ne prouve pas que le destinataire n’a pas reçu ou exécuté la commande. Le délai exact et les tentatives ne sont pas précisés.",
+      "limits": "La commande peut avoir été reçue ou exécutée malgré l’absence d’accusé.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
@@ -1591,7 +1596,8 @@
       ],
       "syntheticExamples": [
         "[mavlink] Command 0 not acknowledged"
-      ]
+      ],
+      "technicalDetails": "L’absence d’accusé ne prouve pas que le destinataire n’a pas reçu ou exécuté la commande. Le délai exact et les tentatives ne sont pas précisés."
     },
     {
       "id": "xbee-link-lost",
@@ -1601,19 +1607,19 @@
       ],
       "module": "mavlink / xbee_radio",
       "message": "^\\[(?:mavlink|xbee_radio)\\] XBee link lost$",
-      "meaning": "Le module signale la perte de sa liaison XBee.",
+      "meaning": "La liaison XBee est signalée perdue.",
       "checks": [
-        "Comparer avec la liaison Wi-Fi, les heartbeats et la réception de corrections RTCM disponibles.",
-        "Lire les messages de reprise et comparer les drones au même instant."
+        "Chercher le rétablissement XBee et comparer la réception RTCM ainsi que le Wi-Fi."
       ],
-      "limits": "Le message ne décrit pas la cause ou la durée. XBee et Wi-Fi sont deux canaux distincts sur l’IO Star 3 ; le fonctionnement de l’autre canal ne peut pas être déduit de cette seule ligne.",
+      "limits": "La cause et la durée ne sont pas indiquées. Le Wi-Fi peut rester disponible.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible. Architecture radio : Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, §3.6 p.28–30.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[mavlink] XBee link lost"
-      ]
+      ],
+      "technicalDetails": "Le message ne décrit pas la cause ou la durée. XBee et Wi-Fi sont deux canaux distincts sur l’IO Star 3 ; le fonctionnement de l’autre canal ne peut pas être déduit de cette seule ligne."
     },
     {
       "id": "xbee-link-recovered",
@@ -1623,19 +1629,19 @@
       ],
       "module": "mavlink / xbee_radio",
       "message": "^\\[(?:mavlink|xbee_radio)\\] XBee link recovered$",
-      "meaning": "Le module indique avoir retrouvé sa liaison XBee.",
+      "meaning": "La liaison XBee est de nouveau détectée.",
       "checks": [
-        "Comparer avec la liaison Wi-Fi, les heartbeats et la réception de corrections RTCM disponibles.",
-        "Lire les messages de reprise et comparer les drones au même instant."
+        "Vérifier le retour des échanges attendus sur XBee et des corrections RTCM."
       ],
-      "limits": "Le message ne décrit pas la cause ou la durée. XBee et Wi-Fi sont deux canaux distincts sur l’IO Star 3 ; le fonctionnement de l’autre canal ne peut pas être déduit de cette seule ligne.",
+      "limits": "Le rétablissement radio ne garantit pas tous les échanges attendus.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible. Architecture radio : Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, §3.6 p.28–30.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[mavlink] XBee link recovered"
-      ]
+      ],
+      "technicalDetails": "Le message ne décrit pas la cause ou la durée. XBee et Wi-Fi sont deux canaux distincts sur l’IO Star 3 ; le fonctionnement de l’autre canal ne peut pas être déduit de cette seule ligne."
     },
     {
       "id": "xbee-d2-low",
@@ -1645,18 +1651,19 @@
       ],
       "module": "xbee_radio",
       "message": "^\\[xbee_radio\\] D2 pins set to low$",
-      "meaning": "Le pilote annonce avoir placé la sortie ou les broches D2 du module XBee au niveau logique bas.",
+      "meaning": "Le pilote annonce le passage de la broche D2 du module XBee au niveau logique bas.",
       "checks": [
-        "Comparer avec les commandes et états de puissance enregistrés autour de cet instant."
+        "Comparer avec les commandes de puissance et les changements d’état voisins."
       ],
-      "limits": "La fonction électrique attribuée à D2 dépend du câblage et du firmware. Ce message ne prouve pas à lui seul une coupure d’alimentation ou un arrêt moteur.",
+      "limits": "Sans le câblage constructeur, l’effet de D2 sur la puissance ou les moteurs reste inconnu.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[xbee_radio] D2 pins set to low"
-      ]
+      ],
+      "technicalDetails": "La fonction électrique attribuée à D2 dépend du câblage et du firmware. Ce message ne prouve pas à lui seul une coupure d’alimentation ou un arrêt moteur."
     },
     {
       "id": "mavlink-raw-packet",
@@ -1666,18 +1673,19 @@
       ],
       "module": "mavlink",
       "message": "^\\[mavlink\\] New packet received \\(type [0-9]+ length [0-9]+ \\)$",
-      "meaning": "Le module affiche la réception d’un paquet avec son type et sa longueur.",
+      "meaning": "Un paquet est reçu avec le type et la longueur indiqués. Sa fonction exacte n’est pas encore identifiée.",
       "checks": [
-        "Lire les messages de traitement suivants et conserver le type numérique d’origine."
+        "Conserver le type numérique et examiner son traitement dans les lignes suivantes."
       ],
-      "limits": "La nature de ce type de paquet constructeur n’est pas documentée. Il ne faut pas l’assimiler automatiquement à un identifiant du protocole MAVLink standard.",
-      "confidence": "interpretation",
+      "limits": "Ce type constructeur ne doit pas être assimilé sans preuve à un identifiant MAVLink standard.",
+      "confidence": "unresolved",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[mavlink] New packet received (type 0 length 0 )"
-      ]
+      ],
+      "technicalDetails": "La nature de ce type de paquet constructeur n’est pas documentée. Il ne faut pas l’assimiler automatiquement à un identifiant du protocole MAVLink standard."
     },
     {
       "id": "mavlink-operation-timeout",
@@ -1687,11 +1695,11 @@
       ],
       "module": "mavlink",
       "message": "^\\[mavlink\\] Operation timeout$",
-      "meaning": "Le module annonce qu’une opération d’échange a dépassé son délai d’attente.",
+      "meaning": "Une opération d’échange a dépassé son délai d’attente.",
       "checks": [
-        "Identifier l’opération en cours dans les messages précédents et vérifier les tentatives ou réponses suivantes."
+        "Identifier l’échange précédent et vérifier si une nouvelle tentative aboutit."
       ],
-      "limits": "Cette ligne seule ne précise pas l’opération, le délai ou la cause. Dans PX4 public un texte proche intervient lors d’un transfert de mission ; le contexte exact du firmware constructeur doit être confirmé.",
+      "limits": "La ligne ne précise ni l’opération, ni le délai, ni sa cause.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
@@ -1703,7 +1711,8 @@
       ],
       "syntheticExamples": [
         "[mavlink] Operation timeout"
-      ]
+      ],
+      "technicalDetails": "Cette ligne seule ne précise pas l’opération, le délai ou la cause. Dans PX4 public un texte proche intervient lors d’un transfert de mission ; le contexte exact du firmware constructeur doit être confirmé."
     },
     {
       "id": "mavlink-shell-start",
@@ -1713,11 +1722,11 @@
       ],
       "module": "mavlink",
       "message": "^\\[mavlink\\] Starting mavlink shell$",
-      "meaning": "Le module annonce le démarrage de son shell, un canal de console transporté par MAVLink.",
+      "meaning": "Une console de diagnostic (shell) transportée par MAVLink est démarrée.",
       "checks": [
-        "Comparer avec une session de diagnostic ou de maintenance connue à cet instant."
+        "Vérifier si une session de diagnostic était prévue à cet instant."
       ],
-      "limits": "Ce message ne prouve ni une panne ni l’exécution d’une commande particulière dans cette console.",
+      "limits": "Aucune commande de console particulière n’est identifiée.",
       "confidence": "documented",
       "provenance": "Texte exact présent dans le shell MAVLink de PX4 v1.14.0.",
       "referenceFirmware": "PX4 v1.14.0 : texte exact ; compatibilité du firmware constructeur non attestée.",
@@ -1729,7 +1738,8 @@
       ],
       "syntheticExamples": [
         "[mavlink] Starting mavlink shell"
-      ]
+      ],
+      "technicalDetails": "Ce message ne prouve ni une panne ni l’exécution d’une commande particulière dans cette console."
     },
     {
       "id": "mavlink-time-set",
@@ -1739,18 +1749,19 @@
       ],
       "module": "mavlink",
       "message": "^\\[mavlink\\] \\[timesync\\] set system time : [+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+) ms$",
-      "meaning": "Le mécanisme de synchronisation affiche un ajustement de temps système en millisecondes, avec son signe.",
+      "meaning": "Le contrôleur journalise un ajustement d’horloge, en millisecondes.",
       "checks": [
-        "Comparer avec les autres messages de synchronisation et les timestamps enregistrés autour de cet instant."
+        "Comparer les ajustements successifs avec les éventuels problèmes de synchronisation du show."
       ],
-      "limits": "Le message ne précise pas le sens exact du signe ni l’erreur d’horloge restante après l’opération. Un ajustement ne prouve pas une désynchronisation persistante du show.",
+      "limits": "Le sens exact du signe et l’écart d’horloge restant ne sont pas explicités.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[mavlink] [timesync] set system time : 0 ms"
-      ]
+      ],
+      "technicalDetails": "Le message ne précise pas le sens exact du signe ni l’erreur d’horloge restante après l’opération. Un ajustement ne prouve pas une désynchronisation persistante du show."
     },
     {
       "id": "uavcan-arming-state",
@@ -1760,18 +1771,19 @@
       ],
       "module": "uavcan",
       "message": "^\\[uavcan\\] \\[Prev\\. State\\] (?:INIT|ARMED|DISARMED) \\[New State\\] (?:INIT|ARMED|DISARMED)$",
-      "meaning": "Le sous-système UAVCAN affiche son ancien et son nouvel état parmi INIT (initialisation), ARMED (armé) et DISARMED (désarmé).",
+      "meaning": "Le sous-système UAVCAN change d’état : initialisation (INIT), armé (ARMED) ou désarmé (DISARMED), selon le texte.",
       "checks": [
-        "Comparer avec l’état d’armement du véhicule et les sorties/retours des actionneurs enregistrés."
+        "Comparer avec l’armement du véhicule et les commandes/retours des actionneurs."
       ],
-      "limits": "Ce sont des états déclarés par le sous-système. Ils ne prouvent pas à eux seuls une rotation ou un arrêt moteur, une panne CAN ou la présence de tous les périphériques.",
+      "limits": "Cet état logiciel ne prouve pas une rotation ou un arrêt moteur.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[uavcan] [Prev. State] INIT [New State] INIT"
-      ]
+      ],
+      "technicalDetails": "Ce sont des états déclarés par le sous-système. Ils ne prouvent pas à eux seuls une rotation ou un arrêt moteur, une panne CAN ou la présence de tous les périphériques."
     },
     {
       "id": "commander-takeoff-min-speed",
@@ -1781,19 +1793,19 @@
       ],
       "module": "commander",
       "message": "^\\[commander\\] Min speed on takeoff detected$",
-      "meaning": "Le module commander indique que son critère de vitesse minimale pendant la phase de décollage a été détecté.",
+      "meaning": "Le contrôleur signale la détection de son critère de vitesse minimale pendant le décollage.",
       "checks": [
-        "Comparer les états de décollage et les vitesses enregistrées autour de cet instant.",
-        "Lire les messages suivants pour connaître le déroulement du décollage."
+        "Comparer les vitesses et les changements d’état pendant ce décollage."
       ],
-      "limits": "Le texte ne donne ni axe, ni seuil, ni calcul exact. Il ne permet pas à lui seul de conclure à un décollage réussi ou échoué.",
+      "limits": "Le seuil, l’axe et le calcul ne sont pas précisés. Le décollage réussi n’est pas confirmé.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[commander] Min speed on takeoff detected"
-      ]
+      ],
+      "technicalDetails": "Le texte ne donne ni axe, ni seuil, ni calcul exact. Il ne permet pas à lui seul de conclure à un décollage réussi ou échoué."
     },
     {
       "id": "commander-rtcm-regained",
@@ -1803,19 +1815,19 @@
       ],
       "module": "commander",
       "message": "^\\[commander\\] RTCM connection regained$",
-      "meaning": "Le module signale le retour de la réception des corrections RTCM utilisées par le positionnement GNSS RTK.",
+      "meaning": "La réception des corrections RTCM utilisées pour le positionnement RTK est rétablie.",
       "checks": [
-        "Comparer l’âge des corrections et l’évolution du statut RTK lorsqu’ils sont enregistrés.",
-        "Examiner les messages de liaison Wi-Fi et XBee au même instant."
+        "Vérifier l’âge des corrections et le retour éventuel au statut RTK Fixed."
       ],
-      "limits": "Le retour des corrections ne garantit pas un RTK Fixed immédiat ; le canal radio utilisé et la qualité du positionnement doivent être vérifiés séparément.",
+      "limits": "Le retour des corrections ne garantit pas un statut RTK Fixed immédiat.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible. Rôle des corrections et reprise de liaison : Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, §3.6.3 p.30 et table p.177.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[commander] RTCM connection regained"
-      ]
+      ],
+      "technicalDetails": "Le retour des corrections ne garantit pas un RTK Fixed immédiat ; le canal radio utilisé et la qualité du positionnement doivent être vérifiés séparément."
     },
     {
       "id": "land-detector-ground-disarm",
@@ -1825,18 +1837,19 @@
       ],
       "module": "land_detector",
       "message": "^\\[land_detector\\] Ground detected, disarm motors, flight time [0-9]+ min [0-9]+ s$",
-      "meaning": "Le détecteur d’atterrissage indique avoir reconnu le sol, annonce le désarmement des moteurs et affiche une durée de vol en minutes et secondes.",
+      "meaning": "Le contrôleur détecte le sol et annonce le désarmement des moteurs. Il affiche aussi sa durée de vol, en minutes et secondes.",
       "checks": [
-        "Comparer avec l’état landed, l’armement et les retours moteurs disponibles autour de cet instant."
+        "Comparer avec l’état landed, le désarmement et les retours moteurs."
       ],
-      "limits": "Il s’agit d’une détection logicielle et d’une action annoncée. Le message seul ne prouve pas l’arrêt mécanique effectif ni l’absence de rebond ; la durée affichée suit le compteur du firmware.",
+      "limits": "La détection du sol et l’ordre de désarmement ne prouvent pas l’arrêt mécanique effectif.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[land_detector] Ground detected, disarm motors, flight time 0 min 0 s"
-      ]
+      ],
+      "technicalDetails": "Il s’agit d’une détection logicielle et d’une action annoncée. Le message seul ne prouve pas l’arrêt mécanique effectif ni l’absence de rebond ; la durée affichée suit le compteur du firmware."
     },
     {
       "id": "nuttx-associate-timeout",
@@ -1846,20 +1859,19 @@
       ],
       "module": "NUTTX",
       "message": "^\\[NUTTX\\] Associate request timeout$",
-      "meaning": "La couche système signale qu’une demande d’association n’a pas abouti dans le délai prévu. Dans ces logs, ce message accompagne les étapes de connexion Wi-Fi.",
+      "meaning": "Une demande d’association Wi-Fi a dépassé le délai attendu.",
       "checks": [
-        "Rechercher les messages suivants de connexion, de récupération de liaison et de heartbeat GCS.",
-        "Comparer avec les autres drones au même instant et avec le journal du point d’accès si disponible.",
-        "Vérifier le réseau prévu et les mesures radio enregistrées ; le message seul ne désigne pas un défaut de couverture."
+        "Comparer avec les tentatives Wi-Fi voisines et leur résultat."
       ],
-      "limits": "Le message ne fournit pas le point d’accès, la durée ou la cause. Il ne prouve pas une défaillance du matériel radio.",
+      "limits": "Le délai exact et le motif du timeout ne sont pas donnés.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[NUTTX] Associate request timeout"
-      ]
+      ],
+      "technicalDetails": "Le message ne fournit pas le point d’accès, la durée ou la cause. Il ne prouve pas une défaillance du matériel radio."
     },
     {
       "id": "rf-switch-already-init",
@@ -1869,18 +1881,19 @@
       ],
       "module": "rf_switch",
       "message": "^\\[rf_switch\\] Switch RF already init$",
-      "meaning": "Le pilote indique que le commutateur radio est déjà initialisé.",
+      "meaning": "Le commutateur radio est déjà initialisé.",
       "checks": [
-        "Comparer avec la séquence de démarrage et les messages de sélection RF voisins."
+        "En cas de problème radio, lire les messages de sélection RF et de connexion voisins."
       ],
-      "limits": "Il s’agit d’un état d’initialisation, sans panne annoncée. La fonction exacte des voies dépend du matériel constructeur.",
+      "limits": "Ce texte d’initialisation ne signale pas une panne.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[rf_switch] Switch RF already init"
-      ]
+      ],
+      "technicalDetails": "Il s’agit d’un état d’initialisation, sans panne annoncée. La fonction exacte des voies dépend du matériel constructeur."
     },
     {
       "id": "rf-switch-selected",
@@ -1890,18 +1903,19 @@
       ],
       "module": "rf_switch",
       "message": "^\\[rf_switch\\] Switch RF now on: RF1=[01] and RF2=[01]$",
-      "meaning": "Le pilote affiche les états logiques sélectionnés pour les voies RF1 et RF2.",
+      "meaning": "Le pilote affiche les états logiques sélectionnés pour les voies radio RF1 et RF2.",
       "checks": [
-        "Comparer avec la configuration radio du matériel et les messages de liaison proches."
+        "Comparer avec la configuration radio du matériel et les messages de connexion voisins."
       ],
-      "limits": "Le catalogue ne permet pas d’associer RF1/RF2 à une antenne, une bande ou une liaison précise. Ces états ne démontrent pas à eux seuls la qualité de réception.",
+      "limits": "RF1/RF2 ne sont pas reliés ici à une antenne ou une bande précise.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[rf_switch] Switch RF now on: RF1=0 and RF2=0"
-      ]
+      ],
+      "technicalDetails": "Le catalogue ne permet pas d’associer RF1/RF2 à une antenne, une bande ou une liaison précise. Ces états ne démontrent pas à eux seuls la qualité de réception."
     },
     {
       "id": "failsafe-battery-low",
@@ -1911,21 +1925,19 @@
       ],
       "module": "failsafe",
       "message": "^\\[failsafe\\] Low battery level measured !$",
-      "meaning": "Le gestionnaire de sécurité signale un niveau de batterie faible selon les critères de cette version.",
+      "meaning": "Le gestionnaire de sécurité détecte un niveau de batterie faible.",
       "checks": [
-        "Vérifier si les erreurs se répètent et si la télémétrie de batterie reste disponible à ces instants.",
-        "Comparer les autres logs de la même batterie si son numéro de série est enregistré.",
-        "En cas de répétition, contrôler le connecteur de communication et le pack selon la procédure constructeur.",
-        "Lire les changements d’état et commandes suivants pour identifier la réponse effectivement engagée."
+        "Comparer le niveau de batterie et chercher l’action de sécurité annoncée juste après."
       ],
-      "limits": "La valeur et le seuil ne figurent pas dans cette ligne. Il ne faut pas lui attribuer automatiquement un RTL, un atterrissage ou une coupure sans les messages d’action correspondants.",
+      "limits": "Le seuil et l’action de sécurité ne sont pas indiqués : vérifier les paramètres et les messages d’action.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible. Niveaux et actions batterie décrits pour IO Star 3 dans Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, p.177 ; seuils exacts de ce message non attestés.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[failsafe] Low battery level measured !"
-      ]
+      ],
+      "technicalDetails": "La valeur et le seuil ne figurent pas dans cette ligne. Il ne faut pas lui attribuer automatiquement un RTL, un atterrissage ou une coupure sans les messages d’action correspondants."
     },
     {
       "id": "failsafe-battery-critical",
@@ -1935,21 +1947,19 @@
       ],
       "module": "failsafe",
       "message": "^\\[failsafe\\] Critical battery level measured !$",
-      "meaning": "Le gestionnaire de sécurité signale un niveau de batterie critique selon les critères de cette version.",
+      "meaning": "Le gestionnaire de sécurité détecte un niveau de batterie critique.",
       "checks": [
-        "Vérifier si les erreurs se répètent et si la télémétrie de batterie reste disponible à ces instants.",
-        "Comparer les autres logs de la même batterie si son numéro de série est enregistré.",
-        "En cas de répétition, contrôler le connecteur de communication et le pack selon la procédure constructeur.",
-        "Lire les changements d’état et commandes suivants pour identifier la réponse effectivement engagée."
+        "Comparer le niveau de batterie et chercher l’action de sécurité annoncée juste après."
       ],
-      "limits": "La valeur et le seuil ne figurent pas dans cette ligne. Il ne faut pas lui attribuer automatiquement un RTL, un atterrissage ou une coupure sans les messages d’action correspondants.",
+      "limits": "Le seuil et l’action de sécurité ne sont pas indiqués : vérifier les paramètres et les messages d’action.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible. Niveaux et actions batterie décrits pour IO Star 3 dans Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, p.177 ; seuils exacts de ce message non attestés.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[failsafe] Critical battery level measured !"
-      ]
+      ],
+      "technicalDetails": "La valeur et le seuil ne figurent pas dans cette ligne. Il ne faut pas lui attribuer automatiquement un RTL, un atterrissage ou une coupure sans les messages d’action correspondants."
     },
     {
       "id": "failsafe-battery-emergency",
@@ -1959,21 +1969,19 @@
       ],
       "module": "failsafe",
       "message": "^\\[failsafe\\] Emergency battery level measured !$",
-      "meaning": "Le gestionnaire de sécurité signale un niveau de batterie d’urgence selon les critères de cette version.",
+      "meaning": "Le gestionnaire de sécurité détecte un niveau de batterie d’urgence.",
       "checks": [
-        "Vérifier si les erreurs se répètent et si la télémétrie de batterie reste disponible à ces instants.",
-        "Comparer les autres logs de la même batterie si son numéro de série est enregistré.",
-        "En cas de répétition, contrôler le connecteur de communication et le pack selon la procédure constructeur.",
-        "Lire les changements d’état et commandes suivants pour identifier la réponse effectivement engagée."
+        "Comparer le niveau de batterie et chercher l’action de sécurité annoncée juste après."
       ],
-      "limits": "La valeur et le seuil ne figurent pas dans cette ligne. Il ne faut pas lui attribuer automatiquement un RTL, un atterrissage ou une coupure sans les messages d’action correspondants.",
+      "limits": "Le seuil et l’action de sécurité ne sont pas indiqués : vérifier les paramètres et les messages d’action.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible. Niveaux et actions batterie décrits pour IO Star 3 dans Manuel constructeur IO Star 3 MUE v1.2, copie locale de novembre 2025, p.177 ; seuils exacts de ce message non attestés.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[failsafe] Emergency battery level measured !"
-      ]
+      ],
+      "technicalDetails": "La valeur et le seuil ne figurent pas dans cette ligne. Il ne faut pas lui attribuer automatiquement un RTL, un atterrissage ou une coupure sans les messages d’action correspondants."
     },
     {
       "id": "maestro-ack-sent",
@@ -1983,18 +1991,19 @@
       ],
       "module": "maestro",
       "message": "^\\[maestro\\] Ack sent$",
-      "meaning": "Le coordinateur maestro indique avoir envoyé un accusé de réception.",
+      "meaning": "Le coordinateur maestro annonce l’envoi d’un accusé de réception.",
       "checks": [
-        "Lire la requête précédente pour identifier l’échange concerné."
+        "Lire la requête précédente pour identifier ce qui est acquitté."
       ],
-      "limits": "Ce message ne précise pas le contenu ni le résultat acquitté ; il ne prouve pas que le destinataire ait reçu cet accusé.",
+      "limits": "L’objet et le contenu de l’accusé ne sont pas précisés.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] Ack sent"
-      ]
+      ],
+      "technicalDetails": "Ce message ne précise pas le contenu ni le résultat acquitté ; il ne prouve pas que le destinataire ait reçu cet accusé."
     },
     {
       "id": "maestro-firmware-info-request",
@@ -2004,18 +2013,19 @@
       ],
       "module": "maestro",
       "message": "^\\[maestro\\] Request info firmware received$",
-      "meaning": "Le coordinateur a reçu une demande d’informations sur le firmware.",
+      "meaning": "Une demande d’informations sur le firmware est reçue.",
       "checks": [
-        "Comparer avec la réponse éventuelle et l’opération de maintenance ou de connexion connue."
+        "Chercher la réponse contenant les informations de firmware."
       ],
-      "limits": "La réception de cette demande ne signifie pas qu’une mise à jour du firmware a été effectuée.",
+      "limits": "Ce message ne signale pas une mise à jour du firmware.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] Request info firmware received"
-      ]
+      ],
+      "technicalDetails": "La réception de cette demande ne signifie pas qu’une mise à jour du firmware a été effectuée."
     },
     {
       "id": "maestro-mag-calibration-rotation",
@@ -2025,18 +2035,19 @@
       ],
       "module": "maestro",
       "message": "^\\[maestro\\] Add magnetometer calibration rotation$",
-      "meaning": "Le coordinateur signale l’ajout d’une rotation dans le déroulement de la calibration du magnétomètre.",
+      "meaning": "Une rotation est ajoutée au déroulement de la calibration du magnétomètre.",
       "checks": [
-        "Lire les messages de progression et de résultat de calibration."
+        "Vérifier le résultat final de la calibration."
       ],
-      "limits": "Ce texte ne confirme pas la réussite de la calibration ni sa qualité. Il n’indique pas à lui seul une panne de compas.",
+      "limits": "Cette étape ne confirme pas la réussite ou la qualité de la calibration.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] Add magnetometer calibration rotation"
-      ]
+      ],
+      "technicalDetails": "Ce texte ne confirme pas la réussite de la calibration ni sa qualité. Il n’indique pas à lui seul une panne de compas."
     },
     {
       "id": "maestro-demo-stopped",
@@ -2048,17 +2059,17 @@
       "message": "^\\[maestro\\] Demo stopped\\.$",
       "meaning": "Le coordinateur annonce l’arrêt de la démo.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Chercher la commande d’arrêt ou l’alarme précédente."
       ],
-      "limits": "Un arrêt du composant logiciel ne prouve pas à lui seul un arrêt physique des moteurs. La raison doit être cherchée dans les messages précédents.",
+      "limits": "Cet arrêt logiciel ne prouve pas un arrêt physique des moteurs.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] Demo stopped."
-      ]
+      ],
+      "technicalDetails": "Un arrêt du composant logiciel ne prouve pas à lui seul un arrêt physique des moteurs. La raison doit être cherchée dans les messages précédents."
     },
     {
       "id": "maestro-sequencer-stop",
@@ -2068,19 +2079,19 @@
       ],
       "module": "maestro",
       "message": "^\\[maestro\\] DemoSequencerManager Stop$",
-      "meaning": "Le coordinateur annonce l’arrêt du gestionnaire de séquences de la démo.",
+      "meaning": "Le coordinateur annonce l’arrêt du gestionnaire des séquences de la démo.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Chercher la commande d’arrêt ou l’alarme précédente."
       ],
-      "limits": "Un arrêt du composant logiciel ne prouve pas à lui seul un arrêt physique des moteurs. La raison doit être cherchée dans les messages précédents.",
+      "limits": "Cet arrêt logiciel ne prouve pas un arrêt physique des moteurs.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] DemoSequencerManager Stop"
-      ]
+      ],
+      "technicalDetails": "Un arrêt du composant logiciel ne prouve pas à lui seul un arrêt physique des moteurs. La raison doit être cherchée dans les messages précédents."
     },
     {
       "id": "maestro-trajectory-stop",
@@ -2092,17 +2103,17 @@
       "message": "^\\[maestro\\] TrajectoryManager Stop$",
       "meaning": "Le coordinateur annonce l’arrêt du gestionnaire de trajectoire.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Chercher la commande d’arrêt ou l’alarme précédente."
       ],
-      "limits": "Un arrêt du composant logiciel ne prouve pas à lui seul un arrêt physique des moteurs. La raison doit être cherchée dans les messages précédents.",
+      "limits": "Cet arrêt logiciel ne prouve pas un arrêt physique des moteurs.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] TrajectoryManager Stop"
-      ]
+      ],
+      "technicalDetails": "Un arrêt du composant logiciel ne prouve pas à lui seul un arrêt physique des moteurs. La raison doit être cherchée dans les messages précédents."
     },
     {
       "id": "maestro-alarm-alarm-other",
@@ -2112,20 +2123,19 @@
       ],
       "module": "maestro",
       "message": "^\\[maestro\\] \\[ALARM\\] ALARM_OTHER started$",
-      "meaning": "Le coordinateur annonce le démarrage d’une alarme de la catégorie OTHER.",
+      "meaning": "Une alarme de la catégorie interne OTHER est déclenchée. Cette catégorie ne permet pas d’en connaître la nature exacte.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte.",
-        "Rechercher les détails du sous-système et la réponse de sécurité annoncée."
+        "Chercher les autres messages d’alarme et l’action de sécurité au même instant."
       ],
-      "limits": "Le code interne ne décrit ni le test exact ni sa cause. Le message seul ne permet pas de conclure à une panne matérielle ou à une action physique précise.",
-      "confidence": "interpretation",
+      "limits": "OTHER ne désigne pas une cause précise.",
+      "confidence": "unresolved",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] [ALARM] ALARM_OTHER started"
-      ]
+      ],
+      "technicalDetails": "Le code interne ne décrit ni le test exact ni sa cause. Le message seul ne permet pas de conclure à une panne matérielle ou à une action physique précise."
     },
     {
       "id": "maestro-alarm-communication-fencing",
@@ -2135,20 +2145,19 @@
       ],
       "module": "maestro",
       "message": "^\\[maestro\\] \\[ALARM\\] COMMUNICATION_FENCING started$",
-      "meaning": "Le coordinateur annonce le démarrage d’une alarme nommée COMMUNICATION_FENCING, liée au contrôle de confinement et à la communication.",
+      "meaning": "Le contrôle de confinement déclenche une alarme liée à la communication.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte.",
-        "Rechercher les détails du sous-système et la réponse de sécurité annoncée."
+        "Comparer les pertes de liaison et la demande de retour/atterrissage au même instant."
       ],
-      "limits": "Le code interne ne décrit ni le test exact ni sa cause. Le message seul ne permet pas de conclure à une panne matérielle ou à une action physique précise.",
+      "limits": "La condition exacte du contrôle et l’action de sécurité ne sont pas détaillées.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] [ALARM] COMMUNICATION_FENCING started"
-      ]
+      ],
+      "technicalDetails": "Le code interne ne décrit ni le test exact ni sa cause. Le message seul ne permet pas de conclure à une panne matérielle ou à une action physique précise."
     },
     {
       "id": "maestro-alarm-mobile-fencing",
@@ -2158,20 +2167,19 @@
       ],
       "module": "maestro",
       "message": "^\\[maestro\\] \\[ALARM\\] MOBILE_FENCING started$",
-      "meaning": "Le coordinateur annonce le démarrage d’une alarme nommée MOBILE_FENCING, liée au contrôle de confinement mobile.",
+      "meaning": "Une alarme du contrôle de confinement mobile est déclenchée.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte.",
-        "Rechercher les détails du sous-système et la réponse de sécurité annoncée."
+        "Comparer les diagnostics MOBILE FENCING et l’action de sécurité suivante."
       ],
-      "limits": "Le code interne ne décrit ni le test exact ni sa cause. Le message seul ne permet pas de conclure à une panne matérielle ou à une action physique précise.",
+      "limits": "Les limites, le test déclencheur et l’action de sécurité ne sont pas précisés.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] [ALARM] MOBILE_FENCING started"
-      ]
+      ],
+      "technicalDetails": "Le code interne ne décrit ni le test exact ni sa cause. Le message seul ne permet pas de conclure à une panne matérielle ou à une action physique précise."
     },
     {
       "id": "maestro-alarm-imu-ko",
@@ -2181,20 +2189,19 @@
       ],
       "module": "maestro",
       "message": "^\\[maestro\\] \\[ALARM\\] IMU_KO started$",
-      "meaning": "Le coordinateur annonce le démarrage d’une alarme nommée IMU_KO, indiquant que le module considère l’unité inertielle non conforme à son contrôle.",
+      "meaning": "Une alarme signale que l’unité inertielle IMU ne satisfait pas le contrôle interne du coordinateur.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte.",
-        "Rechercher les détails du sous-système et la réponse de sécurité annoncée."
+        "Lire les alertes des capteurs inertiels et de l’estimateur au même instant."
       ],
-      "limits": "Le code interne ne décrit ni le test exact ni sa cause. Le message seul ne permet pas de conclure à une panne matérielle ou à une action physique précise.",
+      "limits": "Le test exact n’est pas donné ; une panne matérielle de l’IMU n’est pas établie.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] [ALARM] IMU_KO started"
-      ]
+      ],
+      "technicalDetails": "Le code interne ne décrit ni le test exact ni sa cause. Le message seul ne permet pas de conclure à une panne matérielle ou à une action physique précise."
     },
     {
       "id": "maestro-alarm-led-color",
@@ -2204,18 +2211,19 @@
       ],
       "module": "maestro",
       "message": "^\\[maestro\\] \\[ALARM\\] Set LED Color: [0-9]+ [0-9]+ [0-9]+$",
-      "meaning": "Le gestionnaire d’alarme demande une couleur LED et affiche trois valeurs de composantes.",
+      "meaning": "Le gestionnaire d’alarme demande une couleur LED et affiche ses trois composantes.",
       "checks": [
-        "Comparer le code d’alarme et les messages d’éclairage voisins."
+        "Identifier l’alarme associée et vérifier les messages d’éclairage voisins."
       ],
-      "limits": "L’ordre, l’échelle et la réalisation physique des composantes ne sont pas précisés. Ce message ne confirme pas que la LED ait effectivement changé de couleur.",
+      "limits": "L’ordre des composantes et la couleur effectivement émise ne sont pas confirmés.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] [ALARM] Set LED Color: 0 0 0"
-      ]
+      ],
+      "technicalDetails": "L’ordre, l’échelle et la réalisation physique des composantes ne sont pas précisés. Ce message ne confirme pas que la LED ait effectivement changé de couleur."
     },
     {
       "id": "maestro-already-rth",
@@ -2225,19 +2233,19 @@
       ],
       "module": "maestro",
       "message": "^\\[maestro\\] Already returning home$",
-      "meaning": "Le coordinateur indique qu’un retour au point de départ est déjà en cours dans son état logiciel.",
+      "meaning": "Un retour au point de départ est déjà déclaré en cours.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer avec les changements d’état et la trajectoire enregistrés après ce message."
       ],
-      "limits": "Cette annonce logicielle ne prouve pas l’exécution physique ou la fin de la manœuvre. Les critères exacts et le résultat doivent être confirmés dans la suite du log.",
+      "limits": "La manœuvre reçue ou demandée n’est pas encore une exécution physique confirmée.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] Already returning home"
-      ]
+      ],
+      "technicalDetails": "Cette annonce logicielle ne prouve pas l’exécution physique ou la fin de la manœuvre. Les critères exacts et le résultat doivent être confirmés dans la suite du log."
     },
     {
       "id": "maestro-autopilot-rth",
@@ -2247,19 +2255,19 @@
       ],
       "module": "maestro",
       "message": "^\\[maestro\\] Autopilot rth received$",
-      "meaning": "Le coordinateur indique avoir reçu une demande ou indication de retour au point de départ de l’autopilote.",
+      "meaning": "Le coordinateur reçoit de l’autopilote une indication ou demande de retour au point de départ.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer avec les changements d’état et la trajectoire enregistrés après ce message."
       ],
-      "limits": "Cette annonce logicielle ne prouve pas l’exécution physique ou la fin de la manœuvre. Les critères exacts et le résultat doivent être confirmés dans la suite du log.",
+      "limits": "La manœuvre reçue ou demandée n’est pas encore une exécution physique confirmée.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] Autopilot rth received"
-      ]
+      ],
+      "technicalDetails": "Cette annonce logicielle ne prouve pas l’exécution physique ou la fin de la manœuvre. Les critères exacts et le résultat doivent être confirmés dans la suite du log."
     },
     {
       "id": "maestro-sequencer-land",
@@ -2269,19 +2277,19 @@
       ],
       "module": "maestro",
       "message": "^\\[maestro\\] Landing received from Sequencer$",
-      "meaning": "Le coordinateur indique recevoir une demande d’atterrissage du séquenceur.",
+      "meaning": "Le séquenceur demande l’atterrissage au coordinateur.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer avec les changements d’état et la trajectoire enregistrés après ce message."
       ],
-      "limits": "Cette annonce logicielle ne prouve pas l’exécution physique ou la fin de la manœuvre. Les critères exacts et le résultat doivent être confirmés dans la suite du log.",
+      "limits": "La manœuvre reçue ou demandée n’est pas encore une exécution physique confirmée.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] Landing received from Sequencer"
-      ]
+      ],
+      "technicalDetails": "Cette annonce logicielle ne prouve pas l’exécution physique ou la fin de la manœuvre. Les critères exacts et le résultat doivent être confirmés dans la suite du log."
     },
     {
       "id": "maestro-land-command",
@@ -2291,19 +2299,19 @@
       ],
       "module": "maestro",
       "message": "^\\[maestro\\] Receive landing command$",
-      "meaning": "Le coordinateur indique recevoir une commande d’atterrissage.",
+      "meaning": "Une commande d’atterrissage est reçue.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer avec les changements d’état et la trajectoire enregistrés après ce message."
       ],
-      "limits": "Cette annonce logicielle ne prouve pas l’exécution physique ou la fin de la manœuvre. Les critères exacts et le résultat doivent être confirmés dans la suite du log.",
+      "limits": "La manœuvre reçue ou demandée n’est pas encore une exécution physique confirmée.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] Receive landing command"
-      ]
+      ],
+      "technicalDetails": "Cette annonce logicielle ne prouve pas l’exécution physique ou la fin de la manœuvre. Les critères exacts et le résultat doivent être confirmés dans la suite du log."
     },
     {
       "id": "maestro-alarm-rth",
@@ -2313,19 +2321,19 @@
       ],
       "module": "maestro",
       "message": "^\\[maestro\\] Sending RTH due to alarm$",
-      "meaning": "Le coordinateur annonce l’envoi d’une demande de retour au point de départ à cause d’une alarme.",
+      "meaning": "Une demande de retour au point de départ est envoyée en réponse à une alarme.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer avec les changements d’état et la trajectoire enregistrés après ce message."
       ],
-      "limits": "Cette annonce logicielle ne prouve pas l’exécution physique ou la fin de la manœuvre. Les critères exacts et le résultat doivent être confirmés dans la suite du log.",
+      "limits": "La manœuvre reçue ou demandée n’est pas encore une exécution physique confirmée.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] Sending RTH due to alarm"
-      ]
+      ],
+      "technicalDetails": "Cette annonce logicielle ne prouve pas l’exécution physique ou la fin de la manœuvre. Les critères exacts et le résultat doivent être confirmés dans la suite du log."
     },
     {
       "id": "maestro-expected-land",
@@ -2335,19 +2343,19 @@
       ],
       "module": "maestro",
       "message": "^\\[maestro\\] Sending LAND due to expected state$",
-      "meaning": "Le coordinateur annonce l’envoi d’une demande d’atterrissage liée à son état attendu.",
+      "meaning": "Une demande d’atterrissage est envoyée selon l’état attendu par le coordinateur.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer avec les changements d’état et la trajectoire enregistrés après ce message."
       ],
-      "limits": "Cette annonce logicielle ne prouve pas l’exécution physique ou la fin de la manœuvre. Les critères exacts et le résultat doivent être confirmés dans la suite du log.",
+      "limits": "La manœuvre reçue ou demandée n’est pas encore une exécution physique confirmée.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] Sending LAND due to expected state"
-      ]
+      ],
+      "technicalDetails": "Cette annonce logicielle ne prouve pas l’exécution physique ou la fin de la manœuvre. Les critères exacts et le résultat doivent être confirmés dans la suite du log."
     },
     {
       "id": "maestro-takeoff-reference",
@@ -2357,19 +2365,19 @@
       ],
       "module": "maestro",
       "message": "^\\[maestro\\] Register takeOff: \\([+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+) [+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+) [+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+)\\)$",
-      "meaning": "Le coordinateur enregistre trois coordonnées pour sa référence takeOff (décollage).",
+      "meaning": "Trois coordonnées sont enregistrées comme référence de décollage.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer cette référence avec celle attendue pour le show et son repère."
       ],
-      "limits": "Le repère, les unités et le rôle précis des coordonnées ne sont pas explicités. Ce message n’est pas une preuve de décollage.",
+      "limits": "Le repère et les unités ne sont pas explicites. La ligne ne prouve pas un décollage.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] Register takeOff: (0 0 0)"
-      ]
+      ],
+      "technicalDetails": "Le repère, les unités et le rôle précis des coordonnées ne sont pas explicités. Ce message n’est pas une preuve de décollage."
     },
     {
       "id": "maestro-mobile-fencing",
@@ -2379,19 +2387,19 @@
       ],
       "module": "maestro",
       "message": "^\\[maestro\\] \\[MOBILE FENCING\\] (?:1st|2nd) fence : distXY [+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+); alt [+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+)$",
-      "meaning": "Le coordinateur affiche une distance horizontale distXY et une altitude alt pour l’une des limites de confinement mobile.",
+      "meaning": "Le contrôle de confinement mobile affiche une distance horizontale (distXY) et une altitude (alt) pour l’une de ses limites.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer les valeurs successives et chercher un message explicite de violation."
       ],
-      "limits": "Le repère, les unités, le seuil et la signification exacte des deux limites ne sont pas documentés dans ce message. Les nombres seuls ne permettent pas de conclure à une violation.",
+      "limits": "Les unités et seuils ne sont pas précisés ; ces nombres seuls ne prouvent pas une violation.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] [MOBILE FENCING] 1st fence : distXY 0; alt 0"
-      ]
+      ],
+      "technicalDetails": "Le repère, les unités, le seuil et la signification exacte des deux limites ne sont pas documentés dans ce message. Les nombres seuls ne permettent pas de conclure à une violation."
     },
     {
       "id": "maestro-battery-time",
@@ -2401,21 +2409,19 @@
       ],
       "module": "maestro",
       "message": "^\\[maestro\\] BATTERY LOW: [0-9]+ percent and remaining battery_time (?:nan|[+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+))\\(s\\) less than choreo_time [+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+)\\(s\\)$",
-      "meaning": "Le coordinateur émet une alerte de batterie faible et affiche le pourcentage, une estimation d’autonomie et le temps de chorégraphie restant. Si battery_time vaut nan, cette estimation numérique d’autonomie est indisponible.",
+      "meaning": "Une alerte de batterie faible compare l’autonomie estimée au temps de show restant. Si battery_time vaut nan, l’autonomie numérique est indisponible.",
       "checks": [
-        "Vérifier si les erreurs se répètent et si la télémétrie de batterie reste disponible à ces instants.",
-        "Comparer les autres logs de la même batterie si son numéro de série est enregistré.",
-        "En cas de répétition, contrôler le connecteur de communication et le pack selon la procédure constructeur.",
-        "Comparer le pourcentage et les autres alertes batterie ; lire la réponse de sécurité effectivement annoncée."
+        "Comparer le pourcentage de batterie et vérifier si une autonomie numérique valide est disponible."
       ],
-      "limits": "Avec nan, la phrase less than ne constitue pas une comparaison numérique valide d’autonomie. Le seuil et la logique exacte de l’alerte exigent le code constructeur.",
+      "limits": "Avec nan, aucune comparaison numérique fiable d’autonomie n’est possible.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[maestro] BATTERY LOW: 0 percent and remaining battery_time nan(s) less than choreo_time 0(s)"
-      ]
+      ],
+      "technicalDetails": "Avec nan, la phrase less than ne constitue pas une comparaison numérique valide d’autonomie. Le seuil et la logique exacte de l’alerte exigent le code constructeur."
     },
     {
       "id": "navigator-rtl-prepare-precision",
@@ -2425,12 +2431,11 @@
       ],
       "module": "navigator",
       "message": "^\\[navigator\\] RTL: prepare for precision landing$",
-      "meaning": "Le module de navigation annonce la préparation de l’atterrissage de précision pendant le retour RTL.",
+      "meaning": "Le retour RTL prépare sa phase d’atterrissage de précision.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Chercher les phases d’approche, de descente et d’atterrissage qui suivent."
       ],
-      "limits": "Le message indique une phase logicielle, pas la présence d’une cible détectée, une précision mesurée ou un atterrissage terminé. La méthode de guidage dépend du firmware et du matériel.",
+      "limits": "La cible détectée, la précision et l’atterrissage terminé ne sont pas confirmés.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte constructeur ; contexte du mode d’atterrissage de précision documenté dans PX4 v1.14, texte exact non retrouvé.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
@@ -2442,7 +2447,8 @@
       ],
       "syntheticExamples": [
         "[navigator] RTL: prepare for precision landing"
-      ]
+      ],
+      "technicalDetails": "Le message indique une phase logicielle, pas la présence d’une cible détectée, une précision mesurée ou un atterrissage terminé. La méthode de guidage dépend du firmware et du matériel."
     },
     {
       "id": "navigator-destination-heading",
@@ -2452,19 +2458,19 @@
       ],
       "module": "navigator",
       "message": "^\\[navigator\\] heading mode: destination heading: [+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+)$",
-      "meaning": "Le module de navigation affiche une valeur de cap de destination pour son mode d’orientation.",
+      "meaning": "Le navigateur affiche le cap de destination utilisé par son mode d’orientation.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte."
+        "Comparer avec le cap demandé et l’orientation enregistrée."
       ],
-      "limits": "L’unité, le repère et la normalisation de la valeur ne sont pas explicites dans cette ligne. Ne pas convertir automatiquement ce nombre en degrés ou en radians ni l’assimiler au cap réellement mesuré.",
+      "limits": "L’unité et le repère ne sont pas explicites ; ce nombre n’est pas forcément le cap mesuré.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[navigator] heading mode: destination heading: 0"
-      ]
+      ],
+      "technicalDetails": "L’unité, le repère et la normalisation de la valeur ne sont pas explicites dans cette ligne. Ne pas convertir automatiquement ce nombre en degrés ou en radians ni l’assimiler au cap réellement mesuré."
     },
     {
       "id": "navigator-precision-motors-stop",
@@ -2474,20 +2480,19 @@
       ],
       "module": "navigator",
       "message": "^\\[navigator\\] Stop vehicle motors during final approach of precland$",
-      "meaning": "Le module annonce l’arrêt des moteurs du véhicule pendant l’approche finale de son atterrissage de précision.",
+      "meaning": "Le navigateur annonce l’arrêt des moteurs pendant l’approche finale de l’atterrissage de précision.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte.",
-        "Comparer l’armement, les commandes et les retours moteurs enregistrés."
+        "Comparer avec le désarmement et les retours moteurs."
       ],
-      "limits": "Le texte décrit une action annoncée par le logiciel, pas une preuve de l’arrêt mécanique des moteurs ou du contact réel avec le sol.",
+      "limits": "L’arrêt annoncé ne prouve pas l’arrêt mécanique ni le contact avec le sol.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[navigator] Stop vehicle motors during final approach of precland"
-      ]
+      ],
+      "technicalDetails": "Le texte décrit une action annoncée par le logiciel, pas une preuve de l’arrêt mécanique des moteurs ou du contact réel avec le sol."
     },
     {
       "id": "navigator-reset",
@@ -2497,18 +2502,19 @@
       ],
       "module": "navigator",
       "message": "^\\[navigator\\] Reset$",
-      "meaning": "Le module de navigation annonce une réinitialisation de son état ou de sa procédure.",
+      "meaning": "Le navigateur annonce une réinitialisation de son état ou de sa procédure.",
       "checks": [
-        "Lire les messages précédents et suivants pour identifier le mode et la procédure concernés."
+        "Lire le mode et la procédure de navigation précédents puis leur reprise éventuelle."
       ],
-      "limits": "Le texte ne précise pas le périmètre de cette réinitialisation. Il ne doit pas être présenté comme un reboot complet du contrôleur ou un effacement des paramètres.",
+      "limits": "Reset ne prouve pas un reboot du contrôleur ou un effacement des paramètres.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[navigator] Reset"
-      ]
+      ],
+      "technicalDetails": "Le texte ne précise pas le périmètre de cette réinitialisation. Il ne doit pas être présenté comme un reboot complet du contrôleur ou un effacement des paramètres."
     },
     {
       "id": "commander-home-local-set",
@@ -2518,20 +2524,19 @@
       ],
       "module": "commander",
       "message": "^\\[commander\\] Home position set to: x: [+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+), y: [+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+), z: [+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+), yaw: [+-]?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+)$",
-      "meaning": "Le module commander annonce une référence Home et affiche ses coordonnées locales x/y/z ainsi qu’une orientation yaw.",
+      "meaning": "La référence Home est définie avec des coordonnées locales x/y/z et une orientation yaw.",
       "checks": [
-        "Lire les commandes et changements d’état voisins dans la chronologie.",
-        "Comparer le temps de show, la trajectoire prévue et les mesures disponibles sans déduire un mouvement physique du seul texte.",
-        "Comparer cette référence avec la configuration de départ et les paramètres de repère effectivement enregistrés."
+        "Comparer la référence Home au point de départ attendu, dans le même repère."
       ],
-      "limits": "Les coordonnées ne sont pas une latitude/longitude et le texte ne donne pas leurs unités ou leur convention. Cette annonce ne prouve pas que la référence corresponde au point de retour souhaité.",
+      "limits": "Ces coordonnées sont locales, pas latitude/longitude. Leurs unités et conventions ne sont pas précisées.",
       "confidence": "interpretation",
       "provenance": "Interprétation du texte enregistré ; définition exacte du firmware constructeur non disponible.",
       "referenceFirmware": "Firmware constructeur Drotek observé (branches lightshow-v1.14, geo-px4-io3, fix-cdc) ; correspondance au code source exact non attestée.",
       "sources": [],
       "syntheticExamples": [
         "[commander] Home position set to: x: 0, y: 0, z: 0, yaw: 0"
-      ]
+      ],
+      "technicalDetails": "Les coordonnées ne sont pas une latitude/longitude et le texte ne donne pas leurs unités ou leur convention. Cette annonce ne prouve pas que la référence corresponde au point de retour souhaité."
     }
   ]
 }
