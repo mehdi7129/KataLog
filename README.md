@@ -1,19 +1,20 @@
 # KataLog — bibliothèque locale de logs PX4
 
-**0.8.6 (build 25)** · macOS 15+ · Apple Silicon · GPL-3.0-only
+**0.8.7 (build 26)** · macOS 15+ · Apple Silicon · GPL-3.0-only
 
 KataLog rassemble les logs ULog de votre flotte sur votre Mac : historique,
 alertes filtrables, trajectoires Apple Maps, courbes et rapports partageables.
 L’app native SwiftUI propose des thèmes clair, sombre et système.
 
-La version **0.8.6 est publique**, signée et notarisée. Elle ajoute les filtres
-favoris, la comparaison de deux logs, les notes personnelles et le suivi de
-sauvegarde. Ses quatre assets ont été téléchargés et vérifiés sans authentification.
-[Résultats et limites de qualification](docs/RELEASE-0.8.6.md).
+La version **0.8.7** du **15 octobre 2026** ajoute
+**321 fiches d’explication** aux messages des logs et corrige la lecture des
+dictionnaires d’événements compressés. Le package est signé et notarisé ;
+la publication des archives et l’activation du flux sont suivies séparément.
+[Résultats et limites de qualification](docs/RELEASE-0.8.7.md).
 
-**[Télécharger KataLog 0.8.6 pour Mac Apple Silicon](https://github.com/mehdi7129/KataLog/releases/download/v0.8.6/KataLog-0.8.6-macOS-arm64.dmg)**
+**[DMG KataLog 0.8.7 pour Mac Apple Silicon](https://github.com/mehdi7129/KataLog/releases/download/v0.8.7/KataLog-0.8.7-macOS-arm64.dmg)**
 
-[Release et fichiers](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.6) ·
+[Release et fichiers](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.7) ·
 [Guide utilisateur](docs/README.md) · [Changelog](CHANGELOG.md) ·
 [Contribuer](CONTRIBUTING.md)
 
@@ -29,10 +30,11 @@ Une nouvelle installation démarre avec une bibliothèque vide ; une installatio
 existante retrouve ses données.
 
 **Compatibilité : Mac Apple Silicon, macOS 15 minimum.** Les contrôles du
-package 0.8.6 et sa recette native sur macOS 27.0.1 sont consignés dans les
-[notes de release](docs/RELEASE-0.8.6.md). La collecte loopback et la migration
-manuelle depuis 0.8.5 sont validées ; un nouveau transfert Aqua réel et un cycle
-Sparkle en production ne sont pas qualifiés. Le package Intel n’est pas fourni.
+package 0.8.7 et sa recette native sont consignés dans les
+[notes de release](docs/RELEASE-0.8.7.md). La conservation des données depuis
+0.8.6 et le renouvellement d’un ancien détail sont validés sur un banc isolé.
+Un nouveau transfert Aqua réel et un cycle d’installation Sparkle en production
+ne sont pas qualifiés. Le package Intel n’est pas fourni.
 
 ## Mises à jour
 
@@ -78,12 +80,13 @@ Pour collecter directement sur une GCS, ouvrir **Collecte GCS**, renseigner son
 adresse, se connecter et choisir **Tout collecter**. Le client destinataire et
 le dossier de copie sont explicites. Voir le [guide de collecte](docs/README.md#collecter-depuis-une-gcs).
 
-## Version 0.8.7 en préparation
+## Nouveautés de 0.8.7
 
 Le catalogue d’explications passe de quatre à **321 fiches**, avec sens du
 message, vérifications, limites et sources. Chaque fiche distingue une
-**définition documentée** d’une **interprétation du texte**. Le contexte d’un
-module reste disponible lorsqu’une définition précise manque. Les messages,
+**définition documentée** (**209 fiches**) d’une **interprétation du texte**
+(**112 fiches**). Le contexte d’un module reste disponible lorsqu’une définition
+précise manque. Les messages,
 leurs niveaux et leur classement restent conservés.
 
 La lecture des dictionnaires d’événements compressés est corrigée. Les

@@ -17,7 +17,7 @@ release une première fois par DMG : leurs builds n’activent pas le flux publi
 Ensuite les mises à jour se font depuis l’app. KataLog Preview reste une app de
 review indépendante.
 
-## Passage à 0.8.7 — en préparation
+## Passage à 0.8.7
 
 La version **0.8.7 (build 26)** enrichit les explications des messages : sens,
 contrôles, limites et sources, avec un niveau de preuve propre à chaque fiche.
@@ -27,12 +27,17 @@ Le parseur passe de **1.4.0 à 1.4.1** pour renouveler les anciens détails et
 appliquer la correction des dictionnaires d’événements compressés. À la prochaine
 ouverture du détail, KataLog utilise la source locale accessible dont le SHA-256
 correspond au log. Si la source est absente, l’ancien détail est conservé et
-reste signalé comme ancien. La projection SQLite **8**, les analyses précédentes,
+reste signalé comme ancien. Si la liste des événements était déjà ouverte,
+utilisez **Actualiser** après avoir ouvert le détail du log. La projection
+SQLite **8**, les analyses précédentes,
 clients, notes, réglages et ULogs sont conservés ; aucun réimport global n’est lancé.
 
-La [recette 0.8.7](RELEASE-0.8.7.md) suit les contrôles de cette version.
-Le flux stable conserve la version publique précédente jusqu’à la fin de
-qualification et la vérification des nouvelles archives.
+Le package signé et notarisé réussit ses neuf contrôles de distribution.
+La [recette 0.8.7](RELEASE-0.8.7.md) consigne la consultation native des fiches,
+les exports et les contrôles de conservation depuis 0.8.6. Le flux signé build
+**26** est préparé depuis le build **25**. Son activation et son contrôle
+canonique suivent la publication et la vérification des quatre archives.
+Un cycle d’installation Sparkle en production reste distinct de ces contrôles.
 
 ## Passage à 0.8.6
 
@@ -137,7 +142,7 @@ l’arrêt de la lecture des clients avant de remplacer ou modifier la biblioth�
 ## Changements introduits en 0.8.1
 
 Les changements de **0.8.1 (build 20)** sont inclus lors d’une mise à jour directe
-vers 0.8.6. Le [suivi de qualification 0.8.1](RELEASE-0.8.1.md) conserve les
+vers 0.8.7. Le [suivi de qualification 0.8.1](RELEASE-0.8.1.md) conserve les
 résultats de la Preview approuvée et des contrôles de ce package stable.
 
 La bibliothèque stable, les identités, les clients, les réglages et les dossiers
@@ -153,7 +158,7 @@ y compris ceux qui dépassaient l’ancienne limite d’affichage de 80 logs.
 ## Passage depuis une version antérieure à 0.8.0
 
 Les changements introduits en 0.8.0 sont également inclus lors d’une mise à jour
-directe vers 0.8.6. La [recette 0.8.0](RELEASE-0.8.0.md) conserve les résultats
+directe vers 0.8.7. La [recette 0.8.0](RELEASE-0.8.0.md) conserve les résultats
 de cette release.
 
 La mise à jour conserve la bibliothèque stable, les identifications et les dossiers
@@ -235,7 +240,7 @@ de staging doit être créé et vérifié séparément avant activation.
 Configurer un build de staging :
 
 ```bash
-KATALOG_VERSION=0.8.6 KATALOG_BUILD_NUMBER=25 \
+KATALOG_VERSION=0.8.7 KATALOG_BUILD_NUMBER=26 \
 KATALOG_UPDATE_CHANNEL=staging \
 KATALOG_UPDATE_FEED_URL=https://updates.example.org/staging/appcast.xml \
 KATALOG_UPDATE_PUBLIC_KEY='<cle-publique-base64>' \
@@ -249,11 +254,11 @@ Pour relire un brouillon, une archive ZIP existante suffit :
 
 ```bash
 python3 tools/update-feed.py prepare \
-  --archive dist/KataLog-0.8.6-macOS-arm64.zip \
-  --archive-url https://updates.example.org/KataLog-0.8.6-macOS-arm64.zip \
+  --archive dist/KataLog-0.8.7-macOS-arm64.zip \
+  --archive-url https://updates.example.org/KataLog-0.8.7-macOS-arm64.zip \
   --output /private/tmp/katalog-update-draft \
   --release-notes /private/tmp/katalog-release-notes.txt \
-  --channel staging --previous-build 24 --draft
+  --channel staging --previous-build 25 --draft
 ```
 
 Le brouillon est nommé `appcast.draft.xml` et reste non signé. Pour préparer un
@@ -265,7 +270,7 @@ publique et le même canal. Une seed exportée par Sparkle peut être fournie av
 `--ed-key-file` ; sa clé publique est vérifiée avant signature.
 
 Adapter `--previous-build` au dernier build vérifié du canal réellement utilisé.
-Le flux 0.8.6 est prévu pour la transition **24 → 25**, après vérification du
+Le flux 0.8.7 est préparé pour la transition **25 → 26**, après vérification du
 build réellement servi. La transition historique de 0.8.5 était **22 → 24** :
 le build 23 de 0.8.4 n’a pas été servi. L’exemple de staging ne prouve pas
 l’existence d’un serveur de staging ni une mise à jour installée.
