@@ -1,0 +1,2348 @@
+{
+  "schemaVersion": 1,
+  "provenance": "Artificial examples constructed from catalogue patterns; no flight telemetry, frequencies, firmware distribution or private identifiers.",
+  "examples": [
+    {
+      "id": "gps-emergency-yaw-reset",
+      "patternIndex": 0,
+      "text": "[ekf2] GPS emergency yaw reset",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-emergency-yaw-reset",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] GPS emergency yaw reset",
+      "confidence": "documented"
+    },
+    {
+      "id": "gyro-clipping",
+      "patternIndex": 0,
+      "text": "[vehicle_imu] Gyro 0 clipping, not safe to fly!",
+      "confidence": "documented"
+    },
+    {
+      "id": "compass-calibration-land",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Compass needs calibration - Land now!",
+      "confidence": "documented"
+    },
+    {
+      "id": "motor-failure-detected",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Motor failure detected",
+      "confidence": "documented"
+    },
+    {
+      "id": "high-accelerometer-bias",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: High Accelerometer Bias",
+      "confidence": "documented"
+    },
+    {
+      "id": "high-gyro-bias",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: High Gyro Bias",
+      "confidence": "documented"
+    },
+    {
+      "id": "failsafe-activated",
+      "patternIndex": 0,
+      "text": "[failsafe] Failsafe activated",
+      "confidence": "documented"
+    },
+    {
+      "id": "failsafe-hold-delay",
+      "patternIndex": 0,
+      "text": "[failsafe] Failsafe activated, entering Hold for 0 seconds",
+      "confidence": "documented"
+    },
+    {
+      "id": "crash-dumps-present",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Crash dumps present on SD, vehicle needs service",
+      "confidence": "documented"
+    },
+    {
+      "id": "accel-missing",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Accel Sensor 0 missing",
+      "confidence": "documented"
+    },
+    {
+      "id": "accel-invalid-data",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: No valid data from Accel 0",
+      "confidence": "documented"
+    },
+    {
+      "id": "accel-uncalibrated",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Accel 0 uncalibrated",
+      "confidence": "documented"
+    },
+    {
+      "id": "gyro-missing",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Gyro Sensor 0 missing",
+      "confidence": "documented"
+    },
+    {
+      "id": "gyro-invalid-data",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: No valid data from Gyro 0",
+      "confidence": "documented"
+    },
+    {
+      "id": "gyro-uncalibrated",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Gyro 0 uncalibrated",
+      "confidence": "documented"
+    },
+    {
+      "id": "compass-missing",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Compass Sensor 0 missing",
+      "confidence": "documented"
+    },
+    {
+      "id": "compass-invalid-data",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: No valid data from Compass 0",
+      "confidence": "documented"
+    },
+    {
+      "id": "compass-uncalibrated",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Compass 0 uncalibrated",
+      "confidence": "documented"
+    },
+    {
+      "id": "accelerometer-consistency",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Accel 0 inconsistent - check cal",
+      "confidence": "documented"
+    },
+    {
+      "id": "gyro-consistency",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Gyro 0 inconsistent - check cal",
+      "confidence": "documented"
+    },
+    {
+      "id": "compass-fault",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Compass 0 fault",
+      "confidence": "documented"
+    },
+    {
+      "id": "compass-count",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Found 0 compass (required: 0)",
+      "confidence": "documented"
+    },
+    {
+      "id": "compass-inconsistent",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Compasses 0° inconsistent",
+      "confidence": "documented"
+    },
+    {
+      "id": "baro-missing",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: barometer 0 missing",
+      "confidence": "documented"
+    },
+    {
+      "id": "baro-invalid",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: No valid data from Baro 0",
+      "confidence": "documented"
+    },
+    {
+      "id": "distance-missing",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Distance Sensor 0 missing",
+      "confidence": "documented"
+    },
+    {
+      "id": "distance-invalid",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: no valid data from distance sensor 0",
+      "confidence": "documented"
+    },
+    {
+      "id": "ekf-missing",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: ekf2 missing data",
+      "confidence": "documented"
+    },
+    {
+      "id": "heading-unstable",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: heading estimate not stable",
+      "confidence": "documented"
+    },
+    {
+      "id": "horizontal-velocity-unstable",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: horizontal velocity unstable",
+      "confidence": "documented"
+    },
+    {
+      "id": "vertical-velocity-unstable",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: vertical velocity unstable",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-unstable",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: height estimate not stable",
+      "confidence": "documented"
+    },
+    {
+      "id": "magnetic-interference",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Strong magnetic interference",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-estimate-error",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: height estimate error",
+      "confidence": "documented"
+    },
+    {
+      "id": "velocity-estimate-error",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: velocity estimate error",
+      "confidence": "documented"
+    },
+    {
+      "id": "position-estimate-error",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: position estimate error",
+      "confidence": "documented"
+    },
+    {
+      "id": "yaw-estimate-error",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Yaw estimate error",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-fix-low",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: GPS fix too low",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-fix-low",
+      "patternIndex": 1,
+      "text": "[health_and_arming_checks] Preflight: GPS fix too low",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-satellites-low",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: not enough GPS Satellites",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-satellites-low",
+      "patternIndex": 1,
+      "text": "[health_and_arming_checks] Preflight: not enough GPS Satellites",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-pdop-high",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: GPS PDOP too high",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-pdop-high",
+      "patternIndex": 1,
+      "text": "[health_and_arming_checks] Preflight: GPS PDOP too high",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-horizontal-error",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: GPS Horizontal Pos Error too high",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-horizontal-error",
+      "patternIndex": 1,
+      "text": "[health_and_arming_checks] Preflight: GPS Horizontal Pos Error too high",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-vertical-error",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: GPS Vertical Pos Error too high",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-vertical-error",
+      "patternIndex": 1,
+      "text": "[health_and_arming_checks] Preflight: GPS Vertical Pos Error too high",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-speed-accuracy",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: GPS Speed Accuracy too low",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-speed-accuracy",
+      "patternIndex": 1,
+      "text": "[health_and_arming_checks] Preflight: GPS Speed Accuracy too low",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-horizontal-drift",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: GPS Horizontal Pos Drift too high",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-horizontal-drift",
+      "patternIndex": 1,
+      "text": "[health_and_arming_checks] Preflight: GPS Horizontal Pos Drift too high",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-vertical-drift",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: GPS Vertical Pos Drift too high",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-vertical-drift",
+      "patternIndex": 1,
+      "text": "[health_and_arming_checks] Preflight: GPS Vertical Pos Drift too high",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-horizontal-speed-drift",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: GPS Hor Speed Drift too high",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-horizontal-speed-drift",
+      "patternIndex": 1,
+      "text": "[health_and_arming_checks] Preflight: GPS Hor Speed Drift too high",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-vertical-speed-drift",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: GPS Vert Speed Drift too high",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-vertical-speed-drift",
+      "patternIndex": 1,
+      "text": "[health_and_arming_checks] Preflight: GPS Vert Speed Drift too high",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-not-used",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Estimator not using GPS",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-not-used",
+      "patternIndex": 1,
+      "text": "[health_and_arming_checks] Preflight: Estimator not using GPS",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-poor-quality",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Poor GPS Quality",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-poor-quality",
+      "patternIndex": 1,
+      "text": "[health_and_arming_checks] Preflight: Poor GPS Quality",
+      "confidence": "documented"
+    },
+    {
+      "id": "gnss-fusion-stopped",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] GNSS data fusion stopped",
+      "confidence": "documented"
+    },
+    {
+      "id": "gnss-fusion-started",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] GNSS data fusion started",
+      "confidence": "documented"
+    },
+    {
+      "id": "gnss-heading-unreliable",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] GNSS heading not reliable - Land now!",
+      "confidence": "documented"
+    },
+    {
+      "id": "navigation-failure",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Navigation failure! Land and recalibrate sensors",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-jamming",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] GPS reports critical jamming state",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-spoofing",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] GPS reports spoofing indicated",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-multiple-spoofing",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] GPS reports multiple spoofing indicated",
+      "confidence": "documented"
+    },
+    {
+      "id": "local-position-low-accuracy",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Local position estimate has low accuracy",
+      "confidence": "documented"
+    },
+    {
+      "id": "sdcard-missing",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Missing FMU SD Card",
+      "confidence": "documented"
+    },
+    {
+      "id": "cpu-no-load",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: No CPU load information",
+      "confidence": "documented"
+    },
+    {
+      "id": "power-module-missing",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Power module not connected",
+      "confidence": "documented"
+    },
+    {
+      "id": "power-data-missing",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: system power unavailable",
+      "confidence": "documented"
+    },
+    {
+      "id": "low-battery-preflight",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: low battery",
+      "confidence": "documented"
+    },
+    {
+      "id": "battery-unhealthy",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Battery unhealthy",
+      "confidence": "documented"
+    },
+    {
+      "id": "esc-telemetry-missing",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: ESC telemetry missing",
+      "confidence": "documented"
+    },
+    {
+      "id": "global-position-required",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Global position required",
+      "confidence": "documented"
+    },
+    {
+      "id": "home-position-required",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Home position required",
+      "confidence": "documented"
+    },
+    {
+      "id": "press-safety-button",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Press safety button first",
+      "confidence": "documented"
+    },
+    {
+      "id": "usb-flight-unsafe",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Flying with USB is not safe",
+      "confidence": "documented"
+    },
+    {
+      "id": "flight-termination-active",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Flight termination active",
+      "confidence": "documented"
+    },
+    {
+      "id": "avoidance-not-ready",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Avoidance system not ready",
+      "confidence": "documented"
+    },
+    {
+      "id": "vtol-transition",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Vehicle is in transition state",
+      "confidence": "documented"
+    },
+    {
+      "id": "vtol-not-multicopter",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Vehicle is not in multicopter mode",
+      "confidence": "documented"
+    },
+    {
+      "id": "rtl-switch-engaged",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: RTL switch engaged",
+      "confidence": "documented"
+    },
+    {
+      "id": "kill-switch-engaged",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Kill switch engaged",
+      "confidence": "documented"
+    },
+    {
+      "id": "landing-gear-up",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Landing gear switch set in UP position",
+      "confidence": "documented"
+    },
+    {
+      "id": "geofence-violation",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Geofence violation",
+      "confidence": "documented"
+    },
+    {
+      "id": "geofence-home-missing",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Geofence RTL requires valid home",
+      "confidence": "documented"
+    },
+    {
+      "id": "failure-roll",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Attitude failure (roll)",
+      "confidence": "documented"
+    },
+    {
+      "id": "failure-pitch",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Attitude failure (pitch)",
+      "confidence": "documented"
+    },
+    {
+      "id": "failure-altitude",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Altitude failure",
+      "confidence": "documented"
+    },
+    {
+      "id": "failure-external",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Failure triggered by external system",
+      "confidence": "documented"
+    },
+    {
+      "id": "failure-esc",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: ESC failure detected",
+      "confidence": "documented"
+    },
+    {
+      "id": "imbalanced-propeller",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Imbalanced propeller detected",
+      "confidence": "documented"
+    },
+    {
+      "id": "parachute-missing",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Parachute system missing",
+      "confidence": "documented"
+    },
+    {
+      "id": "parachute-not-ready",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Parachute system not ready",
+      "confidence": "documented"
+    },
+    {
+      "id": "gcs-preflight-missing",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: No connection to the ground control station",
+      "confidence": "documented"
+    },
+    {
+      "id": "cpu-load-high",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: CPU load too high: 0%",
+      "confidence": "documented"
+    },
+    {
+      "id": "avionics-power-low",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Avionics Power low: 0 Volt",
+      "confidence": "documented"
+    },
+    {
+      "id": "avionics-power-high",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Avionics Power high: 0 Volt",
+      "confidence": "documented"
+    },
+    {
+      "id": "power-redundancy",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Preflight Fail: Power redundancy not met: 0 instead of 0",
+      "confidence": "documented"
+    },
+    {
+      "id": "flight-time-limit",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Maximum flight time reached",
+      "confidence": "documented"
+    },
+    {
+      "id": "flight-time-near-seconds",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Approaching max flight time (system will RTL in 0 seconds)",
+      "confidence": "documented"
+    },
+    {
+      "id": "flight-time-near-minutes",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] Approaching max flight time (system will RTL in 0 minutes)",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-fusion-timeout",
+      "patternIndex": 0,
+      "text": "[ekf2] GPS fusion timeout, resetting velocity and position",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-fusion-timeout",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] GPS fusion timeout, resetting velocity and position",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-quality-stopping",
+      "patternIndex": 0,
+      "text": "[ekf2] GPS quality poor - stopping use",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-quality-stopping",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] GPS quality poor - stopping use",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-data-stopped",
+      "patternIndex": 0,
+      "text": "[ekf2] GPS data stopped",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-data-stopped",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] GPS data stopped",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-data-stopped-alternate",
+      "patternIndex": 0,
+      "text": "[ekf2] GPS data stopped, using only EV, OF or air data",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-data-stopped-alternate",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] GPS data stopped, using only EV, OF or air data",
+      "confidence": "documented"
+    },
+    {
+      "id": "starting-gps-fusion",
+      "patternIndex": 0,
+      "text": "[ekf2] starting GPS fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "starting-gps-fusion",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] starting GPS fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-yaw-imu-alignment",
+      "patternIndex": 0,
+      "text": "[ekf2] GPS yaw aligned using IMU, resetting vel and pos",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-yaw-imu-alignment",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] GPS yaw aligned using IMU, resetting vel and pos",
+      "confidence": "documented"
+    },
+    {
+      "id": "starting-gps-yaw",
+      "patternIndex": 0,
+      "text": "[ekf2] starting GPS yaw fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "starting-gps-yaw",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] starting GPS yaw fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "stopping-gps-yaw",
+      "patternIndex": 0,
+      "text": "[ekf2] stopping GPS yaw fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "stopping-gps-yaw",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] stopping GPS yaw fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "stopping-gps-position",
+      "patternIndex": 0,
+      "text": "[ekf2] stopping GPS position fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "stopping-gps-position",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] stopping GPS position fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "stopping-gps-velocity",
+      "patternIndex": 0,
+      "text": "[ekf2] stopping GPS velocity fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "stopping-gps-velocity",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] stopping GPS velocity fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-checks-passed",
+      "patternIndex": 0,
+      "text": "[ekf2] GPS checks passed",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-checks-passed",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] GPS checks passed",
+      "confidence": "documented"
+    },
+    {
+      "id": "stop-mag-fusion",
+      "patternIndex": 0,
+      "text": "[ekf2] stopping all mag fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "stop-mag-fusion",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] stopping all mag fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "start-mag-heading",
+      "patternIndex": 0,
+      "text": "[ekf2] starting mag heading fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "start-mag-heading",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] starting mag heading fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "dead-reckon-exceeded",
+      "patternIndex": 0,
+      "text": "[ekf2] dead reckon time exceeded",
+      "confidence": "documented"
+    },
+    {
+      "id": "dead-reckon-exceeded",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] dead reckon time exceeded",
+      "confidence": "documented"
+    },
+    {
+      "id": "ekf-reset-velocity-zero",
+      "patternIndex": 0,
+      "text": "[ekf2] reset velocity to zero",
+      "confidence": "documented"
+    },
+    {
+      "id": "ekf-reset-velocity-zero",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] reset velocity to zero",
+      "confidence": "documented"
+    },
+    {
+      "id": "ekf-reset-wind-zero",
+      "patternIndex": 0,
+      "text": "[ekf2] reset wind to zero",
+      "confidence": "documented"
+    },
+    {
+      "id": "ekf-reset-wind-zero",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] reset wind to zero",
+      "confidence": "documented"
+    },
+    {
+      "id": "fallback-height-reference",
+      "patternIndex": 0,
+      "text": "[ekf2] fallback to secondary height reference",
+      "confidence": "documented"
+    },
+    {
+      "id": "fallback-height-reference",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] fallback to secondary height reference",
+      "confidence": "documented"
+    },
+    {
+      "id": "start-fake-position",
+      "patternIndex": 0,
+      "text": "[ekf2] start fake position fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "start-fake-position",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] start fake position fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "reset-fake-position",
+      "patternIndex": 0,
+      "text": "[ekf2] reset fake position fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "reset-fake-position",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] reset fake position fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "stop-fake-position",
+      "patternIndex": 0,
+      "text": "[ekf2] stop fake position fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "stop-fake-position",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] stop fake position fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "stopping-navigation",
+      "patternIndex": 0,
+      "text": "[ekf2] stopping navigation",
+      "confidence": "documented"
+    },
+    {
+      "id": "stopping-navigation",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] stopping navigation",
+      "confidence": "documented"
+    },
+    {
+      "id": "start-fake-height",
+      "patternIndex": 0,
+      "text": "[ekf2] start fake height fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "start-fake-height",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] start fake height fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "reset-fake-height",
+      "patternIndex": 0,
+      "text": "[ekf2] reset fake height fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "reset-fake-height",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] reset fake height fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "stop-fake-height",
+      "patternIndex": 0,
+      "text": "[ekf2] stop fake height fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "stop-fake-height",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] stop fake height fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "vision-data-stopped",
+      "patternIndex": 0,
+      "text": "[ekf2] vision data stopped",
+      "confidence": "documented"
+    },
+    {
+      "id": "vision-data-stopped",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] vision data stopped",
+      "confidence": "documented"
+    },
+    {
+      "id": "start-optical-flow",
+      "patternIndex": 0,
+      "text": "[ekf2] starting optical flow fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "start-optical-flow",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] starting optical flow fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "stop-optical-flow",
+      "patternIndex": 0,
+      "text": "[ekf2] stopping optical flow fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "stop-optical-flow",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] stopping optical flow fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "reset-velocity-flow",
+      "patternIndex": 0,
+      "text": "[ekf2] reset velocity to flow",
+      "confidence": "documented"
+    },
+    {
+      "id": "reset-velocity-flow",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] reset velocity to flow",
+      "confidence": "documented"
+    },
+    {
+      "id": "reset-position-zero",
+      "patternIndex": 0,
+      "text": "[ekf2] reset position to zero",
+      "confidence": "documented"
+    },
+    {
+      "id": "reset-position-zero",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] reset position to zero",
+      "confidence": "documented"
+    },
+    {
+      "id": "start-airspeed-fusion",
+      "patternIndex": 0,
+      "text": "[ekf2] starting airspeed fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "start-airspeed-fusion",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] starting airspeed fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "stop-airspeed-fusion",
+      "patternIndex": 0,
+      "text": "[ekf2] stopping airspeed fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "stop-airspeed-fusion",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] stopping airspeed fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "airspeed-data-stopped",
+      "patternIndex": 0,
+      "text": "[ekf2] Airspeed data stopped",
+      "confidence": "documented"
+    },
+    {
+      "id": "airspeed-data-stopped",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] Airspeed data stopped",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-baro-start",
+      "patternIndex": 0,
+      "text": "[ekf2] starting baro height fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-baro-start",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] starting baro height fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-baro-start-reset",
+      "patternIndex": 0,
+      "text": "[ekf2] starting baro height fusion, resetting height",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-baro-start-reset",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] starting baro height fusion, resetting height",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-baro-stop-no-data",
+      "patternIndex": 0,
+      "text": "[ekf2] stopping baro height fusion, no data",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-baro-stop-no-data",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] stopping baro height fusion, no data",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-baro-stop-failing",
+      "patternIndex": 0,
+      "text": "[ekf2] stopping baro height fusion, fusion failing",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-baro-stop-failing",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] stopping baro height fusion, fusion failing",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-baro-stop-conditions",
+      "patternIndex": 0,
+      "text": "[ekf2] stopping baro height fusion, continuing conditions failing",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-baro-stop-conditions",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] stopping baro height fusion, continuing conditions failing",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-baro-reset-required",
+      "patternIndex": 0,
+      "text": "[ekf2] baro height fusion reset required, all height sources failing",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-baro-reset-required",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] baro height fusion reset required, all height sources failing",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-gnss-start",
+      "patternIndex": 0,
+      "text": "[ekf2] starting GNSS height fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-gnss-start",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] starting GNSS height fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-gnss-start-reset",
+      "patternIndex": 0,
+      "text": "[ekf2] starting GNSS height fusion, resetting height",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-gnss-start-reset",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] starting GNSS height fusion, resetting height",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-gnss-stop-no-data",
+      "patternIndex": 0,
+      "text": "[ekf2] stopping GNSS height fusion, no data",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-gnss-stop-no-data",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] stopping GNSS height fusion, no data",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-gnss-stop-failing",
+      "patternIndex": 0,
+      "text": "[ekf2] stopping GNSS height fusion, fusion failing",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-gnss-stop-failing",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] stopping GNSS height fusion, fusion failing",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-gnss-stop-conditions",
+      "patternIndex": 0,
+      "text": "[ekf2] stopping GNSS height fusion, continuing conditions failing",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-gnss-stop-conditions",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] stopping GNSS height fusion, continuing conditions failing",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-gnss-reset-required",
+      "patternIndex": 0,
+      "text": "[ekf2] GNSS height fusion reset required, all height sources failing",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-gnss-reset-required",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] GNSS height fusion reset required, all height sources failing",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-rng-start",
+      "patternIndex": 0,
+      "text": "[ekf2] starting RNG height fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-rng-start",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] starting RNG height fusion",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-rng-start-reset",
+      "patternIndex": 0,
+      "text": "[ekf2] starting RNG height fusion, resetting height",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-rng-start-reset",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] starting RNG height fusion, resetting height",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-rng-stop-no-data",
+      "patternIndex": 0,
+      "text": "[ekf2] stopping RNG height fusion, no data",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-rng-stop-no-data",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] stopping RNG height fusion, no data",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-rng-stop-failing",
+      "patternIndex": 0,
+      "text": "[ekf2] stopping RNG height fusion, fusion failing",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-rng-stop-failing",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] stopping RNG height fusion, fusion failing",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-rng-stop-conditions",
+      "patternIndex": 0,
+      "text": "[ekf2] stopping RNG height fusion, continuing conditions failing",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-rng-stop-conditions",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] stopping RNG height fusion, continuing conditions failing",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-rng-reset-required",
+      "patternIndex": 0,
+      "text": "[ekf2] RNG height fusion reset required, all height sources failing",
+      "confidence": "documented"
+    },
+    {
+      "id": "height-rng-reset-required",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] RNG height fusion reset required, all height sources failing",
+      "confidence": "documented"
+    },
+    {
+      "id": "reset-position-last",
+      "patternIndex": 0,
+      "text": "[ekf2] reset position to last known (0, 0)",
+      "confidence": "documented"
+    },
+    {
+      "id": "reset-position-last",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] reset position to last known (0, 0)",
+      "confidence": "documented"
+    },
+    {
+      "id": "reset-height-last",
+      "patternIndex": 0,
+      "text": "[ekf2] reset height to last known (0)",
+      "confidence": "documented"
+    },
+    {
+      "id": "reset-height-last",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] reset height to last known (0)",
+      "confidence": "documented"
+    },
+    {
+      "id": "mag-heading-init",
+      "patternIndex": 0,
+      "text": "[ekf2] mag heading init 0 -> 0 rad (declination 0)",
+      "confidence": "documented"
+    },
+    {
+      "id": "mag-heading-init",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] mag heading init 0 -> 0 rad (declination 0)",
+      "confidence": "documented"
+    },
+    {
+      "id": "mag-heading-reset",
+      "patternIndex": 0,
+      "text": "[ekf2] reset mag heading 0 -> 0 rad (declination 0)",
+      "confidence": "documented"
+    },
+    {
+      "id": "mag-heading-reset",
+      "patternIndex": 1,
+      "text": "[ecl/EKF] reset mag heading 0 -> 0 rad (declination 0)",
+      "confidence": "documented"
+    },
+    {
+      "id": "takeoff-detected",
+      "patternIndex": 0,
+      "text": "[commander] Takeoff detected",
+      "confidence": "documented"
+    },
+    {
+      "id": "landing-detected",
+      "patternIndex": 0,
+      "text": "[commander] Landing detected",
+      "confidence": "documented"
+    },
+    {
+      "id": "return-command",
+      "patternIndex": 0,
+      "text": "[commander] Returning to launch",
+      "confidence": "documented"
+    },
+    {
+      "id": "landing-current-position",
+      "patternIndex": 0,
+      "text": "[commander] Landing at current position",
+      "confidence": "documented"
+    },
+    {
+      "id": "precision-landing",
+      "patternIndex": 0,
+      "text": "[commander] Precision landing",
+      "confidence": "documented"
+    },
+    {
+      "id": "gcs-regained",
+      "patternIndex": 0,
+      "text": "[commander] GCS connection regained",
+      "confidence": "documented"
+    },
+    {
+      "id": "gcs-lost",
+      "patternIndex": 0,
+      "text": "[commander] Connection to ground station lost",
+      "confidence": "documented"
+    },
+    {
+      "id": "onboard-regained",
+      "patternIndex": 0,
+      "text": "[commander] Onboard controller regained",
+      "confidence": "documented"
+    },
+    {
+      "id": "mission-computer-lost",
+      "patternIndex": 0,
+      "text": "[commander] Connection to mission computer lost",
+      "confidence": "documented"
+    },
+    {
+      "id": "high-latency-lost",
+      "patternIndex": 0,
+      "text": "[commander] High latency data link lost",
+      "confidence": "documented"
+    },
+    {
+      "id": "mission-start-denied",
+      "patternIndex": 0,
+      "text": "[commander] Mission start denied! No valid mission",
+      "confidence": "documented"
+    },
+    {
+      "id": "disarm-denied-not-landed",
+      "patternIndex": 0,
+      "text": "[commander] Disarming denied! Not landed",
+      "confidence": "documented"
+    },
+    {
+      "id": "arming-denied-throttle-center",
+      "patternIndex": 0,
+      "text": "[commander] Arming denied: throttle above center",
+      "confidence": "documented"
+    },
+    {
+      "id": "arming-denied-high-throttle",
+      "patternIndex": 0,
+      "text": "[commander] Arming denied: high throttle",
+      "confidence": "documented"
+    },
+    {
+      "id": "arming-denied-manual",
+      "patternIndex": 0,
+      "text": "[commander] Arming denied: switch to manual mode first",
+      "confidence": "documented"
+    },
+    {
+      "id": "kill-switch-disengaged",
+      "patternIndex": 0,
+      "text": "[commander] Kill-switch disengaged",
+      "confidence": "documented"
+    },
+    {
+      "id": "pilot-took-over",
+      "patternIndex": 0,
+      "text": "[commander] Pilot took over using sticks",
+      "confidence": "documented"
+    },
+    {
+      "id": "armed-by",
+      "patternIndex": 0,
+      "text": "[commander] Armed by internal command",
+      "confidence": "documented"
+    },
+    {
+      "id": "disarmed-by",
+      "patternIndex": 0,
+      "text": "[commander] Disarmed by internal command",
+      "confidence": "documented"
+    },
+    {
+      "id": "rtl-destination-home-position",
+      "patternIndex": 0,
+      "text": "[navigator] RTL: landing at home position.",
+      "confidence": "documented"
+    },
+    {
+      "id": "rtl-destination-mission-landing",
+      "patternIndex": 0,
+      "text": "[navigator] RTL: landing at mission landing.",
+      "confidence": "documented"
+    },
+    {
+      "id": "rtl-destination-safe-landing-point",
+      "patternIndex": 0,
+      "text": "[navigator] RTL: landing at safe landing point.",
+      "confidence": "documented"
+    },
+    {
+      "id": "rtl-phase-climb",
+      "patternIndex": 0,
+      "text": "[navigator] RTL: climb to 0 m (0 m above destination)",
+      "confidence": "documented"
+    },
+    {
+      "id": "rtl-phase-return",
+      "patternIndex": 0,
+      "text": "[navigator] RTL: return at 0 m (0 m above destination)",
+      "confidence": "documented"
+    },
+    {
+      "id": "rtl-phase-descend",
+      "patternIndex": 0,
+      "text": "[navigator] RTL: descend to 0 m (0 m above destination)",
+      "confidence": "documented"
+    },
+    {
+      "id": "rtl-loiter",
+      "patternIndex": 0,
+      "text": "[navigator] RTL: loiter 0s",
+      "confidence": "documented"
+    },
+    {
+      "id": "rtl-completed-loiter",
+      "patternIndex": 0,
+      "text": "[navigator] RTL: completed, loitering",
+      "confidence": "documented"
+    },
+    {
+      "id": "rtl-land-destination",
+      "patternIndex": 0,
+      "text": "[navigator] RTL: land at destination",
+      "confidence": "documented"
+    },
+    {
+      "id": "logger-open-file",
+      "patternIndex": 0,
+      "text": "[logger] Opened full log file: <path>",
+      "confidence": "documented"
+    },
+    {
+      "id": "logger-open-mission",
+      "patternIndex": 0,
+      "text": "[logger] Opened mission log file: <path>",
+      "confidence": "documented"
+    },
+    {
+      "id": "logger-closed",
+      "patternIndex": 0,
+      "text": "[logger] closed logfile, bytes written: 0",
+      "confidence": "documented"
+    },
+    {
+      "id": "logger-start-full",
+      "patternIndex": 0,
+      "text": "[logger] Start file log (type: full)",
+      "confidence": "documented"
+    },
+    {
+      "id": "logger-start-mission",
+      "patternIndex": 0,
+      "text": "[logger] Start file log (type: mission)",
+      "confidence": "documented"
+    },
+    {
+      "id": "logger-start-mavlink",
+      "patternIndex": 0,
+      "text": "[logger] Start mavlink log",
+      "confidence": "documented"
+    },
+    {
+      "id": "logger-stop-mavlink",
+      "patternIndex": 0,
+      "text": "[logger] Stop mavlink log",
+      "confidence": "documented"
+    },
+    {
+      "id": "logger-no-battery",
+      "patternIndex": 0,
+      "text": "[logger] battery_status not published. Logging anyway",
+      "confidence": "documented"
+    },
+    {
+      "id": "logger-write-failed",
+      "patternIndex": 0,
+      "text": "[logger] write failed (0)",
+      "confidence": "documented"
+    },
+    {
+      "id": "logger-close-failed",
+      "patternIndex": 0,
+      "text": "[logger] closing log file failed (0)",
+      "confidence": "documented"
+    },
+    {
+      "id": "logger-watchdog",
+      "patternIndex": 0,
+      "text": "[logger] Writing watchdog data",
+      "confidence": "documented"
+    },
+    {
+      "id": "accel-clipping",
+      "patternIndex": 0,
+      "text": "[vehicle_imu] Accel 0 clipping, not safe to fly!",
+      "confidence": "documented"
+    },
+    {
+      "id": "imu-offset-acc",
+      "patternIndex": 0,
+      "text": "[vehicle_imu] ACC 0 (0) offset committed: [0 0 0]->[0 0 0])",
+      "confidence": "documented"
+    },
+    {
+      "id": "imu-offset-gyro",
+      "patternIndex": 0,
+      "text": "[vehicle_imu] GYRO 0 (0) offset committed: [0 0 0]->[0 0 0])",
+      "confidence": "documented"
+    },
+    {
+      "id": "ekf-primary-changed",
+      "patternIndex": 0,
+      "text": "[ekf2] primary EKF changed 0 -> 0",
+      "confidence": "documented"
+    },
+    {
+      "id": "ekf-start-3d-mag",
+      "patternIndex": 0,
+      "text": "[ekf2] starting 3D mag fusion",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "esc-offline",
+      "patternIndex": 0,
+      "text": "[health_and_arming_checks] ESC0 offline.",
+      "confidence": "documented"
+    },
+    {
+      "id": "rtl-home-activated",
+      "patternIndex": 0,
+      "text": "[navigator] RTL HOME activated",
+      "confidence": "documented"
+    },
+    {
+      "id": "minimum-takeoff-altitude",
+      "patternIndex": 0,
+      "text": "[navigator] Using minimum takeoff altitude: 0 m",
+      "confidence": "documented"
+    },
+    {
+      "id": "precland-horizontal-approach",
+      "patternIndex": 0,
+      "text": "[navigator] Precland: switching to horizontal approach",
+      "confidence": "documented"
+    },
+    {
+      "id": "precland-descend",
+      "patternIndex": 0,
+      "text": "[navigator] Precland: switching to descend",
+      "confidence": "documented"
+    },
+    {
+      "id": "precland-final-approach",
+      "patternIndex": 0,
+      "text": "[navigator] Precland: switching to final approach",
+      "confidence": "documented"
+    },
+    {
+      "id": "precland-fallback",
+      "patternIndex": 0,
+      "text": "[navigator] Precland: switching to fallback",
+      "confidence": "documented"
+    },
+    {
+      "id": "logger-file-name-notification",
+      "patternIndex": 0,
+      "text": "[logger] [logger] <path>",
+      "confidence": "documented"
+    },
+    {
+      "id": "commander-forcing-lockdown",
+      "patternIndex": 0,
+      "text": "[commander] forcing lockdown (motors off)",
+      "confidence": "documented"
+    },
+    {
+      "id": "commander-forcing-failsafe",
+      "patternIndex": 0,
+      "text": "[commander] forcing failsafe (termination)",
+      "confidence": "documented"
+    },
+    {
+      "id": "commander-disabling-failsafe",
+      "patternIndex": 0,
+      "text": "[commander] disabling failsafe and lockdown",
+      "confidence": "documented"
+    },
+    {
+      "id": "failsafe-notification-codes",
+      "patternIndex": 0,
+      "text": "[failsafe] User notification: failsafe triggered (action=0, delayed_action=0, cause=0, delay=0s)",
+      "confidence": "documented"
+    },
+    {
+      "id": "task-low-stack",
+      "patternIndex": 0,
+      "text": "[load_mon] selftest low on stack! (0 bytes left)",
+      "confidence": "documented"
+    },
+    {
+      "id": "mixer-param-uavcan-ec",
+      "patternIndex": 0,
+      "text": "[mixer_module] Param prefix: UAVCAN_EC",
+      "confidence": "documented"
+    },
+    {
+      "id": "mixer-param-uavcan-sv",
+      "patternIndex": 0,
+      "text": "[mixer_module] Param prefix: UAVCAN_SV",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-driver-jamming",
+      "patternIndex": 0,
+      "text": "[gps] GPS jamming detected! (state: 0) (indicator: 0)",
+      "confidence": "documented"
+    },
+    {
+      "id": "gps-rtcm-instance-switch",
+      "patternIndex": 0,
+      "text": "[gps] RTCM : Switching to instance 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "battery-smbus-read",
+      "patternIndex": 0,
+      "text": "[batt_smbus] SMBus read error: -0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "battery-temperature-read",
+      "patternIndex": 0,
+      "text": "[batt_smbus] Failed to read temperature data",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "battery-main-data-read",
+      "patternIndex": 0,
+      "text": "[batt_smbus] Error reading battery SoC and voltage and current.",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "wifi-link-lost",
+      "patternIndex": 0,
+      "text": "[wifi_broadcom] Wifi link lost",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "wifi-link-regained",
+      "patternIndex": 0,
+      "text": "[wifi_broadcom] Wifi link regained",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "wifi-associate-failed",
+      "patternIndex": 0,
+      "text": "[wifi_broadcom] Associate failed",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "wifi-scan-status-failed",
+      "patternIndex": 0,
+      "text": "[wifi_broadcom] wapi_scan_stat() failed: -0, sleeptries: 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "wifi-scan-failed",
+      "patternIndex": 0,
+      "text": "[wifi_broadcom] Scan failed",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "wifi-scanning",
+      "patternIndex": 0,
+      "text": "[wifi_broadcom] Scanning for wifi network prio #0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "wifi-connect-attempt",
+      "patternIndex": 0,
+      "text": "[wifi_broadcom] Trying to connect to wifi a (prio #0)",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "wifi-heartbeat-timeout",
+      "patternIndex": 0,
+      "text": "[wifi_broadcom] Timeout waiting for GCS heartbeat",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "wifi-ipv6-address",
+      "patternIndex": 0,
+      "text": "[wifi_broadcom] ip6_addr=0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "led-temperature",
+      "patternIndex": 0,
+      "text": "[rgbled_pwm] Temperature too high disabling LED",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "led-temperature-recovered",
+      "patternIndex": 0,
+      "text": "[rgbled_pwm] Temperature OK, enabling LED",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "arm-shutdown-denied",
+      "patternIndex": 0,
+      "text": "[ArmStateMachine] Transition denied: Armed to Shutdown",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-speed-gps",
+      "patternIndex": 0,
+      "text": "[dance] GPS speed violation: 0 m/s",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-speed-local",
+      "patternIndex": 0,
+      "text": "[dance] Local speed violation: 0 m/s",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-state-dance",
+      "patternIndex": 0,
+      "text": "[dance] Standby -> Dance",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-state-rtl",
+      "patternIndex": 0,
+      "text": "[dance] Standby -> RTL",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-state-land",
+      "patternIndex": 0,
+      "text": "[dance] Standby -> Land",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-state-standby",
+      "patternIndex": 0,
+      "text": "[dance] Standby -> Standby",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-state-kill",
+      "patternIndex": 0,
+      "text": "[dance] Standby -> Kill",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-state-ready",
+      "patternIndex": 0,
+      "text": "[dance] Standby -> Ready",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-state-takeoff",
+      "patternIndex": 0,
+      "text": "[dance] Standby -> Takeoff",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-state-transition",
+      "patternIndex": 0,
+      "text": "[dance] Standby -> Transition",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-state-reverse",
+      "patternIndex": 0,
+      "text": "[dance] Standby -> Reverse",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-state-replacement",
+      "patternIndex": 0,
+      "text": "[dance] Standby -> Replacement",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-takeoff-aborted",
+      "patternIndex": 0,
+      "text": "[dance] Transition -> Takeoff aborted",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-finished",
+      "patternIndex": 0,
+      "text": "[dance] Dance finished: RTL",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-update-params",
+      "patternIndex": 0,
+      "text": "[dance] Update params",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-params-received",
+      "patternIndex": 0,
+      "text": "[dance] Dance parameters received. Geocage alt: 0 m",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-control-received",
+      "patternIndex": 0,
+      "text": "[dance] Received show control command: 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-command-pause",
+      "patternIndex": 0,
+      "text": "[dance] Received show pause command",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-command-resume",
+      "patternIndex": 0,
+      "text": "[dance] Received show resume command",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-command-reverse",
+      "patternIndex": 0,
+      "text": "[dance] Received show reverse command",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-command-replacement",
+      "patternIndex": 0,
+      "text": "[dance] Received show replacement command",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-control-duplicate",
+      "patternIndex": 0,
+      "text": "[dance] Duplicate show control command received, ignoring",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-control-time",
+      "patternIndex": 0,
+      "text": "[dance] Received show control time: 0 s, 0ms",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-pause-at",
+      "patternIndex": 0,
+      "text": "[dance] Pause show at 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-pause-duration",
+      "patternIndex": 0,
+      "text": "[dance] Pause duration: 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-resume-at",
+      "patternIndex": 0,
+      "text": "[dance] Resume show at 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-current-time",
+      "patternIndex": 0,
+      "text": "[dance] current time: 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-reposition-start",
+      "patternIndex": 0,
+      "text": "[dance] Replacement to T=0 ms started, distance 0 m",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-reposition-arrived",
+      "patternIndex": 0,
+      "text": "[dance] Replacement arrived, show time frozen at 0 ms",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-battery-rtl-disabled",
+      "patternIndex": 0,
+      "text": "[dance] RTL disabled, 0 ms until end of show",
+      "confidence": "documented"
+    },
+    {
+      "id": "dance-tracking-failsafe",
+      "patternIndex": 0,
+      "text": "[dance] Tracking failsafe",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-tracking-rtl",
+      "patternIndex": 0,
+      "text": "[dance] Tracking failsafe: RTL, wind speed:  N : 0 m/s, E : 0 m/s",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-geocage-horizontal",
+      "patternIndex": 0,
+      "text": "[dance] Geocage horizontal EKF/GNSS violation!",
+      "confidence": "documented"
+    },
+    {
+      "id": "dance-crc-mismatch",
+      "patternIndex": 0,
+      "text": "[dance] CRC mismatch, dance not started",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-crc-values",
+      "patternIndex": 0,
+      "text": "[dance] CRC-32: dist: 0 local : 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-file-received",
+      "patternIndex": 0,
+      "text": "[dance] Received dance file with CRC: 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-file-reloaded",
+      "patternIndex": 0,
+      "text": "[dance] Dance file reloaded: t_first 0 ms, transition end 0 ms",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-ready-countdown",
+      "patternIndex": 0,
+      "text": "[dance] Dance ready, starting in 0 seconds",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-file-frame",
+      "patternIndex": 0,
+      "text": "[dance] Fram len : 0, offset: 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-file-section",
+      "patternIndex": 0,
+      "text": "[dance] Section : 0 Start : 0 End : 0 MaxIndex : 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-file-header",
+      "patternIndex": 0,
+      "text": "[dance] mg nb : 0x0, len : 0x0, nb_sections : 0x0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-pyro-start",
+      "patternIndex": 0,
+      "text": "[dance] Starting Pyro Event on channel 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "dance-pyro-can-sent",
+      "patternIndex": 0,
+      "text": "[dance] CAN message sent for pyro event",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "sequencer-late",
+      "patternIndex": 0,
+      "text": "[demosequencerlite] Cmd 0ms late (start: 0 size: 0 idx: 0/0)",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "sequencer-stopped",
+      "patternIndex": 0,
+      "text": "[demosequencerlite] Sequencer stopped",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "mavlink-command-21",
+      "patternIndex": 0,
+      "text": "[mavlink] command number 21 is ok 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "mavlink-command-176",
+      "patternIndex": 0,
+      "text": "[mavlink] command number 176 is ok 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "mavlink-command-246",
+      "patternIndex": 0,
+      "text": "[mavlink] command number 246 is ok 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "mavlink-command-310",
+      "patternIndex": 0,
+      "text": "[mavlink] command number 310 is ok 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "mavlink-command-400",
+      "patternIndex": 0,
+      "text": "[mavlink] command number 400 is ok 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "mavlink-command-512",
+      "patternIndex": 0,
+      "text": "[mavlink] command number 512 is ok 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "mavlink-custom-command",
+      "patternIndex": 0,
+      "text": "[mavlink] command number 45000 is ok 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "mavlink-command-unacknowledged",
+      "patternIndex": 0,
+      "text": "[mavlink] Command 0 not acknowledged",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "xbee-link-lost",
+      "patternIndex": 0,
+      "text": "[mavlink] XBee link lost",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "xbee-link-recovered",
+      "patternIndex": 0,
+      "text": "[mavlink] XBee link recovered",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "xbee-d2-low",
+      "patternIndex": 0,
+      "text": "[xbee_radio] D2 pins set to low",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "mavlink-raw-packet",
+      "patternIndex": 0,
+      "text": "[mavlink] New packet received (type 0 length 0 )",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "mavlink-operation-timeout",
+      "patternIndex": 0,
+      "text": "[mavlink] Operation timeout",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "mavlink-shell-start",
+      "patternIndex": 0,
+      "text": "[mavlink] Starting mavlink shell",
+      "confidence": "documented"
+    },
+    {
+      "id": "mavlink-time-set",
+      "patternIndex": 0,
+      "text": "[mavlink] [timesync] set system time : 0 ms",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "uavcan-arming-state",
+      "patternIndex": 0,
+      "text": "[uavcan] [Prev. State] INIT [New State] INIT",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "commander-takeoff-min-speed",
+      "patternIndex": 0,
+      "text": "[commander] Min speed on takeoff detected",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "commander-rtcm-regained",
+      "patternIndex": 0,
+      "text": "[commander] RTCM connection regained",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "land-detector-ground-disarm",
+      "patternIndex": 0,
+      "text": "[land_detector] Ground detected, disarm motors, flight time 0 min 0 s",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "nuttx-associate-timeout",
+      "patternIndex": 0,
+      "text": "[NUTTX] Associate request timeout",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "rf-switch-already-init",
+      "patternIndex": 0,
+      "text": "[rf_switch] Switch RF already init",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "rf-switch-selected",
+      "patternIndex": 0,
+      "text": "[rf_switch] Switch RF now on: RF1=0 and RF2=0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "failsafe-battery-low",
+      "patternIndex": 0,
+      "text": "[failsafe] Low battery level measured !",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "failsafe-battery-critical",
+      "patternIndex": 0,
+      "text": "[failsafe] Critical battery level measured !",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "failsafe-battery-emergency",
+      "patternIndex": 0,
+      "text": "[failsafe] Emergency battery level measured !",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-ack-sent",
+      "patternIndex": 0,
+      "text": "[maestro] Ack sent",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-firmware-info-request",
+      "patternIndex": 0,
+      "text": "[maestro] Request info firmware received",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-mag-calibration-rotation",
+      "patternIndex": 0,
+      "text": "[maestro] Add magnetometer calibration rotation",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-demo-stopped",
+      "patternIndex": 0,
+      "text": "[maestro] Demo stopped.",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-sequencer-stop",
+      "patternIndex": 0,
+      "text": "[maestro] DemoSequencerManager Stop",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-trajectory-stop",
+      "patternIndex": 0,
+      "text": "[maestro] TrajectoryManager Stop",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-alarm-alarm-other",
+      "patternIndex": 0,
+      "text": "[maestro] [ALARM] ALARM_OTHER started",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-alarm-communication-fencing",
+      "patternIndex": 0,
+      "text": "[maestro] [ALARM] COMMUNICATION_FENCING started",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-alarm-mobile-fencing",
+      "patternIndex": 0,
+      "text": "[maestro] [ALARM] MOBILE_FENCING started",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-alarm-imu-ko",
+      "patternIndex": 0,
+      "text": "[maestro] [ALARM] IMU_KO started",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-alarm-led-color",
+      "patternIndex": 0,
+      "text": "[maestro] [ALARM] Set LED Color: 0 0 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-already-rth",
+      "patternIndex": 0,
+      "text": "[maestro] Already returning home",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-autopilot-rth",
+      "patternIndex": 0,
+      "text": "[maestro] Autopilot rth received",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-sequencer-land",
+      "patternIndex": 0,
+      "text": "[maestro] Landing received from Sequencer",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-land-command",
+      "patternIndex": 0,
+      "text": "[maestro] Receive landing command",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-alarm-rth",
+      "patternIndex": 0,
+      "text": "[maestro] Sending RTH due to alarm",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-expected-land",
+      "patternIndex": 0,
+      "text": "[maestro] Sending LAND due to expected state",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-takeoff-reference",
+      "patternIndex": 0,
+      "text": "[maestro] Register takeOff: (0 0 0)",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-mobile-fencing",
+      "patternIndex": 0,
+      "text": "[maestro] [MOBILE FENCING] 1st fence : distXY 0; alt 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "maestro-battery-time",
+      "patternIndex": 0,
+      "text": "[maestro] BATTERY LOW: 0 percent and remaining battery_time nan(s) less than choreo_time 0(s)",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "navigator-rtl-prepare-precision",
+      "patternIndex": 0,
+      "text": "[navigator] RTL: prepare for precision landing",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "navigator-destination-heading",
+      "patternIndex": 0,
+      "text": "[navigator] heading mode: destination heading: 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "navigator-precision-motors-stop",
+      "patternIndex": 0,
+      "text": "[navigator] Stop vehicle motors during final approach of precland",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "navigator-reset",
+      "patternIndex": 0,
+      "text": "[navigator] Reset",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "commander-home-local-set",
+      "patternIndex": 0,
+      "text": "[commander] Home position set to: x: 0, y: 0, z: 0, yaw: 0",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "boat-loiter-reset",
+      "patternIndex": 0,
+      "text": "[boat_pos_control] Reset loiter position",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "torqeedo-charge-temperature",
+      "patternIndex": 0,
+      "text": "[uavcan:0:] Torqeedo: err:48 charging temp error",
+      "confidence": "interpretation"
+    },
+    {
+      "id": "torqeedo-unmapped-error",
+      "patternIndex": 0,
+      "text": "[uavcan:0:] Torqeedo: err:50",
+      "confidence": "interpretation"
+    }
+  ],
+  "fallbacks": [
+    {
+      "text": "[dance] 0",
+      "confidence": "context"
+    },
+    {
+      "text": "[ekf2] Synthetic future estimator message",
+      "confidence": "context"
+    },
+    {
+      "text": "Synthetic unknown fault",
+      "confidence": "raw"
+    }
+  ]
+}

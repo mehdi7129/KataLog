@@ -14,7 +14,7 @@ final class AlertKnowledgeTests: XCTestCase {
             XCTAssertEqual(explanation.id, id)
             XCTAssertFalse(explanation.checks.isEmpty)
             XCTAssertFalse(explanation.limits.isEmpty)
-            XCTAssertTrue(explanation.sources.allSatisfy { $0.url.scheme == "https" && $0.url.host == "github.com" })
+            XCTAssertTrue(explanation.sources.allSatisfy { $0.url.scheme == "https" })
         }
         let imu = AlertKnowledge.explanation(forText: "[health_and_arming_checks] Preflight Fail: Accel 2 inconsistent - check cal")
         XCTAssertTrue(imu.limits.contains("80 %"))
@@ -27,7 +27,7 @@ final class AlertKnowledgeTests: XCTestCase {
     }
 
     func testPartialSimilarOrNegatedMessagesAreNotDiagnosed() {
-        for raw in ["Wifi link lost", "[other_module] Wifi link lost", "[wifi_broadcom] Wifi link lost: false", "Not [batt_smbus] SMBus read error: -1", "[batt_smbus] SMBus read error: -2", "New unknown fault"] {
+        for raw in ["Wifi link lost", "[other_module] Wifi link lost", "[wifi_broadcom] Wifi link lost: false", "Not [batt_smbus] SMBus read error: -1", "[batt_smbus] SMBus read error: success", "New unknown fault"] {
             XCTAssertEqual(AlertKnowledge.explanation(forText: raw).id, "unknown", raw)
         }
     }

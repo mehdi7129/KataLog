@@ -1,0 +1,22 @@
+{
+  "scope": "One existing cache, 17 real records, exact embedded dictionary, in-memory translation only",
+  "sourceVerifiedAgainstLibraryContentHash": true,
+  "embeddedDictionaryMatchesSourceAndCacheSHA256": true,
+  "exactDictionaryLoaderStatus": "ready",
+  "cachedRawRecordCount": 17,
+  "validExisting25ByteArgumentRecordCount": 17,
+  "fullyTranslatedRecordCount": 17,
+  "nonemptyRenderedMessageCount": 17,
+  "nonemptyRenderedDescriptionCount": 5,
+  "decodedArgumentValueCount": 50,
+  "translationErrorCount": 0,
+  "translationErrorCountsByType": {},
+  "newArgumentBytesFabricated": 0,
+  "libraryOpenedReadOnly": true,
+  "applicationCodeChanged": false,
+  "libraryOrPreferencesChanged": false,
+  "privateMessagesExported": 0,
+  "privateArgumentValuesExported": 0,
+  "privateIdentifiersExported": 0,
+  "rawDictionaryExported": false
+}

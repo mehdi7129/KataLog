@@ -16,6 +16,9 @@ import re
 SCHEMA_VERSION = 1
 MAX_ARTIFACT_BYTES = 4 * 1024 * 1024
 MAX_DEFINITION_BYTES = 16 * 1024 * 1024
+# A 64 MiB LZMA2 dictionary also needs decoder bookkeeping memory. Allow that
+# overhead while retaining separate compressed and decompressed byte budgets.
+MAX_DECODER_MEMORY_BYTES = 65 * 1024 * 1024
 LEVELS = ('EMERGENCY', 'ALERT', 'CRITICAL', 'ERROR', 'WARNING', 'NOTICE', 'INFO', 'DEBUG')
 REFERENCE = 'https://github.com/PX4/PX4-Autopilot/blob/v1.14.0/msg/Event.msg'
 
@@ -85,7 +88,7 @@ def _definitions(payload):
     if len(payload) > MAX_ARTIFACT_BYTES:
         raise ValueError('event artifact exceeds byte budget')
     if payload.startswith(b'\xfd7zXZ\x00'):
-        decoder = lzma.LZMADecompressor(memlimit=64 * 1024 * 1024)
+        decoder = lzma.LZMADecompressor(memlimit=MAX_DECODER_MEMORY_BYTES)
         decoded = decoder.decompress(payload, max_length=MAX_DEFINITION_BYTES + 1)
         if len(decoded) > MAX_DEFINITION_BYTES or not decoder.eof or decoder.unused_data:
             raise ValueError('invalid, concatenated or oversized compressed dictionary')

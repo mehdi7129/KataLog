@@ -136,6 +136,9 @@ public enum ReportRenderer {
             if group.isAlert {
                 out.append("<div class=\"explanation\"><p class=\"eyebrow\">COMPRENDRE CE MESSAGE</p><h3>\(h(explanation.title))</h3><p>\(h(explanation.meaning))</p><ul class=\"checks\">\(items(explanation.checks))</ul><p class=\"limits\">\(h(explanation.limits))</p><small>\(h(explanation.provenance))</small><div class=\"source-links\">\(explanation.sources.map { "<a href=\"\(h($0.url.absoluteString))\" target=\"_blank\" rel=\"noopener noreferrer\">\(h($0.title)) ↗</a>" }.joined())</div></div>")
             }
+            if group.isAlert {
+                out.append("<p class=\"muted\">\(h(explanation.confidence.label)) · catalogue \(explanation.catalogueVersion)\(explanation.referenceFirmware.map { " · " + h($0) } ?? "")</p>")
+            }
             if let source = message.sourceFamily { out.append("<p class=\"muted\">Famille attribuée manuellement : \(h(message.family)). Famille détectée : \(h(source)).</p>") }
             out.append("<p class=\"raw\">\(h(message.text))</p><p class=\"muted\">Même texte et même niveau ; le nombre de répétitions ne mesure pas le nombre d’incidents.</p><noscript class=\"occurrence-fallback\"><div class=\"table-wrap\"><table><thead><tr><th>Drone</th><th>Log</th><th>Messages</th></tr></thead><tbody>")
             let byLog = Dictionary(grouping: group.occurrences, by: \.logID)

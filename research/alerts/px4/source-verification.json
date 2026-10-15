@@ -1,0 +1,202 @@
+{
+  "checkedAt": "2026-10-15",
+  "commit": "b8c541dd7277ed735139d7d1bfb829d61fbe29fb",
+  "results": {
+    "src/modules/ekf2/EKF/gps_control.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/sensors/vehicle_imu/VehicleIMU.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/estimatorCheck.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/failureDetectorCheck.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/failure_detector/FailureDetector.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/failsafe/framework.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/sdcardCheck.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/accelerometerCheck.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/gyroCheck.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/magnetometerCheck.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/imuConsistencyCheck.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/baroCheck.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/distanceSensorChecks.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/ekf2/EKF/gps_checks.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/cpuResourceCheck.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/powerCheck.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/batteryCheck.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/escCheck.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/systemCheck.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/manualControlCheck.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/geofenceCheck.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/parachuteCheck.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/rcAndDataLinkCheck.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/HealthAndArmingChecks/checks/flightTimeCheck.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/ekf2/EKF/mag_control.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/ekf2/EKF/ekf_helper.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/ekf2/EKF/height_control.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/ekf2/EKF/fake_pos_control.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/ekf2/EKF/fake_height_control.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/ekf2/EKF/ev_control.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/ekf2/EKF/optical_flow_control.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/ekf2/EKF/airspeed_fusion.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/ekf2/EKF/baro_height_control.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/ekf2/EKF/gnss_height_control.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/ekf2/EKF/range_height_control.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/Commander.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/navigator/rtl.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/logger/log_writer_file.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/logger/logger.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/ekf2/EKF2Selector.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/navigator/navigator_main.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/navigator/takeoff.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/navigator/precland.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/commander/failsafe/framework.h": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/modules/load_mon/LoadMon.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/lib/mixer_module/mixer_module.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "src/drivers/gps/gps.cpp": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "msg/SensorGps.msg": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    },
+    "msg/GpsInjectData.msg": {
+      "status": 200,
+      "sha256MatchesArchive": true
+    }
+  }
+}

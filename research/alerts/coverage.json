@@ -1,0 +1,37 @@
+{
+  "catalogueVersion": 2,
+  "entries": 321,
+  "patterns": 388,
+  "definitionsByConfidence": {
+    "documented": 209,
+    "interpretation": 112
+  },
+  "uniqueSourceURLs": 226,
+  "corpusObservedAt": "2026-10-15T11:10:43+00:00",
+  "coverage": {
+    "all": {
+      "occurrences": 12906,
+      "sourceVariants": 1840,
+      "documentedOccurrences": 6054,
+      "documentedSourceVariants": 733,
+      "interpretationOccurrences": 6850,
+      "interpretationSourceVariants": 1105,
+      "without_specific_definitionOccurrences": 2,
+      "without_specific_definitionSourceVariants": 2
+    },
+    "alerts": {
+      "occurrences": 5500,
+      "sourceVariants": 531,
+      "documentedOccurrences": 2866,
+      "documentedSourceVariants": 59,
+      "interpretationOccurrences": 2634,
+      "interpretationSourceVariants": 472
+    }
+  },
+  "overlaps": [],
+  "withoutSpecificDefinitionSummary": {
+    "anonymizedVariants": 2,
+    "occurrences": 2,
+    "kind": "Bare numeric text without quantity or unit; module context only"
+  }
+}

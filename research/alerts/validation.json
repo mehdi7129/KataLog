@@ -1,0 +1,68 @@
+{
+  "date": "2026-10-15",
+  "sourceBase": "6700f82",
+  "branch": "feat/alert-knowledge-research",
+  "catalogueVersion": 2,
+  "catalogueEntries": 321,
+  "completeMessagePatterns": 388,
+  "swiftTargetedGate": {
+    "testsRun": 25,
+    "skipped": 0,
+    "failures": 0,
+    "exitCode": 0,
+    "nativeGatePassed": true
+  },
+  "swiftScope": [
+    "AlertKnowledgeTests",
+    "AlertCatalogueTests",
+    "ReportRendererTests"
+  ],
+  "pythonTargetedGate": {
+    "testsRun": 31,
+    "failures": 0,
+    "skipped": 0,
+    "suites": [
+      "test_px4_events.py",
+      "test_event_dictionary*.py"
+    ],
+    "evidence": "review.md"
+  },
+  "independentCorpusReview": {
+    "overlappingMatches": 0,
+    "adversarialSuffixCasesRejected": 3010,
+    "sourceFilesHashVerified": 49
+  },
+  "coverage": {
+    "all": {
+      "occurrences": 12906,
+      "sourceVariants": 1840,
+      "documentedOccurrences": 6054,
+      "documentedSourceVariants": 733,
+      "interpretationOccurrences": 6850,
+      "interpretationSourceVariants": 1105,
+      "without_specific_definitionOccurrences": 2,
+      "without_specific_definitionSourceVariants": 2
+    },
+    "alerts": {
+      "occurrences": 5500,
+      "sourceVariants": 531,
+      "documentedOccurrences": 2866,
+      "documentedSourceVariants": 59,
+      "interpretationOccurrences": 2634,
+      "interpretationSourceVariants": 472
+    }
+  },
+  "realEventValidation": {
+    "records": 17,
+    "translated": 17,
+    "errors": 0,
+    "evidence": "event-translation-validation.json"
+  },
+  "generatedSourceCheck": "passed",
+  "patchHygiene": "passed",
+  "publicationGuard": {
+    "findings": 0,
+    "scope": "current tracked and untracked source files; no publication performed"
+  },
+  "deliveryState": "Prepared local source and research; installed application and active library unchanged"
+}

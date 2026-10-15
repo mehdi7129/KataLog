@@ -7,6 +7,25 @@ Les sections antérieures conservent l’état de leur version au moment de sa l
 Le flux versionné propose le build **25**, préparé depuis le build 24. Les
 tags et archives déjà publiés restent immuables ; le build 23 n’a jamais été activé.
 
+## 0.8.7 — 2026-10-15 (en préparation)
+
+- Catalogue local d’explications porté de 4 à 321 fiches : sens, vérifications,
+  limites, provenance et sources. Les définitions documentées et les
+  interprétations du texte sont distinguées pour chaque message.
+- Couverture des messages PX4, Drotek/show, communications, batterie, LED et
+  passerelle marine ; contexte explicite lorsqu’une définition manque.
+- Niveau de preuve et référence du firmware affichés également dans les rapports.
+- Décompression des dictionnaires d’événements XZ utilisant un dictionnaire
+  de 64 Mio : marge de fonctionnement du décodeur corrigée, sans élargir les
+  limites de taille des fichiers ni contourner la vérification SHA-256.
+- Parseur 1.4.1 : les détails de l’ancienne version sont recalculés à leur
+  prochaine ouverture lorsque la source locale vérifiée est disponible.
+
+Version **0.8.7**, build **26**, en qualification. Les explications des messages
+existants s’affichent sans réimport. Les données de bibliothèque, notes,
+clients, réglages, ULogs et la projection SQLite **8** sont conservés.
+Voir la [recette 0.8.7](docs/RELEASE-0.8.7.md).
+
 ## 0.8.6 — 2026-10-14
 
 - Filtres favoris : enregistrer et retrouver une vue avec son périmètre client.
