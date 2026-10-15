@@ -39,8 +39,14 @@ def read_entries():
                 raise ValueError(f'{key}: empty {field}')
         if not entry['checks'] or any(not s.strip() for s in entry['checks']):
             raise ValueError(key + ': missing checks')
-        if entry['confidence'] not in ('documented', 'interpretation'):
+        if entry['confidence'] not in ('documented', 'interpretation', 'unresolved'):
             raise ValueError(key + ': invalid specific confidence')
+        if len(entry['meaning']) > 320:
+            raise ValueError(key + ': meaning exceeds 320 characters; move technical detail to technicalDetails')
+        if len(entry['title']) > 80:
+            raise ValueError(key + ': title exceeds 80 characters')
+        if 'technicalDetails' in entry and (not isinstance(entry['technicalDetails'], str) or not entry['technicalDetails'].strip()):
+            raise ValueError(key + ': invalid technicalDetails')
         if not entry['patterns']:
             raise ValueError(key + ': missing patterns')
         for pattern in entry['patterns']:
@@ -76,6 +82,7 @@ def generate(entries, contexts):
     for entry in entries:
         sources = ', '.join(f'AlertSource(title: {swift(s["title"])}, url: URL(string: {swift(s["url"])})!)' for s in entry['sources'])
         firmware = swift(entry['referenceFirmware']) if entry.get('referenceFirmware') else 'nil'
+        details = swift(entry['technicalDetails']) if entry.get('technicalDetails') else 'nil'
         lines += ['        AlertCatalogueEntry(',
                   '            patterns: [' + ', '.join(map(swift, entry['patterns'])) + '],',
                   '            explanation: AlertExplanation(',
@@ -85,7 +92,7 @@ def generate(entries, contexts):
                   f'                limits: {swift(entry["limits"])},',
                   f'                provenance: {swift(entry["provenance"])},',
                   f'                sources: [{sources}], confidence: .{entry["confidence"]},',
-                  f'                referenceFirmware: {firmware})),']
+                  f'                referenceFirmware: {firmware}, technicalDetails: {details})),']
     return '\n'.join(lines + ['    ]', '}', ''])
 
 
@@ -113,10 +120,11 @@ def coverage(entries, corpus_path, output_path=None):
     rules = [(e, [re.compile(p, re.I) for p in e['patterns']]) for e in entries]
     totals = {name: Counter() for name in ('all', 'alerts')}
     uncovered = []
+    unresolved = []
     overlaps = []
     for message in payload['messages']:
         hits = [entry for entry, regexes in rules if any(r.fullmatch(message['text'].strip()) for r in regexes)]
-        confidence = hits[0]['confidence'] if hits else 'without_specific_definition'
+        confidence = hits[0]['confidence'] if hits else 'without_matching_entry'
         for name in (('all', 'alerts') if message['is_alert'] else ('all',)):
             totals[name]['occurrences'] += message['occurrences']
             totals[name]['sourceVariants'] += message['source_variants']
@@ -124,19 +132,28 @@ def coverage(entries, corpus_path, output_path=None):
             totals[name][confidence + 'SourceVariants'] += message['source_variants']
         if not hits:
             uncovered.append({k: message[k] for k in ('text', 'level', 'is_alert', 'occurrences', 'source_variants')})
+        elif confidence == 'unresolved':
+            unresolved.append({k: message[k] for k in ('text', 'level', 'is_alert', 'occurrences', 'source_variants')})
         if len(hits) > 1:
             overlaps.append({'text': message['text'], 'ids': [e['id'] for e in hits]})
-    result = {'catalogueVersion': 2, 'entries': len(entries),
+    for counts in totals.values():
+        for unit in ('Occurrences', 'SourceVariants'):
+            counts['withoutEstablishedMeaning' + unit] = counts['unresolved' + unit] + counts['without_matching_entry' + unit]
+            counts['establishedMeaning' + unit] = counts['documented' + unit] + counts['interpretation' + unit]
+    result = {'catalogueVersion': 3, 'entries': len(entries),
               'patterns': sum(len(e['patterns']) for e in entries),
               'definitionsByConfidence': dict(Counter(e['confidence'] for e in entries)),
               'uniqueSourceURLs': len({s['url'] for e in entries for s in e['sources']}),
               'corpusObservedAt': payload['summary']['observed_at_utc'],
               'coverage': {k: dict(v) for k, v in totals.items()},
-              'overlaps': overlaps, 'withoutSpecificDefinition': uncovered}
+              'overlaps': overlaps, 'withoutMatchingEntry': uncovered,
+              'unresolvedMessages': unresolved,
+              'withoutSpecificDefinition': uncovered + unresolved}
     if output_path is not None:
         output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
-    print(json.dumps({k: v for k, v in result.items() if k not in ('overlaps', 'withoutSpecificDefinition')}, ensure_ascii=False))
-    print(f'Without specific definition: {len(uncovered)} anonymized variants; overlaps: {len(overlaps)}')
+    print(json.dumps({k: v for k, v in result.items() if k not in ('overlaps', 'withoutSpecificDefinition', 'withoutMatchingEntry', 'unresolvedMessages')}, ensure_ascii=False))
+    print(f'Without established meaning: {len(uncovered) + len(unresolved)} anonymized variants '
+          f'({len(unresolved)} recognized but unresolved, {len(uncovered)} without catalogue rule); overlaps: {len(overlaps)}')
 
 
 def main():

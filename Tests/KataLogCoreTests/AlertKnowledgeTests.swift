@@ -17,7 +17,7 @@ final class AlertKnowledgeTests: XCTestCase {
             XCTAssertTrue(explanation.sources.allSatisfy { $0.url.scheme == "https" })
         }
         let imu = AlertKnowledge.explanation(forText: "[health_and_arming_checks] Preflight Fail: Accel 2 inconsistent - check cal")
-        XCTAssertTrue(imu.limits.contains("80 %"))
+        XCTAssertTrue((imu.limits + (imu.technicalDetails ?? "")).contains("80 %"))
         XCTAssertEqual(imu.sources.count, 1)
         XCTAssertTrue(AlertKnowledge.explanation(forText: "[wifi_broadcom] Wifi link lost").sources.isEmpty)
         XCTAssertEqual(imu.confidence, .documented)
@@ -46,7 +46,8 @@ final class AlertKnowledgeTests: XCTestCase {
         XCTAssertTrue(html.contains("Famille détectée : Communication"))
         XCTAssertTrue(html.contains("gcs:1112131415161718191A1B1C"))
         XCTAssertTrue(html.contains("Conflit &lt;identité&gt; conservé"))
-        XCTAssertEqual(html.components(separatedBy: "Le module Wi-Fi signale").count - 1, 1)
+        let meaning = AlertKnowledge.explanation(for: message).meaning
+        XCTAssertEqual(html.components(separatedBy: meaning).count - 1, 1)
         let decoded = try AnalysisService.decode(ReportRenderer.json(snapshot))
         XCTAssertEqual(decoded.logs[0].stockNumber, "00042")
         XCTAssertEqual(decoded.logs[0].droneName, "source <name>")

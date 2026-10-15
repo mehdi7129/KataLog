@@ -1842,7 +1842,7 @@
       "id": "dance-control-received",
       "patternIndex": 0,
       "text": "[dance] Received show control command: 0",
-      "confidence": "interpretation"
+      "confidence": "unresolved"
     },
     {
       "id": "dance-command-pause",
@@ -1974,7 +1974,7 @@
       "id": "dance-file-frame",
       "patternIndex": 0,
       "text": "[dance] Fram len : 0, offset: 0",
-      "confidence": "interpretation"
+      "confidence": "unresolved"
     },
     {
       "id": "dance-file-section",
@@ -2055,6 +2055,12 @@
       "confidence": "interpretation"
     },
     {
+      "id": "mavlink-command-45008",
+      "patternIndex": 0,
+      "text": "[mavlink] command number 45008 is ok 1",
+      "confidence": "interpretation"
+    },
+    {
       "id": "mavlink-command-unacknowledged",
       "patternIndex": 0,
       "text": "[mavlink] Command 0 not acknowledged",
@@ -2082,7 +2088,7 @@
       "id": "mavlink-raw-packet",
       "patternIndex": 0,
       "text": "[mavlink] New packet received (type 0 length 0 )",
-      "confidence": "interpretation"
+      "confidence": "unresolved"
     },
     {
       "id": "mavlink-operation-timeout",
@@ -2202,7 +2208,7 @@
       "id": "maestro-alarm-alarm-other",
       "patternIndex": 0,
       "text": "[maestro] [ALARM] ALARM_OTHER started",
-      "confidence": "interpretation"
+      "confidence": "unresolved"
     },
     {
       "id": "maestro-alarm-communication-fencing",
@@ -2328,7 +2334,13 @@
       "id": "torqeedo-unmapped-error",
       "patternIndex": 0,
       "text": "[uavcan:0:] Torqeedo: err:50",
-      "confidence": "interpretation"
+      "confidence": "unresolved"
+    },
+    {
+      "id": "torqeedo-unmapped-error",
+      "patternIndex": 1,
+      "text": "[uavcan:0:] Torqeedo: err:54",
+      "confidence": "unresolved"
     }
   ],
   "fallbacks": [

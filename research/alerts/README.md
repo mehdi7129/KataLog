@@ -1,5 +1,7 @@
 # Explications des messages — recherche du 15 octobre 2026
 
+**Suite v3 :** [précision et lisibilité](CLARITY-20261015.md), préparée après la 0.8.7. Les résultats ci-dessous décrivent la recherche initiale du catalogue v2 livré dans la 0.8.7. Les codes reconnus sans définition y étaient encore comptés comme fiches spécifiques ; la suite v3 les distingue explicitement.
+
 Travail isolé à partir de KataLog 0.8.6 / `main` `6700f82`. L’app installée, la bibliothèque, les ULogs et les réglages ne sont pas modifiés par cette recherche.
 
 ## Critères
@@ -77,4 +79,4 @@ Le [finding du dictionnaire d’événements](corpus/event-memory-limit.md) est 
 
 Les codes constructeur sans définition primaire restent explicitement non résolus. Par exemple, les codes Torqeedo 50 et 54 sont conservés sans leur appliquer la table d’un autre modèle. La documentation Travel/Ultralight recoupe le sens de « charging temp error » pour 48, sans attester le modèle matériel ni le mapping de la passerelle UAVCAN du log.
 
-Cette préparation ne constitue pas une nouvelle version distribuée de KataLog et ne remplace pas la 0.8.6 installée.
+Le catalogue v2 a été distribué dans KataLog 0.8.7. Les changements v3 documentés ci-dessus nécessitent une prochaine release ; cette recherche ne remplace pas l’app installée.

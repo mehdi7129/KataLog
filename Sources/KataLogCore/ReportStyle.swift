@@ -226,6 +226,13 @@ enum ReportStyle {
     .explanation h3 { margin-bottom: 10px; }
     .explanation p { font-size: .9rem; }
     .explanation p + p { margin-top: 10px; }
+    .explanation .explanation-status { color: var(--muted); font-size: .76rem; margin-top: 9px; }
+    .explanation-details { margin-top: 13px; }
+    .explanation-details > summary { font-size: .82rem; font-weight: 600; }
+    .explanation-evidence { padding-top: 13px; }
+    .explanation-evidence h4 { font-size: .85rem; }
+    .explanation-references { margin-top: 14px; }
+    .explanation-references > summary { font-size: .8rem; color: var(--muted); }
     .checks { padding-left: 20px; margin: 15px 0 0; font-size: .87rem; }
     .checks li + li { margin-top: 5px; }
     .limits { color: var(--muted); font-size: .83rem !important; margin-top: 16px !important;
