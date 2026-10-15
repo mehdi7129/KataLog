@@ -4,9 +4,17 @@ Version stable : [0.8.7](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.
 build **26**. [DMG](https://github.com/mehdi7129/KataLog/releases/download/v0.8.7/KataLog-0.8.7-macOS-arm64.dmg)
 et [instructions de mise à jour](docs/UPDATING.md).
 Les sections antérieures conservent l’état de leur version au moment de sa livraison.
-Le flux signé build **26** est préparé depuis le build 25. Son activation suit
-la publication et la vérification des archives, puis la fusion du flux et son
-contrôle canonique. Les tags et archives déjà publiés restent immuables.
+Le flux stable signé sert le build **26** de la 0.8.7. La 0.8.8 et son build **27** sont préparés séparément ci-dessous. Les tags et archives déjà publiés restent immuables.
+
+## 0.8.8 — en préparation
+
+- Explications des alertes raccourcies et rendues plus concrètes : sens principal, contrôle ciblé, puis références techniques à la demande.
+- Commande 45008 identifiée comme contrôle du show et séparée de la commande 45000 de couleur LED ; résultat `is ok` explicitement non décodé.
+- Catalogue v3 : 322 fiches, dont 209 documentées, 108 interprétées et 5 non résolues. Les codes simplement reconnus ne sont plus comptés comme un sens établi.
+- Rapport HTML cohérent avec la fiche native, avec conservation des détails et de leur état à l’impression.
+- README et guide public clarifiés, sans attribution personnelle dans le README.
+
+Parseur **1.4.1** et projection SQLite **8** conservés ; aucun réimport requis. Voir la [recette 0.8.8](docs/RELEASE-0.8.8.md).
 
 ## 0.8.7 — 2026-10-15
 

@@ -1,11 +1,6 @@
 # Distribution macOS hors App Store
 
-La version **0.8.7 (build 26)** du **15 octobre 2026** porte le catalogue à
-321 fiches et corrige les dictionnaires d’événements compressés. La
-[recette 0.8.7](RELEASE-0.8.7.md) sépare les preuves du candidat, du package
-signé et notarisé, et de sa publication. Le flux build **26** est préparé
-depuis le build **25** ; son activation suit la vérification des quatre assets,
-la fusion de la PR de publication et le contrôle canonique après fusion.
+La préparation courante concerne **0.8.8 (build 27)**, depuis le flux stable **0.8.7 (build 26)**. La [recette 0.8.8](RELEASE-0.8.8.md) suit les preuves du candidat, du package signé et notarisé, de la recette native et de la publication. Le flux stable n’est activé qu’après vérification des quatre archives publiques.
 
 La distribution conserve le DMG autonome et le flux Sparkle stable signé.
 Toute publication exige la validation de l’historique, des métadonnées GitHub
@@ -24,8 +19,8 @@ ne vaut pas recette physique sur toutes les versions de macOS.
 ## Préparer et tester
 
 1. Fixer version et build dans `tools/build-app.sh`, `tools/package-smoke.sh` et
-   `project.yml`, puis `xcodegen generate`. Le build **26** de 0.8.7 succède au
-   build **25** de 0.8.6. Revérifier le dernier build effectivement servi avant
+   `project.yml`, puis `xcodegen generate`. Le build **27** de 0.8.8 succède au
+   build **26** de 0.8.7. Revérifier le dernier build effectivement servi avant
    de préparer le nouveau flux.
    Conserver l’identité stable de l’app ; la Preview utilise son identité séparée.
 2. Exécuter les suites Swift, Python et Node du README. `KATALOG_PRIVATE_FIXTURES`
@@ -146,9 +141,9 @@ simulateur GCS localhost avec réutilisation d’un téléchargement vérifié.
 
 Vérifier aussi le lancement après copie puis éjection du DMG, l’import et l’export
 natifs, et la conservation du numéro/dossier après redémarrage avec une bibliothèque
-isolée. Pour 0.8.7, vérifier les fiches d’explication, leur confiance et leurs
-sources, le renouvellement d’un ancien détail avec traduction des événements,
-et les exports HTML/JSON. Qualifier la conservation depuis 0.8.6 des analyses,
+isolée. Pour 0.8.8, vérifier les nouvelles fiches courtes, leur confiance, les volets de
+vérification et de références, puis les exports HTML/JSON. Qualifier la conservation
+depuis 0.8.7 des analyses,
 clients, notes, favoris et révisions ; distinguer un transfert GCS simulé d’un essai Aqua réel.
 Une recette locale sur macOS 27 ne remplace pas un Mac vierge/macOS 15 ou un essai
 radio GCS réel. Calculer SHA256SUMS après toutes les opérations de stapling.
@@ -170,7 +165,7 @@ Construire avec `KATALOG_UPDATE_CHANNEL=stable`, l’URL HTTPS publique et la cl
 publique vérifiée sous `updates/stable/public-key.txt`. Garder la clé privée dans
 le Trousseau, compte `katalog-sparkle-stable`. Notariser et agrafer le bundle,
 puis recréer le ZIP final avant toute signature Sparkle ou calcul de checksum.
-Pour 0.8.7, préparer le build **26** avec `--previous-build 25` seulement
+Pour 0.8.8, préparer le build **27** avec `--previous-build 26` seulement
 après vérification du build effectivement servi par le flux stable. Revérifier
 ce build au moment de publier : il ne doit pas avoir changé entre préparation
 et publication. La transition historique 0.8.3 → 0.8.5 était **22 → 24** ;
