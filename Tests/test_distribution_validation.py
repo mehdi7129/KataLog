@@ -40,23 +40,35 @@ class DistributionRecipeTests(unittest.TestCase):
             with self.subTest(required=required), tempfile.TemporaryDirectory(prefix="katalog-ticket-fixture-") as directory:
                 app, image, mount = self.make_dmg_ticket_fixture(directory)
                 calls, detaches = [], []
+                attached = False
+                entities = [{'dev-entry': '/dev/disk99'},
+                            {'dev-entry': '/dev/disk99s1', 'mount-point': str(mount)}]
 
                 def command(arguments):
+                    nonlocal attached
                     calls.append(arguments)
                     if arguments[:2] == ["/usr/bin/hdiutil", "attach"]:
                         self.assertEqual(arguments[arguments.index("-mountpoint") + 1], mount)
                         shutil.copytree(app, mount / app.name)
                         (mount / "Applications").symlink_to("/Applications")
+                        attached = True
+                        return plistlib.dumps({'system-entities': entities})
                     elif arguments[1:3] == ["stapler", "validate"]:
                         self.assertTrue(Path(arguments[-1]).is_dir())
                     return b""
 
                 def detach(arguments, **options):
+                    nonlocal attached
+                    if arguments[1] == 'info':
+                        images = [{'image-path': str(image.resolve()), 'system-entities': entities}] if attached else []
+                        return subprocess.CompletedProcess(arguments, 0, stdout=plistlib.dumps({'images': images}))
+                    self.assertEqual(arguments[2], '/dev/disk99')
                     detaches.append(arguments)
                     if len(detaches) == 1:
                         raise subprocess.CalledProcessError(16, arguments, stderr=b"Resource busy")
                     shutil.rmtree(mount / app.name)
                     (mount / "Applications").unlink()
+                    attached = False
                     return subprocess.CompletedProcess(arguments, 0, stdout=b"")
 
                 verifier = recipe.Verification(app, require_notarized=required)
@@ -75,19 +87,30 @@ class DistributionRecipeTests(unittest.TestCase):
     def test_missing_ticket_in_mounted_helper_fails_verification_and_still_detaches(self):
         with tempfile.TemporaryDirectory(prefix="katalog-ticket-fixture-") as directory:
             app, image, mount = self.make_dmg_ticket_fixture(directory)
+            attached = False
+            entities = [{'dev-entry': '/dev/disk99'},
+                        {'dev-entry': '/dev/disk99s1', 'mount-point': str(mount)}]
 
             def command(arguments):
+                nonlocal attached
                 if arguments[:2] == ["/usr/bin/hdiutil", "attach"]:
                     shutil.copytree(app, mount / app.name)
                     (mount / "Applications").symlink_to("/Applications")
+                    attached = True
+                    return plistlib.dumps({'system-entities': entities})
                 elif arguments[1:3] == ["stapler", "validate"] and arguments[-1] == mount / app.name / recipe.HELPER_BUNDLE:
                     raise recipe.CheckError("Mounted helper ticket is absent")
                 return b""
 
             def detach(arguments, **options):
-                self.assertEqual(arguments, ["/usr/bin/hdiutil", "detach", str(mount)])
+                nonlocal attached
+                if arguments[1] == 'info':
+                    images = [{'image-path': str(image.resolve()), 'system-entities': entities}] if attached else []
+                    return subprocess.CompletedProcess(arguments, 0, stdout=plistlib.dumps({'images': images}))
+                self.assertEqual(arguments, ["/usr/bin/hdiutil", "detach", '/dev/disk99'])
                 shutil.rmtree(mount / app.name)
                 (mount / "Applications").unlink()
+                attached = False
                 return subprocess.CompletedProcess(arguments, 0, stdout=b"")
 
             verifier = recipe.Verification(app, require_notarized=True)
