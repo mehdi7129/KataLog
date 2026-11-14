@@ -45,6 +45,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   tests:
+    # Keep the historical ARM context names required by main branch protection.
+    name: ${{ matrix.arch == 'arm64' && format('tests ({0})', matrix.os) || format('tests ({0}, {1}, {2})', matrix.os, matrix.major, matrix.arch) }}
     # Standard hosted runners are free on public repositories. Skip every
     # trigger, including manual dispatch, while the repository is private.
     if: ${{ github.event.repository.visibility == 'public' && (github.event_name != 'workflow_dispatch' || inputs.mode == 'build-candidate') }}
@@ -100,7 +102,8 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
   package-smoke:
-    name: Package ${{ matrix.arch }} / ${{ matrix.os }}
+    # xcode-27 is the historical protected context for the macOS 26 ARM package.
+    name: ${{ matrix.arch == 'arm64' && (matrix.os == 'macos-26' && 'Package ARM64 / xcode-27' || 'Package ARM64 / macos-15') || format('Package {0} / {1}', matrix.arch, matrix.os) }}
     if: ${{ github.event.repository.visibility == 'public' && (github.event_name != 'workflow_dispatch' || inputs.mode == 'build-candidate') }}
     strategy:
       fail-fast: false
