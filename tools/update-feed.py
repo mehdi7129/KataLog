@@ -49,12 +49,28 @@ def public_key(value):
     return value
 
 
-def configured_info(info, channel="disabled", feed_url=None, key=None):
+def architecture_name(value):
+    if value not in ("arm64", "x86_64"):
+        raise ValueError("Architecture KataLog inconnue : arm64 ou x86_64 attendue.")
+    return value
+
+
+def require_feed_route(url, channel, architecture):
+    suffix = "/updates/" + channel + ("-intel" if architecture == "x86_64" else "") + "/appcast.xml"
+    if not urlsplit(https_url(url)).path.endswith(suffix):
+        raise ValueError("Le chemin du flux ne correspond pas au canal et à l’architecture de l’app.")
+
+
+def configured_info(info, channel="disabled", feed_url=None, key=None, architecture=None):
     if channel not in ("disabled", "stable", "staging"):
         raise ValueError("Canal de mise à jour invalide.")
     if info.get("KataLogUIReviewPreview") is True and channel != "disabled":
         raise ValueError("Une candidate de review UI ne peut pas activer le feed de mise à jour.")
+    architecture = architecture_name(architecture or info.get("KatalogArchitecture", "arm64"))
+    if info.get("KatalogArchitecture", architecture) != architecture:
+        raise ValueError("L’architecture demandée ne correspond pas aux métadonnées de l’app.")
     result = dict(info)
+    result["KatalogArchitecture"] = architecture
     result.update(KatalogSparkleVersion=SPARKLE_VERSION, KatalogUpdateChannel=channel,
                   KatalogUpdatesEnabled=channel != "disabled", SUEnableAutomaticChecks=False,
                   SUAutomaticallyUpdate=False, SUAllowsAutomaticUpdates=False,
@@ -68,6 +84,7 @@ def configured_info(info, channel="disabled", feed_url=None, key=None):
     else:
         if not feed_url or not key or not urlsplit(https_url(feed_url)).path.lower().endswith(".xml"):
             raise ValueError("Un flux XML HTTPS et une clé publique sont requis pour activer les mises à jour.")
+        require_feed_route(feed_url, channel, architecture)
         result["SUFeedURL"] = feed_url; result["SUPublicEDKey"] = public_key(key)
     return result
 
@@ -109,7 +126,7 @@ def private_file_public_key(path):
     return public_key(result.stdout.decode().strip())
 
 
-def archive_info(archive):
+def archive_info(archive, architecture=None):
     if archive.suffix.lower() != ".zip" or not archive.is_file():
         raise ValueError("Une archive ZIP KataLog finale est requise pour la mise à jour.")
     with zipfile.ZipFile(archive) as source:
@@ -119,14 +136,24 @@ def archive_info(archive):
         if entry.file_size > 64 * 1024:
             raise ValueError("Métadonnées de l’archive trop grandes.")
         info = plistlib.loads(source.read(entry))
+        architecture = architecture_name(architecture or info.get("KatalogArchitecture", "arm64"))
+        manifest_entry = source.getinfo("KataLog.app/Contents/Helpers/KataLogEngine.app/Contents/Resources/runtime-manifest.json")
+        if manifest_entry.file_size > 1024 * 1024:
+            raise ValueError("Manifeste du moteur trop grand.")
+        manifest = json.loads(source.read(manifest_entry))
+        if info.get("KatalogArchitecture") != architecture or manifest.get("architecture") != architecture:
+            raise ValueError("Architecture incohérente entre l’app, le moteur et l’archive demandée.")
     if (info.get("KataLogUIReviewPreview") is True or info.get("CFBundleIdentifier") != "com.mehdiguiard.katalog" or
             not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", str(info.get("CFBundleShortVersionString", ""))) or
             not re.fullmatch(r"[0-9]+", str(info.get("CFBundleVersion", "")))):
         raise ValueError("Identifiant ou version de l’archive KataLog invalide.")
+    expected_name = f"KataLog-{info['CFBundleShortVersionString']}-macOS-{architecture}.zip"
+    if archive.name != expected_name:
+        raise ValueError("Le nom de l’archive ne correspond pas à sa version et à son architecture.")
     return info
 
 
-def feed_xml(info, archive_url, archive_size, notes, channel, signature=None):
+def feed_xml(info, archive_url, archive_size, notes, channel, signature=None, architecture=None):
     if channel not in ("stable", "staging"):
         raise ValueError("Un canal stable ou staging est requis.")
     https_url(archive_url)
@@ -134,6 +161,11 @@ def feed_xml(info, archive_url, archive_size, notes, channel, signature=None):
         raise ValueError("L’adresse de l’archive doit désigner un ZIP final.")
     if len(notes.encode("utf8")) > 128 * 1024 or ("/" + "Users/") in notes:
         raise ValueError("Les notes de version sont trop grandes ou contiennent un chemin personnel.")
+    architecture = architecture_name(architecture or info.get("KatalogArchitecture", "arm64"))
+    if info.get("KatalogArchitecture") != architecture:
+        raise ValueError("Architecture du flux différente de celle de l’app.")
+    if info.get("SUFeedURL"):
+        require_feed_route(info["SUFeedURL"], channel, architecture)
     rss = ET.Element("rss", version="2.0")
     channel_node = ET.SubElement(rss, "channel")
     ET.SubElement(channel_node, "title").text = "KataLog · " + channel
@@ -142,7 +174,10 @@ def feed_xml(info, archive_url, archive_size, notes, channel, signature=None):
     ET.SubElement(item, "{" + SPARKLE + "}version").text = str(info["CFBundleVersion"])
     ET.SubElement(item, "{" + SPARKLE + "}shortVersionString").text = info["CFBundleShortVersionString"]
     ET.SubElement(item, "{" + SPARKLE + "}minimumSystemVersion").text = "15.0.0"
-    ET.SubElement(item, "{" + SPARKLE + "}hardwareRequirements").text = "arm64"
+    # Sparkle 2.10 has an ARM requirement, but no x86_64 exclusion rule.
+    # Intel builds use a separate feed URL rather than an ignored selector.
+    if architecture == "arm64":
+        ET.SubElement(item, "{" + SPARKLE + "}hardwareRequirements").text = "arm64"
     if channel == "staging":
         ET.SubElement(item, "{" + SPARKLE + "}channel").text = "staging"
     ET.SubElement(item, "pubDate").text = format_datetime(datetime.now(timezone.utc))
@@ -158,8 +193,9 @@ def feed_xml(info, archive_url, archive_size, notes, channel, signature=None):
 
 
 def prepare(archive, archive_url, output, notes, channel, *, draft=False, sign_update=None,
-            private_key_file=None, previous_build=None):
-    info = archive_info(archive)
+            private_key_file=None, previous_build=None, architecture=None):
+    info = archive_info(archive, architecture)
+    architecture = info["KatalogArchitecture"]
     https_url(archive_url)
     if unquote(urlsplit(archive_url).path.rsplit("/", 1)[-1]) != archive.name:
         raise ValueError("L’adresse publique doit utiliser le nom exact de l’archive finale.")
@@ -220,7 +256,7 @@ def prepare(archive, archive_url, output, notes, channel, *, draft=False, sign_u
                     sparkleVersion=SPARKLE_VERSION, version=info["CFBundleShortVersionString"],
                     build=str(info["CFBundleVersion"]), archiveName=archive.name, archiveSHA256=digest.hexdigest(),
                     archiveBytes=staged_destination.stat().st_size, archiveURL=archive_url,
-                    minimumSystemVersion="15.0.0", architecture="arm64", uploaded=False)
+                    minimumSystemVersion="15.0.0", architecture=architecture, feedURL=info.get("SUFeedURL"), uploaded=False)
     atomic_bytes(output / "update-manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2).encode())
     return manifest
 
@@ -233,6 +269,7 @@ def main(argv=None):
     configure.add_argument("--channel", choices=("disabled", "stable", "staging"), default="disabled")
     configure.add_argument("--feed-url")
     configure.add_argument("--public-key")
+    configure.add_argument("--architecture", choices=("arm64", "x86_64"))
     release = commands.add_parser("prepare")
     release.add_argument("--archive", type=Path, required=True)
     release.add_argument("--archive-url", required=True)
@@ -243,17 +280,21 @@ def main(argv=None):
     release.add_argument("--sign-update", type=Path)
     release.add_argument("--ed-key-file", type=Path)
     release.add_argument("--previous-build", type=int)
+    release.add_argument("--architecture", choices=("arm64", "x86_64"))
     args = parser.parse_args(argv)
     try:
         if args.command == "configure":
             path = args.app / "Contents/Info.plist"
-            info = configured_info(plistlib.loads(path.read_bytes()), args.channel, args.feed_url, args.public_key)
+            info = configured_info(plistlib.loads(path.read_bytes()), args.channel, args.feed_url, args.public_key, args.architecture)
+            manifest_path = args.app / "Contents/Helpers/KataLogEngine.app/Contents/Resources/runtime-manifest.json"
+            if manifest_path.exists() and json.loads(manifest_path.read_text()).get("architecture") != info["KatalogArchitecture"]:
+                raise ValueError("Architecture du moteur différente de celle de l’app.")
             atomic_bytes(path, plistlib.dumps(info))
             print("Configuration Sparkle : " + args.channel)
         else:
             result = prepare(args.archive, args.archive_url, args.output, args.release_notes.read_text(), args.channel,
                              draft=args.draft, sign_update=args.sign_update, private_key_file=args.ed_key_file,
-                             previous_build=args.previous_build)
+                             previous_build=args.previous_build, architecture=args.architecture)
             print("Flux préparé localement : " + result["status"] + ". Rien n’a été publié.")
     except (OSError, ValueError, KeyError, zipfile.BadZipFile, subprocess.TimeoutExpired) as error:
         parser.exit(1, "Préparation refusée : " + (str(error) if isinstance(error, ValueError) else type(error).__name__) + "\n")

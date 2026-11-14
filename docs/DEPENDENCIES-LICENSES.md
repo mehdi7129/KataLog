@@ -12,6 +12,8 @@ le bundle ; ce document ne les remplace pas.
 | CPython, build Astral python-build-standalone | 3.13.15, build 20260929 | Interpréteur autonome du helper | `Contents/Helpers/KataLogEngine.app/Contents/Resources/Licenses/CPython/` : licence Python et licences des composants natifs du build |
 | NumPy | 2.5.3 | Lecture et calculs de télémétrie | `…/Resources/Licenses/numpy/` : licence BSD et notices des composants intégrés au wheel |
 | pyulog | 1.2.4 | Décodage ULog, dont support des événements PX4 | `…/Resources/Licenses/pyulog/` : licence BSD à trois clauses |
+| pymavlink | 2.4.50 | Messages MAVLink pour la collecte USB | `…/Resources/Licenses/pymavlink/` : textes upstream LGPL et notices |
+| pyserial | 3.5 | Accès au port serial macOS | `…/Resources/Licenses/pyserial/LICENSE.txt` : licence BSD |
 | Bootloader PyInstaller | 6.22.3 | Démarrage du helper gelé | `…/Resources/Licenses/pyinstaller/` : GPL avec exception pour les applications embarquées |
 | Sparkle | 2.10.0 | Vérification et installation des mises à jour | `Contents/Resources/Licenses/Sparkle-LICENSE.txt` : licence MIT du projet et notices de ses composants externes |
 
@@ -19,7 +21,10 @@ Les frameworks macOS, MapKit, SwiftUI, WebKit et la bibliothèque système SQLit
 sont utilisés depuis macOS. Ils ne sont pas copiés depuis le SDK dans le DMG.
 Le toolkit Sparkle et le helper Python sont embarqués dans l’app. La GCS/MQTT
 utilise le collecteur du projet ; aucun broker ni SDK de pilotage externe n’est
-distribué avec KataLog.
+distribué avec KataLog. Les dépendances d’installation de pymavlink incluent
+`lxml 6.1.3` et `fastcrc 0.5.0`, avec leurs notices dans le helper. Le module natif
+fastcrc est exclu du bundle : le collecteur emploie le CRC Python prévu par
+pymavlink. Les imports réellement embarqués sont contrôlés pendant le packaging.
 
 ## Outils de build
 
@@ -38,21 +43,21 @@ n’est nécessaire après installation.
 
 ## Contrôles du pipeline
 
-`tools/build-engine.sh` exige des fichiers de licences pour NumPy, pyulog et
-PyInstaller et copie les textes natifs du build CPython. Le helper contient
+`tools/build-engine.sh` exige des fichiers de licences pour NumPy, pyulog,
+pymavlink, pyserial, lxml, fastcrc et PyInstaller et copie les textes natifs du build CPython. Le helper contient
 également `THIRD-PARTY-NOTICES.txt` et son manifeste de versions et d’inputs.
 `tools/build-app.sh` ajoute le texte complet fourni avec le SDK Sparkle.
 `tools/verify-distribution.py` refuse un bundle privé de ces notices.
 
 La CI `package-smoke` construit une app **ad hoc** et teste uniquement des ULogs
-synthétiques et une GCS de loopback. Elle ne signe aucune release Developer ID,
+synthétiques, une GCS de loopback et un pseudo-terminal USB serial. Elle ne signe aucune release Developer ID,
 ne notarise rien, ne contacte aucun drone et n’active aucun feed public. Ses
 contrôles de runtime sont distincts des téléchargements publics des outils de
-build. Les runners ciblent macOS 15 ARM64 et macOS 27 ARM64 via le label
-`xcode-27`, actuellement en public preview ; leur disponibilité ne constitue
-pas une preuve d’exécution de la CI.
+build. Les runners ciblent les architectures natives ARM64 et Intel ; les
+rapports de chaque run précisent les versions de macOS et les résultats effectifs.
+La disponibilité d’un runner ne constitue pas une preuve d’exécution.
 
-Les labels `macos-15`, `macos-26` et `xcode-27` appartiennent à l’offre standard
+Les labels `macos-15`, `macos-26`, `macos-15-intel` et `macos-26-intel` appartiennent à l’offre standard
 GitHub, gratuite sur les dépôts publics. Chaque job exige une visibilité
 `public` avant son allocation à un runner. Tant que le dépôt est privé, tous
 les déclencheurs sont ignorés, y compris `workflow_dispatch`, pour conserver
@@ -71,7 +76,7 @@ modification. Aucune permission d’utiliser une future version de la GPL n’es
 accordée par cette notice.
 
 Cette licence ne remplace pas celles des dépendances et ne réattribue aucun
-copyright tiers. Les licences CPython, NumPy, pyulog, PyInstaller et Sparkle
+copyright tiers. Les licences des composants Python, USB, PyInstaller et Sparkle
 restent conservées dans l’app avec leurs notices. L’exception du bootloader
 PyInstaller est également conservée ; elle ne modifie pas la licence du code
 propre de KataLog. Les frameworks système restent soumis aux conditions de

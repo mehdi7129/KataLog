@@ -26,7 +26,7 @@ from backup_history import RECEIPT_NAME, record_verified_backup
 
 BACKUP_VERSION = 1
 CONFIG_NAMES = frozenset((RECEIPT_NAME, "annotations.json", "views.json", "fleet.json", "settings.json",
-                          "gcs-collection.json", "gcs-settings.json", 'import-options.json'))
+                          "gcs-collection.json", "gcs-settings.json", "usb-collection.json", 'import-options.json'))
 DB_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\.sqlite(?:3)?")
 MAX_MANIFEST_BYTES = 16 * 1024 * 1024
 MAX_CONFIG_BYTES = 64 * 1024 * 1024
@@ -389,7 +389,7 @@ def prepare_restored_state(staging, manifest, root, archive_directory):
         value = json.loads(config.read_bytes())
         if not isinstance(value, dict) or value.get("schemaVersion", 1) != 1:
             raise ValueError("Version de configuration restaurée non prise en charge.")
-        if config.name in ("gcs-collection.json", "gcs-settings.json"):
+        if config.name in ("gcs-collection.json", "gcs-settings.json", "usb-collection.json"):
             value["reconnect"] = False
             value["queuePaused"] = True
             for job in value.get("queue", []):

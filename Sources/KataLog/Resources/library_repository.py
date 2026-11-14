@@ -110,6 +110,7 @@ def initialize(db):
         CREATE INDEX IF NOT EXISTS kl_logs_links ON kl_logs(drone_id,gcs_status,gcs_uuid);
         CREATE INDEX IF NOT EXISTS kl_logs_totals ON kl_logs(status,drone_id,duration,failsafe,cached_messages,cached_alerts);
         CREATE INDEX IF NOT EXISTS kl_logs_scope_meta ON kl_logs(id,drone_id,drone_name,gcs_uuid,gcs_status,date,date_day,status,duration,failsafe,cached_messages,cached_alerts);
+        CREATE INDEX IF NOT EXISTS kl_logs_registry ON kl_logs(drone_id,gcs_status,gcs_uuid,drone_name,date,status,duration,cached_alerts,failsafe);
         CREATE INDEX IF NOT EXISTS kl_canonical_parser ON logs(parser_version,id);
         CREATE INDEX IF NOT EXISTS kl_definitions_family ON kl_definitions(family,id);
         CREATE INDEX IF NOT EXISTS kl_definitions_level ON kl_definitions(level,id);
@@ -891,7 +892,37 @@ def _query_group_keys(db, scope, limit, revision, scope_hash, offset, kind, grou
 def _query_drones(db, request, scope, annotations, fleet, observation_revision,
                   statement, params, message_active, limit, revision, scope_hash, offset, kind, group):
     unrestricted_registry = not (scope.get('clientID') is not None or scope.get('_proximityFiltered') or scope['droneKeys'] or scope['logIDs'] or scope['statuses'] or scope['dateFrom'] or scope['dateTo'] or not scope['includeUnknownDates'] or scope['logSearch'] or message_active)
-    if unrestricted_registry:
+    registry_index = unrestricted_registry and db.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name='kl_logs_registry'").fetchone()
+    if registry_index:
+        # Stream the covering index into raw controller/identity groups before
+        # resolving canonical identity. This avoids sorting every log or joining
+        # its annotations; ambiguity still considers all groups of a controller.
+        rows = db.execute('''WITH raw AS MATERIALIZED (
+                    SELECT drone_id,gcs_status,gcs_uuid,MIN(drone_name) AS fallback_name,
+                        MAX(date) AS last_date,COUNT(*) AS log_count,
+                        COALESCE(SUM(CASE WHEN status<>'error' THEN duration ELSE 0 END),0) AS recorded_seconds,
+                        COALESCE(SUM(status<>'error' AND (cached_alerts>0 OR failsafe<>0)),0) AS alert_count
+                    FROM kl_logs INDEXED BY kl_logs_registry GROUP BY drone_id,gcs_status,gcs_uuid
+                ), links AS (
+                    SELECT drone_id,COUNT(DISTINCT gcs_uuid) AS uuid_count,MIN(gcs_uuid) AS uuid
+                    FROM raw WHERE gcs_status<>'rejected' AND gcs_uuid IS NOT NULL GROUP BY drone_id
+                ), controllers AS (SELECT DISTINCT drone_id FROM raw), names AS MATERIALIZED (
+                    SELECT c.drone_id,(SELECT n.drone_name FROM kl_logs n INDEXED BY kl_logs_names
+                        WHERE n.drone_id=c.drone_id AND n.drone_name<>'Drone non identifié'
+                        ORDER BY n.date DESC,n.id DESC LIMIT 1) AS drone_name FROM controllers c
+                ), enriched AS NOT MATERIALIZED (
+                    SELECT ''' + IDENTITY + ''' AS annotation_key,l.*,
+                        COALESCE(names.drone_name,l.fallback_name) AS canonical_name,
+                        COALESCE(sn.number,CASE WHEN (''' + IDENTITY + ''') LIKE 'gcs:%'
+                            AND links.uuid_count=1 THEN legacy.number END) AS stock_number
+                    FROM raw l''' + LOG_JOINS + '''
+                ) SELECT annotation_key AS id,MIN(drone_id) AS droneID,MIN(canonical_name) AS name,
+                    MIN(stock_number) AS stockNumber,MAX(last_date) AS lastDate,SUM(log_count) AS logCount,
+                    SUM(recorded_seconds) AS recordedSeconds,SUM(alert_count) AS alertLogCount
+                    FROM enriched GROUP BY annotation_key ORDER BY annotation_key''').fetchall()
+    elif unrestricted_registry:
+        # An older read-only projection may not have the additive index yet.
+        # Keep its existing query path without changing the database or version.
         # Aggregate recorded counters per controller/key before name
         # and stock joins. Fifty thousand logs do not require fifty
         # thousand lookups of each of the 500 local annotations.
@@ -964,7 +995,31 @@ def _query_logs(db, request, scope, masks, statement, params, message_active,
     page_select = ('SELECT selected.*,l.summary_projection,l.flight_seconds,l.signal_messages_json,' + counts + ' FROM kl_logs l INDEXED BY kl_logs_date CROSS JOIN selected ON selected.id=l.id' if compact_page else 'SELECT selected.*, ' + counts + ' FROM selected' if unfiltered else 'SELECT selected.*,l.summary_projection,l.flight_seconds,l.signal_messages_json,' + counts + ' FROM selected CROSS JOIN kl_logs l ON l.id=selected.id')
     direction = 'ASC' if request.get('sortOrder') == 'oldest' else 'DESC'
     order_source = 'l' if compact_page else 'selected'
-    rows = db.execute(statement + page_select + " ORDER BY " + order_source + ".date " + direction + "," + order_source + ".id " + direction + " LIMIT ? OFFSET ?", params + [limit, offset]).fetchall()
+    if unfiltered:
+        # Only this page needs identity/name enrichment. For its controllers,
+        # links and names still use every stored log, including logs outside the
+        # page. Materialize only page keys, not potentially large JSON payloads.
+        # Keep `statement` intact for includeMessages and matching below.
+        page_statement = '''WITH page AS MATERIALIZED (
+                SELECT rowid AS log_ordinal,id,drone_id,date FROM kl_logs INDEXED BY kl_logs_date
+                ORDER BY date ''' + direction + ''',id ''' + direction + ''' LIMIT ? OFFSET ?
+            ), controllers AS MATERIALIZED (SELECT DISTINCT drone_id FROM page), links AS (
+                SELECT n.drone_id,COUNT(DISTINCT n.gcs_uuid) AS uuid_count,MIN(n.gcs_uuid) AS uuid
+                FROM controllers c CROSS JOIN kl_logs n INDEXED BY kl_logs_links ON n.drone_id=c.drone_id
+                WHERE n.gcs_status<>'rejected' AND n.gcs_uuid IS NOT NULL GROUP BY n.drone_id
+            ), names AS MATERIALIZED (
+                SELECT c.drone_id,(SELECT n.drone_name FROM kl_logs n INDEXED BY kl_logs_names
+                    WHERE n.drone_id=c.drone_id AND n.drone_name<>'Drone non identifié'
+                    ORDER BY n.date DESC,n.id DESC LIMIT 1) AS drone_name FROM controllers c
+            ) SELECT page.log_ordinal,l.*,COALESCE(names.drone_name,l.drone_name) AS canonical_name,
+                ''' + IDENTITY + ''' AS annotation_key,links.uuid_count,links.uuid AS propagated_uuid,
+                sn.number AS canonical_stock,legacy.number AS legacy_stock,
+                COALESCE(sn.number,CASE WHEN l.gcs_status<>'rejected' AND links.uuid_count=1 THEN legacy.number END) AS stock_number,
+                cached_messages AS message_count,cached_alerts AS alert_count
+                FROM page CROSS JOIN kl_logs l ON l.id=page.id''' + LOG_JOINS + ' ORDER BY page.date ' + direction + ',page.id ' + direction
+        rows = db.execute(page_statement, (limit, offset)).fetchall()
+    else:
+        rows = db.execute(statement + page_select + " ORDER BY " + order_source + ".date " + direction + "," + order_source + ".id " + direction + " LIMIT ? OFFSET ?", params + [limit, offset]).fetchall()
     def map_log(row):
         value = json.loads(row["summary_projection"])
         from library_clients import attach

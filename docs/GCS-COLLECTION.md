@@ -25,8 +25,10 @@ modifie ni firmware, paramètres ni fichiers distants.
   multiple et bouton **Télécharger** par fichier. Une demande manuelle passe avant
   les fichiers encore en attente, sans interrompre les transferts actifs ni changer
   le client associé aux jobs déjà préparés. Pendant la collecte, les inventaires
-  déjà lus restent consultables ; une nouvelle lecture attend la fin de l’activité.
-  Une lecture manuelle hors collecte garde trois essais, puis propose de réessayer.
+  déjà lus restent consultables. Une nouvelle lecture peut viser un autre appareil
+  sans interrompre les transferts ; une lecture du même UUID attend la fin de son
+  activité. La sélection et l’ajout restent disponibles pendant les transferts.
+  Une lecture manuelle garde trois essais, puis propose de réessayer.
 - Deux transferts réseau en parallèle par défaut, réglables de **1 à 4 drones**
   dans les options. Toujours un fichier à la fois par UUID. Réduire la limite
   laisse finir les fichiers actifs avant d’en admettre d’autres.

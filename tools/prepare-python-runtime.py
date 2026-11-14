@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import platform
 from pathlib import Path, PurePosixPath
 import subprocess
 import tarfile
@@ -66,13 +67,14 @@ def intact(root, inventory):
         return False
 
 
-def version_matches(root, version):
+def version_matches(root, version, architecture):
     try:
         env = {key: value for key, value in os.environ.items() if not key.startswith(('PYTHON', 'DYLD_'))}
         result = subprocess.run([str(root / 'python/bin/python3'), '-I', '-B', '-c',
-                                 'import json,sys; print(json.dumps(list(sys.version_info[:3])))'],
+                                 'import json,platform,sys; print(json.dumps({"version": list(sys.version_info[:3]), "architecture": platform.machine()}))'],
                                 env=env, capture_output=True, timeout=20)
-        return result.returncode == 0 and json.loads(result.stdout) == list(map(int, version.split('.')))
+        return result.returncode == 0 and json.loads(result.stdout) == {
+            'version': list(map(int, version.split('.'))), 'architecture': architecture}
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return False
 
@@ -87,14 +89,17 @@ def atomic_json(path, value):
         temporary.unlink(missing_ok=True)
 
 
-def prepare(root, archive_path, digest, version):
+def prepare(root, archive_path, digest, version, architecture=None):
+    architecture = architecture or platform.machine()
+    if architecture not in ('arm64', 'x86_64') or architecture != platform.machine():
+        raise ValueError('CPython runtime must be prepared on its native target architecture')
     root = root.resolve(); root.mkdir(parents=True, exist_ok=True)
     if sha(archive_path) != digest:
         raise ValueError('CPython archive SHA does not match the pin')
     with tarfile.open(archive_path, 'r:gz') as archive:
         inventory = entries(archive)
-        manifest = {'archiveSHA256': digest, 'version': version, 'files': inventory}
-        if intact(root, inventory) and version_matches(root, version):
+        manifest = {'archiveSHA256': digest, 'version': version, 'architecture': architecture, 'files': inventory}
+        if intact(root, inventory) and version_matches(root, version, architecture):
             marker = root / 'python-runtime.json'
             try:
                 previous_manifest = json.loads(marker.read_text())
@@ -106,8 +111,8 @@ def prepare(root, archive_path, digest, version):
         with tempfile.TemporaryDirectory(prefix='python-stage-', dir=root) as staging:
             staged = Path(staging)
             archive.extractall(staged)
-            if not intact(staged, inventory) or not version_matches(staged, version):
-                raise ValueError('Staged CPython runtime is not integral or has the wrong version')
+            if not intact(staged, inventory) or not version_matches(staged, version, architecture):
+                raise ValueError('Staged CPython runtime is not integral or has the wrong version or architecture')
             destination = root / 'python'
             previous = None
             if destination.exists() or destination.is_symlink():
@@ -129,5 +134,6 @@ if __name__ == '__main__':
     parser.add_argument('--archive', type=Path, required=True)
     parser.add_argument('--sha256', required=True)
     parser.add_argument('--version', required=True)
+    parser.add_argument('--architecture', choices=('arm64', 'x86_64'), default=platform.machine())
     options = parser.parse_args()
-    print(json.dumps(prepare(options.root, options.archive, options.sha256, options.version)))
+    print(json.dumps(prepare(options.root, options.archive, options.sha256, options.version, options.architecture)))

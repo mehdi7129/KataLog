@@ -1,2 +1,4 @@
 numpy>=1.26,<3
 pyulog>=1.2,<2
+pymavlink==2.4.50
+pyserial==3.5

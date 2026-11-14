@@ -29,6 +29,7 @@
 		244CACA55F30DDA40588BBA7 /* ApplicationLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81608F1EC59D6A4B4309FB7A /* ApplicationLifecycle.swift */; };
 		2B111F3CA61E9B43BCEA891B /* GCSProcessService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1263800F19D2CD42409464DF /* GCSProcessService.swift */; };
 		2C65A8F9F63417D88CC74C2F /* library_sources.py in Resources */ = {isa = PBXBuildFile; fileRef = 4EAE586501564398DAC80B69 /* library_sources.py */; };
+		319F517BBDBD42E110983622 /* USBCollectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 661191CDE9CC72E77708E598 /* USBCollectionStore.swift */; };
 		31D6826D54A07ADB85AE9635 /* LibraryFavoritesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCADBDDED3E8B111B6BC64D7 /* LibraryFavoritesView.swift */; };
 		3470A2C48748F4BAD520EEAF /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ACBF6FE3DBC7EE0DCE73010 /* LibraryStore.swift */; };
 		3898E772B1A14F8BC289D101 /* LibraryHelpViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5EB0EE7CFDB8B5DE1DDBE53 /* LibraryHelpViews.swift */; };
@@ -52,6 +53,7 @@
 		51E4581E0EA61CBBAA869F52 /* Clients.swift in Sources */ = {isa = PBXBuildFile; fileRef = 973B3986662CFA9BD3A110AD /* Clients.swift */; };
 		53479272FE1F4FB68D40883D /* LegacyWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A050EC123336047ED0A688 /* LegacyWorkspaceView.swift */; };
 		54EDE7EFFC2FA19C752E51E3 /* AppPreviewConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = E98860FD022BF7F7428184D5 /* AppPreviewConfiguration.swift */; };
+		55068D61A2DE76E3427ED2C9 /* USBCollectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E9EEFC8346750E4D393DACA /* USBCollectionView.swift */; };
 		5D12BF6935FEAD642769DDE6 /* ClientViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0599D5E86D6285A89C955827 /* ClientViews.swift */; };
 		5D14506D8BC4FE82BE58A739 /* FlightDetailSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 580DA0C78AE7B2EF804C501C /* FlightDetailSession.swift */; };
 		5DF3C224E90DD0FC0D473209 /* library_map_overview.py in Resources */ = {isa = PBXBuildFile; fileRef = 3274C95080A9FC5435598C5A /* library_map_overview.py */; };
@@ -59,11 +61,13 @@
 		6463301D8D93236E8FB8DEF3 /* proximity_cache.py in Resources */ = {isa = PBXBuildFile; fileRef = 093578E5BD670A6BAE5A23F7 /* proximity_cache.py */; };
 		6EF20646AD4817137B1BC471 /* GCSModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9BF98186288FB77D7CDC93D /* GCSModels.swift */; };
 		6F05FE6129C7D6A5FBA722D4 /* GCSQueueRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 509DD61E32EADEC4B75D6E54 /* GCSQueueRepository.swift */; };
+		7276B68CDF1D08A1D5BB2734 /* USBCollectionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1076F0288C598BB60E0B94FE /* USBCollectionModels.swift */; };
 		7706D666FE74BF8BB7DC6420 /* LibraryStorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2199BD4DC630CCF86B4C4F8 /* LibraryStorageService.swift */; };
 		77F0C88A506BE0B40E028ED3 /* MaskImpact06.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFF65C0B487A5E345983033B /* MaskImpact06.swift */; };
 		7C6D3C71BF1E27AF0BE9FD75 /* CoreLibraryUX.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54FB48920B4EBE713B760440 /* CoreLibraryUX.swift */; };
 		7F44DC91024991F156BBE1F1 /* LibraryNavigationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BD0FD552B59F2648074683D /* LibraryNavigationStore.swift */; };
 		84987209B56C609F522B0BDA /* FlightStudyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B085C2B7B159C343A410F297 /* FlightStudyStore.swift */; };
+		85D4D38B2F48F63F0B702883 /* usb_collect.py in Resources */ = {isa = PBXBuildFile; fileRef = C74266DAF12C4F2AD4BB3977 /* usb_collect.py */; };
 		85D4FA6D7AABAE03E8CA7736 /* Workspace06View.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9A172B8D44CC0C1F51B4646 /* Workspace06View.swift */; };
 		8AE37F23A9C80658CAD06EFC /* SourcesImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45F6134D0159F030AB69770D /* SourcesImportStore.swift */; };
 		8BCF987CAA26766AF21CEB20 /* analysis_revisions.py in Resources */ = {isa = PBXBuildFile; fileRef = C8943D03DDFCE176BECC37E9 /* analysis_revisions.py */; };
@@ -139,6 +143,8 @@
 		093578E5BD670A6BAE5A23F7 /* proximity_cache.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = proximity_cache.py; sourceTree = "<group>"; };
 		0ACBF6FE3DBC7EE0DCE73010 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
 		0CF1B557B87CF0542B7B021C /* AnalysisRevisionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisRevisionService.swift; sourceTree = "<group>"; };
+		0E9EEFC8346750E4D393DACA /* USBCollectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = USBCollectionView.swift; sourceTree = "<group>"; };
+		1076F0288C598BB60E0B94FE /* USBCollectionModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = USBCollectionModels.swift; sourceTree = "<group>"; };
 		1263800F19D2CD42409464DF /* GCSProcessService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GCSProcessService.swift; sourceTree = "<group>"; };
 		15D7E9BEE4F099F75643C742 /* KataLog.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = KataLog.icns; sourceTree = "<group>"; };
 		1F9FCAC2168E5A7B6D85F2C3 /* GCSStorageIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GCSStorageIO.swift; sourceTree = "<group>"; };
@@ -174,6 +180,7 @@
 		626AB5F4F103E514F29E2E7F /* LogComparisonStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogComparisonStore.swift; sourceTree = "<group>"; };
 		62B4C605EF5907F193E7E4D9 /* LibraryCommandCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCommandCapabilities.swift; sourceTree = "<group>"; };
 		64C389996F4E1F97EA8457ED /* DiagnosticJournal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticJournal.swift; sourceTree = "<group>"; };
+		661191CDE9CC72E77708E598 /* USBCollectionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = USBCollectionStore.swift; sourceTree = "<group>"; };
 		67CA2340F1A10C83ADAB2077 /* KataLog.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KataLog.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		680726B650EB3C3772AE85C3 /* LibraryStore+Reports.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LibraryStore+Reports.swift"; sourceTree = "<group>"; };
 		68BF3D5A5EAA0C8D1FDDBC8B /* output_paths.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = output_paths.py; sourceTree = "<group>"; };
@@ -219,6 +226,7 @@
 		BE95C4D29AE5477B63160E3E /* WorkspaceDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceDesign.swift; sourceTree = "<group>"; };
 		C3231E8CAB4E8B448FE112E3 /* ReportRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportRenderer.swift; sourceTree = "<group>"; };
 		C5EB0EE7CFDB8B5DE1DDBE53 /* LibraryHelpViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryHelpViews.swift; sourceTree = "<group>"; };
+		C74266DAF12C4F2AD4BB3977 /* usb_collect.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = usb_collect.py; sourceTree = "<group>"; };
 		C823AC8E27FE792570BB618A /* FlightSheet06.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightSheet06.swift; sourceTree = "<group>"; };
 		C8943D03DDFCE176BECC37E9 /* analysis_revisions.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = analysis_revisions.py; sourceTree = "<group>"; };
 		CA3768D8DAE5602B32723F6D /* gcs_collect.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = gcs_collect.py; sourceTree = "<group>"; };
@@ -313,6 +321,8 @@
 				7075CAFA2CC4FEBAA301301C /* SourcesImportView.swift */,
 				9E37575D142A735F0733E355 /* UpdateSettingsView.swift */,
 				7857E2633A19111A82DF1360 /* UpdateStore.swift */,
+				661191CDE9CC72E77708E598 /* USBCollectionStore.swift */,
+				0E9EEFC8346750E4D393DACA /* USBCollectionView.swift */,
 				A9A172B8D44CC0C1F51B4646 /* Workspace06View.swift */,
 				BE95C4D29AE5477B63160E3E /* WorkspaceDesign.swift */,
 			);
@@ -368,6 +378,7 @@
 				8CBB1A0BBFB7632EBE80C42A /* TelemetryService.swift */,
 				3929246EF13BE77D33E614D2 /* TimelineSelection.swift */,
 				DC36BEBC525C10247219C76B /* UpdatePolicy.swift */,
+				1076F0288C598BB60E0B94FE /* USBCollectionModels.swift */,
 			);
 			name = KataLogCore;
 			path = Sources/KataLogCore;
@@ -396,6 +407,7 @@
 				B7B81D6550EFCFC9AB10269F /* px4_events.py */,
 				293BF69519EAB96FA6E8F777 /* signal_assessment.py */,
 				34AD89AA23F72FC6283E90E9 /* telemetry_extractor.py */,
+				C74266DAF12C4F2AD4BB3977 /* usb_collect.py */,
 			);
 			name = Resources;
 			path = Sources/KataLog/Resources;
@@ -523,6 +535,7 @@
 				01FAD357C747066DFEAB7B90 /* px4_events.py in Resources */,
 				AD99079BA035AFD388F3DD67 /* signal_assessment.py in Resources */,
 				CA5280482EA82FEC2B0460D6 /* telemetry_extractor.py in Resources */,
+				85D4D38B2F48F63F0B702883 /* usb_collect.py in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -587,6 +600,7 @@
 				9470399B4461298CF8830C84 /* TelemetryReport.swift in Sources */,
 				BCEDFB76A3E1C64E537F005D /* TelemetryService.swift in Sources */,
 				C6FC5437E52C9A884CA5D236 /* TimelineSelection.swift in Sources */,
+				7276B68CDF1D08A1D5BB2734 /* USBCollectionModels.swift in Sources */,
 				8DA6390DA4C619A1F354FBE0 /* UpdatePolicy.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -643,6 +657,8 @@
 				C95D637CF952A96D6CD0907C /* ScopeEditor06.swift in Sources */,
 				8AE37F23A9C80658CAD06EFC /* SourcesImportStore.swift in Sources */,
 				4765C3F67E0138495E6EBF07 /* SourcesImportView.swift in Sources */,
+				319F517BBDBD42E110983622 /* USBCollectionStore.swift in Sources */,
+				55068D61A2DE76E3427ED2C9 /* USBCollectionView.swift in Sources */,
 				F65723071801E971BF3CE7B7 /* UpdateSettingsView.swift in Sources */,
 				CB71A87047390D93774FA67F /* UpdateStore.swift in Sources */,
 				85D4FA6D7AABAE03E8CA7736 /* Workspace06View.swift in Sources */,
@@ -816,7 +832,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 27;
+				CURRENT_PROJECT_VERSION = 28;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = KataLog;
 				INFOPLIST_KEY_CFBundleIconFile = KataLog;
@@ -838,7 +854,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.8.8;
+				MARKETING_VERSION = 0.9.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -854,7 +870,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 27;
+				CURRENT_PROJECT_VERSION = 28;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = KataLog;
 				INFOPLIST_KEY_CFBundleIconFile = KataLog;
@@ -876,7 +892,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.8.8;
+				MARKETING_VERSION = 0.9.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",

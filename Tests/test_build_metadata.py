@@ -4,6 +4,7 @@ import copy
 import importlib.util
 import json
 import plistlib
+import platform
 from pathlib import PurePosixPath
 import re
 import subprocess
@@ -74,8 +75,9 @@ class BuildMetadataContractTests(unittest.TestCase):
         self.assertEqual(script_default('KATALOG_UPDATE_PUBLIC_KEY'), '')
         self.assertEqual(script_default('KATALOG_UI_PREVIEW_BUILD'), '0')
         smoke = dict(re.findall(r"^export (KATALOG_[A-Z_]+)='([^']*)'$", (ROOT / 'tools/package-smoke.sh').read_text(), re.MULTILINE))
-        for name in ('VERSION', 'BUILD_NUMBER', 'UPDATE_CHANNEL', 'UPDATE_FEED_URL', 'UPDATE_PUBLIC_KEY'):
+        for name in ('VERSION', 'BUILD_NUMBER', 'UPDATE_FEED_URL', 'UPDATE_PUBLIC_KEY'):
             self.assertEqual(smoke['KATALOG_' + name], script_default('KATALOG_' + name), name)
+        self.assertIn('export KATALOG_UPDATE_CHANNEL="${KATALOG_SMOKE_UPDATE_CHANNEL:-disabled}"', (ROOT / 'tools/package-smoke.sh').read_text())
         project = xcode_project()
         objects = project['objects']
         target = next(value for value in objects.values() if value.get('isa') == 'PBXNativeTarget' and value.get('name') == 'KataLog')
@@ -88,6 +90,9 @@ class BuildMetadataContractTests(unittest.TestCase):
                 with self.subTest(configuration=config['name'], key=key):
                     self.assertEqual(str(config['buildSettings'][key]), settings[key])
         expected_policy = updates.configured_info({})
+        # Architecture belongs to the distributable CLI bundle; Xcode dev
+        # builds choose their active architecture at build time.
+        expected_policy.pop('KatalogArchitecture')
         actual_policy = {key.removeprefix('INFOPLIST_KEY_'): plist_setting(value)
                          for key, value in settings.items() if key.startswith(('INFOPLIST_KEY_Katalog', 'INFOPLIST_KEY_SU'))}
         self.assertEqual(actual_policy, expected_policy)
@@ -184,7 +189,7 @@ class BuildMetadataContractTests(unittest.TestCase):
         key = base64.b64encode(bytes(range(32))).decode()
         for channel in ('stable', 'staging'):
             with self.subTest(channel=channel):
-                feed = 'https://updates.example.org/' + channel + '/appcast.xml'
+                feed = 'https://updates.example.org/updates/' + channel + ('-intel' if platform.machine() == 'x86_64' else '') + '/appcast.xml'
                 app, info = self.info(KATALOG_VERSION='9.9.9', KATALOG_BUILD_NUMBER='4242',
                                       KATALOG_UPDATE_CHANNEL=channel, KATALOG_UPDATE_FEED_URL=feed,
                                       KATALOG_UPDATE_PUBLIC_KEY=key)

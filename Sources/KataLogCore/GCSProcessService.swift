@@ -1,14 +1,14 @@
 import Foundation
 
 public enum GCSProcessService {
-    public static func events(script: URL, arguments: [String], writerLibrary: URL? = nil) -> AsyncThrowingStream<GCSCollectorEvent, Error> {
-        events(script: script, arguments: arguments, writerLibrary: writerLibrary, runtimeConfiguration: .current)
+    public static func events(script: URL, arguments: [String], writerLibrary: URL? = nil, onProcessExit: (@Sendable () -> Void)? = nil) -> AsyncThrowingStream<GCSCollectorEvent, Error> {
+        events(script: script, arguments: arguments, writerLibrary: writerLibrary, runtimeConfiguration: .current, onProcessExit: onProcessExit)
     }
 
     static func events(script: URL, arguments: [String], writerLibrary: URL? = nil,
-                       runtimeConfiguration: EngineRuntimeResolver.Configuration) -> AsyncThrowingStream<GCSCollectorEvent, Error> {
+                       runtimeConfiguration: EngineRuntimeResolver.Configuration, onProcessExit: (@Sendable () -> Void)? = nil) -> AsyncThrowingStream<GCSCollectorEvent, Error> {
         let reader = CollectorEventReader(script: script, arguments: arguments, writerLibrary: writerLibrary,
-                                          runtimeConfiguration: runtimeConfiguration)
+                                          runtimeConfiguration: runtimeConfiguration, onProcessExit: onProcessExit)
         // Pull one event per next(): the OS pipe, not an unbounded Swift queue,
         // holds output while the consumer works. Blocking I/O stays off its actor.
         return AsyncThrowingStream(unfolding: {
@@ -36,9 +36,11 @@ private final class CollectorEventReader: @unchecked Sendable {
     private var reachedEOF = false
     private var finished = false
     private var reportedError: String?
+    private var onProcessExit: (@Sendable () -> Void)?
     private let maximumLineBytes = 4 * 1024 * 1024
 
-    init(script: URL, arguments: [String], writerLibrary: URL?, runtimeConfiguration: EngineRuntimeResolver.Configuration) {
+    init(script: URL, arguments: [String], writerLibrary: URL?, runtimeConfiguration: EngineRuntimeResolver.Configuration, onProcessExit: (@Sendable () -> Void)?) {
+        self.onProcessExit = onProcessExit
         self.script = script; self.arguments = arguments; self.writerLibrary = writerLibrary
         self.runtimeConfiguration = runtimeConfiguration
     }
@@ -47,8 +49,9 @@ private final class CollectorEventReader: @unchecked Sendable {
         // Breaking out of a for-await loop can release the stream on MainActor.
         // Signal cancellation now, then reap and close off that actor.
         control.cancel()
-        Task.detached { [control, pipe, errors, errorsURL, writerInput] in
+        Task.detached { [control, pipe, errors, errorsURL, writerInput, onProcessExit] in
             Self.cleanup(control: control, pipe: pipe, errors: errors, errorsURL: errorsURL, writerInput: writerInput)
+            onProcessExit?()
         }
     }
 
@@ -130,9 +133,11 @@ private final class CollectorEventReader: @unchecked Sendable {
     }
 
     private func finish() {
+        guard !finished else { return }
         finished = true
         Self.cleanup(control: control, pipe: pipe, errors: errors, errorsURL: errorsURL, writerInput: writerInput)
         process = nil; pipe = nil; errors = nil; errorsURL = nil; writerInput = nil; buffer = Data()
+        onProcessExit?(); onProcessExit = nil
     }
 
     private static func cleanup(control: ProcessLifetime, pipe: Pipe?, errors: FileHandle?, errorsURL: URL?, writerInput: FileHandle?) {

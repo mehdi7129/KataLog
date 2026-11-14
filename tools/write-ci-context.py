@@ -23,7 +23,7 @@ def main():
     parser.add_argument('--fixture', required=True)
     args = parser.parse_args()
     packages = {}
-    for name in ('numpy', 'pyulog'):
+    for name in ('numpy', 'pyulog', 'pymavlink', 'pyserial'):
         try:
             packages[name] = importlib.metadata.version(name)
         except importlib.metadata.PackageNotFoundError:

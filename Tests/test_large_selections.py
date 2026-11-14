@@ -66,6 +66,11 @@ class LargeSelectionTests(unittest.TestCase):
             request['cursor'] = page['nextCursor']
 
     def test_native_variable_limit_and_full_accepted_log_id_list(self):
+        # Some system SQLite builds permit 250,000 variables, above the public
+        # 100,000-ID contract. Keep the overflow case inside that contract and
+        # still exercise the full accepted list on every native runtime.
+        native_limit = self.db.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER)
+        self.db.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, min(native_limit, 32_766))
         wanted = [log['id'] for log in self.logs[:3]]
         request = {'scope': {'logIDs': wanted}, 'includeMessages': True, 'limit': 1}
         expected = self.page_values(request)
@@ -73,6 +78,8 @@ class LargeSelectionTests(unittest.TestCase):
             with self.subTest(count=count):
                 large = dict(request, scope={'logIDs': self.expanded(wanted, count)})
                 self.assertEqual(self.page_values(large), expected)
+        with self.assertRaisesRegex(ValueError, 'Filtre invalide : logIDs'):
+            self.page_values(dict(request, scope={'logIDs': self.expanded(wanted, 100_001)}))
 
     def test_combined_filters_pages_and_event_levels_under_small_variable_budget(self):
         # Each list fits by itself; their sum and the second ulog predicate do not.

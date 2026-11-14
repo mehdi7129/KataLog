@@ -8,12 +8,20 @@ project_dir="$(cd "$(dirname "$0")/.." && pwd)"
 if [[ "${KATALOG_BUILD_LOCK_SCRIPT:-}" != "$project_dir/tools/build-app.sh" ]]; then
     exec python3 "$project_dir/tools/build-lock.py" "$project_dir/tools/build-app.sh" "$@"
 fi
-build_dir="${KATALOG_BUILD_DIR:-/private/tmp/katalog-swift-build}"
+target_arch="${KATALOG_ARCH:-$(/usr/bin/uname -m)}"
+case "$target_arch" in arm64|x86_64) ;; *) printf 'KATALOG_ARCH doit valoir arm64 ou x86_64.\n' >&2; exit 1 ;; esac
+if [[ "$(/usr/bin/uname -s)" != Darwin || "$(/usr/bin/uname -m)" != "$target_arch" || "$(/usr/sbin/sysctl -in sysctl.proc_translated 2>/dev/null || true)" == 1 ]]; then
+    printf 'L’app doit être construite sur un Mac natif %s, sans Rosetta.\n' "$target_arch" >&2
+    exit 1
+fi
+export KATALOG_ARCH="$target_arch"
+export KATALOG_ENGINE_BUILD_DIR="${KATALOG_ENGINE_BUILD_DIR:-/private/tmp/katalog-engine-build-$target_arch}"
+build_dir="${KATALOG_BUILD_DIR:-/private/tmp/katalog-swift-build-$target_arch}"
 configuration="${KATALOG_CONFIGURATION:-release}"
 sign_identity="${KATALOG_SIGN_IDENTITY:--}"
 output_dir="${KATALOG_DIST_DIR:-$project_dir/dist}"
-version="${KATALOG_VERSION:-0.8.8}"
-build_number="${KATALOG_BUILD_NUMBER:-27}"
+version="${KATALOG_VERSION:-0.9.0}"
+build_number="${KATALOG_BUILD_NUMBER:-28}"
 update_channel="${KATALOG_UPDATE_CHANNEL:-disabled}"
 update_feed_url="${KATALOG_UPDATE_FEED_URL:-}"
 update_public_key="${KATALOG_UPDATE_PUBLIC_KEY:-}"
@@ -87,15 +95,16 @@ module.validate_project_license_source(project)
 PY
 if [[ -z "${KATALOG_ENGINE_PATH:-}" ]]; then
     bash tools/build-engine.sh
-    engine_path="${KATALOG_ENGINE_BUILD_DIR:-/private/tmp/katalog-engine-build}/dist/KataLogEngine.app"
+    engine_path="$KATALOG_ENGINE_BUILD_DIR/dist/KataLogEngine.app"
 else
     engine_path="$KATALOG_ENGINE_PATH"
 fi
 [[ -x "$engine_path/Contents/MacOS/KataLogEngine" ]] || { printf 'Moteur embarqué absent.\n' >&2; exit 1; }
-"$engine_path/Contents/MacOS/KataLogEngine" --katalog-runtime-info
-python3 - "$engine_path/Contents/Resources/runtime-manifest.json" "$project_dir" <<'PY'
+python3 - "$engine_path/Contents/Resources/runtime-manifest.json" "$project_dir" "$target_arch" <<'PY'
 import hashlib, json, pathlib, sys
 manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+if manifest.get('architecture') != sys.argv[3]:
+    raise SystemExit('L’architecture du moteur embarqué ne correspond pas au build natif demandé.')
 resources = pathlib.Path(sys.argv[2]) / 'Sources/KataLog/Resources'
 expected = {source.name: hashlib.sha256(source.read_bytes()).hexdigest()
             for source in sorted(resources.glob('*.py'))}
@@ -109,6 +118,11 @@ build_inputs = {name: hashlib.sha256((project / 'tools' / name).read_bytes()).he
 if manifest.get('requirementsHashes') != requirements or manifest.get('buildInputHashes') != build_inputs:
     raise SystemExit('Les dépendances ou la configuration du moteur embarqué ont changé. Reconstruisez-le.')
 PY
+if [[ "$(/usr/bin/lipo -archs "$engine_path/Contents/MacOS/KataLogEngine")" != "$target_arch" ]]; then
+    printf 'L’exécutable du moteur ne correspond pas à son architecture déclarée.\n' >&2
+    exit 1
+fi
+"$engine_path/Contents/MacOS/KataLogEngine" --katalog-runtime-info
 # Source locations must stay useful without publishing this machine's username
 # or absolute checkout path in #filePath strings and compiler debug information.
 privacy_flags=(
@@ -130,6 +144,12 @@ app_path="$staging_dir/$app_name"
 mkdir -p "$app_path/Contents/MacOS" "$app_path/Contents/Resources" "$app_path/Contents/Helpers" "$app_path/Contents/Frameworks" "$output_dir"
 cp "$binary_dir/KataLog" "$app_path/Contents/MacOS/KataLog"
 cp "$binary_dir/katalog-cli" "$app_path/Contents/MacOS/katalog-cli"
+for executable in KataLog katalog-cli; do
+    if [[ "$(/usr/bin/lipo -archs "$app_path/Contents/MacOS/$executable")" != "$target_arch" ]]; then
+        printf 'Un exécutable Swift ne correspond pas à l’architecture native demandée.\n' >&2
+        exit 1
+    fi
+done
 sparkle_framework="$binary_dir/Sparkle.framework"
 if [[ ! -d "$sparkle_framework" ]]; then
     sparkle_framework="$build_dir/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
@@ -179,6 +199,7 @@ PLIST
 # Insert only the validated effective values, with no stale template version.
 /usr/bin/plutil -insert CFBundleShortVersionString -string "$version" "$app_path/Contents/Info.plist"
 /usr/bin/plutil -insert CFBundleVersion -string "$build_number" "$app_path/Contents/Info.plist"
+/usr/bin/plutil -insert KatalogArchitecture -string "$target_arch" "$app_path/Contents/Info.plist"
 if [[ "$ui_preview_build" == 1 ]]; then
     /usr/bin/plutil -insert KataLogUIReviewPreview -bool true "$app_path/Contents/Info.plist"
     if [[ "${output_dir%/}" == */preview-staging ]]; then
@@ -198,7 +219,7 @@ spec.loader.exec_module(module)
 module.write_project_license(project, app)
 module.validate_project_license(app, module.plistlib.loads((app / 'Contents/Info.plist').read_bytes()))
 PY
-update_arguments=(configure --app "$app_path" --channel "$update_channel")
+update_arguments=(configure --app "$app_path" --channel "$update_channel" --architecture "$target_arch")
 if [[ -n "$update_feed_url" ]]; then update_arguments+=(--feed-url "$update_feed_url"); fi
 if [[ -n "$update_public_key" ]]; then update_arguments+=(--public-key "$update_public_key"); fi
 python3 tools/update-feed.py "${update_arguments[@]}"
@@ -208,7 +229,7 @@ python3 tools/sign-bundle.py --app "$app_path" --identity "$sign_identity"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$app_path"
 # Desktop's file provider repeatedly adds FinderInfo to .app directories, even
 # after removing it. Archive before copying to Desktop, then verify extraction.
-archive="$output_dir/$archive_prefix-$version-macOS-arm64.zip"
+archive="$output_dir/$archive_prefix-$version-macOS-$target_arch.zip"
 if [[ -e "$archive" ]]; then
     previous_dir="$(mktemp -d "$output_dir/previous-build.XXXXXX")"
     mv "$archive" "$previous_dir/"

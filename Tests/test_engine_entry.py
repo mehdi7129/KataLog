@@ -17,6 +17,7 @@ class EngineEntryTests(unittest.TestCase):
     def test_script_path_dispatches_bundled_module_without_reading_source(self):
         for selector, expected in (("/missing/resources/analyzer.py", "analyzer"),
                                    ("/missing/resources/gcs_collect.py", "gcs_collect"),
+                                   ("/missing/resources/usb_collect.py", "usb_collect"), ("usb", "usb_collect"),
                                    ("analyzer", "analyzer"), ("gcs", "gcs_collect")):
             seen = []
             module = types.SimpleNamespace(main=lambda args: seen.append(args) or 23)

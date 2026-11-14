@@ -18,13 +18,24 @@ if [[ -z "$app_path" ]]; then
     app_path="$(cat "${KATALOG_DIST_DIR:-$project_dir/dist}/LOCAL-APP-PATH.txt")"
 fi
 version="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app_path/Contents/Info.plist")"
+target_arch="$(/usr/libexec/PlistBuddy -c 'Print KatalogArchitecture' "$app_path/Contents/Info.plist")"
+case "$target_arch" in arm64|x86_64) ;; *) printf 'Architecture du bundle invalide.\n' >&2; exit 1 ;; esac
+if [[ "${KATALOG_ARCH:-$target_arch}" != "$target_arch" ]]; then
+    printf 'KATALOG_ARCH ne correspond pas à l’app à empaqueter.\n' >&2
+    exit 1
+fi
 prefix='KataLog'
 if [[ "$(/usr/libexec/PlistBuddy -c 'Print KataLogUIReviewPreview' "$app_path/Contents/Info.plist" 2>/dev/null || true)" == true ]]; then
     prefix='KataLog-Preview'
 fi
-output_path="${KATALOG_DMG_PATH:-${KATALOG_DIST_DIR:-$project_dir/dist}/$prefix-$version-macOS-arm64.dmg}"
+output_path="${KATALOG_DMG_PATH:-${KATALOG_DIST_DIR:-$project_dir/dist}/$prefix-$version-macOS-$target_arch.dmg}"
 args=(--app "$app_path" --output "$output_path" --identity "${KATALOG_SIGN_IDENTITY:--}")
 if [[ -n "${KATALOG_NOTARY_PROFILE:-}" ]]; then
     args+=(--notary-profile "$KATALOG_NOTARY_PROFILE")
 fi
+case "${KATALOG_DMG_SKIP_RUNTIME:-0}" in
+    0) ;;
+    1) args+=(--skip-runtime) ;;
+    *) printf 'KATALOG_DMG_SKIP_RUNTIME doit valoir 0 ou 1.\n' >&2; exit 1 ;;
+esac
 "$tools_dir/bin/python3" tools/build-dmg.py "${args[@]}"

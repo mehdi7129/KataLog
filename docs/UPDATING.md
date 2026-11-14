@@ -17,6 +17,23 @@ release une première fois par DMG : leurs builds n’activent pas le flux publi
 Ensuite les mises à jour se font depuis l’app. KataLog Preview reste une app de
 review indépendante.
 
+## Passage à 0.9.0
+
+La version **0.9.0 (build 28)** ajoute la collecte USB MAVLink et les packages
+natifs Intel, tout en conservant les fonctions de la 0.8.8. La sélection de logs
+sur un autre appareil reste disponible pendant une collecte réseau.
+
+Le parseur **1.4.1** et la projection SQLite **8** restent inchangés. Les analyses,
+notes, favoris, clients, réglages et sources sont conservés. La nouvelle file USB
+est incluse dans les sauvegardes et reprend uniquement sur demande.
+
+Choisir le DMG **arm64** pour Apple Silicon, **x86_64** pour Intel. Chaque app
+utilise un flux Sparkle propre à son architecture : le flux ARM historique reste
+au même emplacement, le flux Intel est distinct. La première installation Intel
+se fait par DMG. Aucune installation de Rosetta n’est nécessaire.
+
+[Utiliser l’USB et connaître les limites des essais](USB-COLLECTION.md).
+
 ## Passage à 0.8.8
 
 La version **0.8.8 (build 27)** simplifie les explications des messages et
@@ -220,7 +237,7 @@ dans Applications ne met pas à jour KataLog. Son flux de mise à jour est désa
 Sparkle **2.10.0** est épinglé dans SwiftPM et XcodeGen. Le pipeline embarque le
 framework, son updater et ses services XPC, puis signe les composants imbriqués
 avant l’app. Cette version de Sparkle prend en charge macOS 27 ; le minimum de
-KataLog reste **macOS 15**, sur **Apple Silicon**.
+KataLog reste **macOS 15**, sur **Apple Silicon et Intel**.
 
 Les builds sont configurés avec le canal **disabled** par défaut : aucun flux ni
 clé ne sont embarqués et aucune recherche distante n’est démarrée. Le service
@@ -253,31 +270,34 @@ Les deux canaux utilisent des comptes de signature distincts :
 Un flux stable contient des versions sans tag de canal. Le flux de staging
 utilise le tag `staging`, accepté uniquement par les builds de staging. Des URLs
 séparées sont nécessaires pour les deux canaux. Le flux stable KataLog est servi
-par [GitHub Raw](https://raw.githubusercontent.com/mehdi7129/KataLog/main/updates/stable/appcast.xml). Un éventuel flux
+par [GitHub Raw pour ARM](https://raw.githubusercontent.com/mehdi7129/KataLog/main/updates/stable/appcast.xml)
+et [un flux Intel distinct](https://raw.githubusercontent.com/mehdi7129/KataLog/main/updates/stable-intel/appcast.xml). Un éventuel flux
 de staging doit être créé et vérifié séparément avant activation.
 
 Configurer un build de staging :
 
 ```bash
-KATALOG_VERSION=0.8.8 KATALOG_BUILD_NUMBER=27 \
+KATALOG_VERSION=0.9.0 KATALOG_BUILD_NUMBER=28 \
 KATALOG_UPDATE_CHANNEL=staging \
-KATALOG_UPDATE_FEED_URL=https://updates.example.org/staging/appcast.xml \
+KATALOG_UPDATE_FEED_URL=https://updates.example.org/updates/staging/appcast.xml \
 KATALOG_UPDATE_PUBLIC_KEY='<cle-publique-base64>' \
 bash tools/build-app.sh
 ```
 
 `updates.example.org` est un exemple, pas un serveur KataLog. Fournissez un vrai
-endpoint et une clé validée avant de construire un build activé.
+endpoint et une clé validée avant de construire un build activé. Pour Intel,
+utiliser `/updates/staging-intel/appcast.xml`, construire nativement sur Intel
+et désigner l’archive `x86_64` avec `--architecture x86_64`.
 
 Pour relire un brouillon, une archive ZIP existante suffit :
 
 ```bash
 python3 tools/update-feed.py prepare \
-  --archive dist/KataLog-0.8.8-macOS-arm64.zip \
-  --archive-url https://updates.example.org/KataLog-0.8.8-macOS-arm64.zip \
+  --archive dist/KataLog-0.9.0-macOS-arm64.zip \
+  --archive-url https://updates.example.org/KataLog-0.9.0-macOS-arm64.zip \
   --output /private/tmp/katalog-update-draft \
   --release-notes /private/tmp/katalog-release-notes.txt \
-  --channel staging --previous-build 26 --draft
+  --channel staging --architecture arm64 --previous-build 27 --draft
 ```
 
 Le brouillon est nommé `appcast.draft.xml` et reste non signé. Pour préparer un
@@ -289,7 +309,7 @@ publique et le même canal. Une seed exportée par Sparkle peut être fournie av
 `--ed-key-file` ; sa clé publique est vérifiée avant signature.
 
 Adapter `--previous-build` au dernier build vérifié du canal réellement utilisé.
-Le flux 0.8.8 est préparé pour la transition **26 → 27**, après vérification du
+Le flux ARM 0.9.0 est préparé pour la transition **27 → 28**, après vérification du
 build réellement servi. La transition historique de 0.8.5 était **22 → 24** :
 le build 23 de 0.8.4 n’a pas été servi. L’exemple de staging ne prouve pas
 l’existence d’un serveur de staging ni une mise à jour installée.
@@ -306,7 +326,7 @@ version, le SHA-256, les octets et `uploaded: false`, sans chemin de clé privé
 La signature EdDSA du feed ne remplace pas Developer ID ni la notarisation.
 Le DMG et le ZIP doivent provenir du **même bundle final signé et notarisé**.
 Le pipeline public reste soumis aux contrôles de
-[publication](PUBLICATION.md) et de [distribution](RELEASING.md#recette-finale).
+[publication](PUBLICATION.md) et de [distribution](RELEASING.md#qualifier-les-fichiers-finaux).
 
 KataLog est sous **GPL-3.0-only**. Chaque release binaire doit proposer son
 code source correspondant, identifié par le tag exact, avec l’archive de
@@ -323,7 +343,8 @@ Avant activation publique, qualifier un cycle staging complet : proposition de
 version, refus d’une mauvaise signature de feed et d’archive, téléchargement
 interrompu, refus d’un downgrade, attente pendant une collecte, installation et
 relancement avec bibliothèque et dossier de collecte conservés. Répéter le
-cycle sur macOS 15 et macOS 27. Les tests unitaires et les signatures locales
+cycle sur les runners natifs macOS 15 et 26, Apple Silicon et Intel. Les tests
+unitaires et les signatures locales
 constituent des preuves logicielles ; ils ne remplacent pas cette recette
 d’installation.
 

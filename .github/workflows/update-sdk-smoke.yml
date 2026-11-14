@@ -13,10 +13,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15
-            major: '15'
-          - os: xcode-27
-            major: '27'
+          - {os: macos-15, major: '15', arch: arm64}
+          - {os: macos-26, major: '26', arch: arm64}
+          - {os: macos-15-intel, major: '15', arch: x86_64}
+          - {os: macos-26-intel, major: '26', arch: x86_64}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
@@ -29,10 +29,7 @@ jobs:
         with:
           python-version: '3.13'
       - name: Verify runner
-        run: |
-          platform_version="$(/usr/bin/sw_vers -productVersion)"
-          test "${platform_version%%.*}" = "$KATALOG_UPDATE_EXPECT_MAJOR"
-          test "$(/usr/bin/uname -m)" = arm64
+        run: python3 tools/check-native-host.py --architecture '${{ matrix.arch }}' --major '${{ matrix.major }}' --output reports/update-sdk/native-host.json
       - name: Resolve pinned Sparkle SDK
         run: swift package --scratch-path /tmp/katalog-update-sdk resolve
       - name: Installation, relaunch and rejected updates
@@ -41,7 +38,8 @@ jobs:
           import json, os, pathlib, subprocess, tempfile
 
           sdk = pathlib.Path('/tmp/katalog-update-sdk/artifacts/sparkle/Sparkle')
-          reports = pathlib.Path(tempfile.mkdtemp(prefix='katalog-update-sdk-reports-', dir='/tmp'))
+          reports = pathlib.Path('reports/update-sdk')
+          reports.mkdir(parents=True, exist_ok=True)
           recipes = [
               ('success', []),
               ('tampered-feed', ['--tamper', 'feed']),
@@ -71,3 +69,11 @@ jobs:
               summary.write('This job exercises SDK mechanics; production HTTPS and public release qualification are separate.\n')
           raise SystemExit(0 if all(passed for _, passed in results) else 1)
           PY
+      - name: Preserve native SDK qualification
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: update-sdk-${{ matrix.arch }}-${{ matrix.os }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: reports/update-sdk/
+          retention-days: 14
+          if-no-files-found: warn

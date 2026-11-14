@@ -109,7 +109,7 @@ class PublicationGuardTests(unittest.TestCase):
         # Even an empty local config is private. Test both the repository's
         # ignore rules and the guard after someone explicitly bypasses them.
         names = ["annotations.json", "settings.json", "views.json", "fleet.json",
-                 "gcs-settings.json", "gcs-collection.json", "import-options.json",
+                 "gcs-settings.json", "gcs-collection.json", "usb-collection.json", "import-options.json",
                  "progress.json", ".archive-journal.json", ".restore-journal.json"]
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

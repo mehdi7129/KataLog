@@ -16,6 +16,9 @@ import dmgbuild
 _mount_spec = importlib.util.spec_from_file_location('katalog_dmg_mount', Path(__file__).with_name('dmg_mount.py'))
 dmg_mount = importlib.util.module_from_spec(_mount_spec)
 _mount_spec.loader.exec_module(dmg_mount)
+_verify_spec = importlib.util.spec_from_file_location('katalog_distribution', Path(__file__).with_name('verify-distribution.py'))
+distribution = importlib.util.module_from_spec(_verify_spec)
+_verify_spec.loader.exec_module(distribution)
 
 
 def notarize(path, profile):
@@ -30,7 +33,7 @@ def notarize(path, profile):
     return {'id': submission['id'], 'status': submission['status']}
 
 
-def build(app, output, identity, profile=None):
+def build(app, output, identity, profile=None, skip_runtime=False):
     output = output.resolve()
     if output.exists():
         raise ValueError('Le DMG de destination existe déjà ; choisissez un autre nom pour le conserver.')
@@ -39,7 +42,7 @@ def build(app, output, identity, profile=None):
     # image on macOS 27. Build, sign and verify on the local volume first.
     with tempfile.TemporaryDirectory(prefix='katalog-dmg-publish-', dir='/private/tmp') as staging:
         local = Path(staging) / output.name
-        result = _build_local(app, local, identity, profile)
+        result = _build_local(app, local, identity, profile, skip_runtime=True) if skip_runtime else _build_local(app, local, identity, profile)
         created = False
         try:
             with local.open('rb') as source, output.open('xb') as destination:
@@ -56,13 +59,15 @@ def build(app, output, identity, profile=None):
     return result
 
 
-def _build_local(app, output, identity, profile=None):
+def _build_local(app, output, identity, profile=None, skip_runtime=False):
     app, output = app.resolve(), output.resolve()
     if output.exists():
         raise ValueError('Le DMG de destination existe déjà ; choisissez un autre nom pour le conserver.')
     info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
     if info.get('KatalogBundledEngineRequired') is not True:
         raise ValueError('Cette app ne contient pas le moteur autonome requis.')
+    verification = distribution.Verification(app, skip_runtime=skip_runtime)
+    policy = verification.runtime_policy()
     if profile and identity == '-':
         raise ValueError('Une signature Developer ID est requise pour notariser.')
     subprocess.run(['/usr/bin/codesign', '--verify', '--deep', '--strict', str(app)], check=True)
@@ -95,7 +100,7 @@ def _build_local(app, output, identity, profile=None):
     with dmg_mount.readonly_mount(output, prefix='katalog-dmg-content-') as mount:
         copied = mount / app.name
         copied_info = plistlib.loads((copied / 'Contents/Info.plist').read_bytes())
-        for key in ('CFBundleShortVersionString', 'CFBundleVersion', 'KatalogBundledEngineRequired'):
+        for key in ('CFBundleShortVersionString', 'CFBundleVersion', 'KatalogBundledEngineRequired', 'KatalogArchitecture'):
             if copied_info.get(key) != info.get(key):
                 raise ValueError('Le bundle copié dans le DMG ne correspond pas au build.')
         link = mount / 'Applications'
@@ -103,8 +108,10 @@ def _build_local(app, output, identity, profile=None):
             raise ValueError('Le raccourci Applications est invalide.')
         subprocess.run(['/usr/bin/codesign', '--verify', '--deep', '--strict', str(copied)], check=True)
         helper = copied / 'Contents/Helpers/KataLogEngine.app/Contents/MacOS/KataLogEngine'
-        subprocess.run([str(helper), '--katalog-runtime-info'], check=True, stdout=subprocess.DEVNULL)
-    result = {'version': info['CFBundleShortVersionString'], 'build': info['CFBundleVersion'], 'notarization': None}
+        if policy['runtimeExecuted']:
+            subprocess.run([str(helper), '--katalog-runtime-info'], check=True, stdout=subprocess.DEVNULL)
+    result = {'version': info['CFBundleShortVersionString'], 'build': info['CFBundleVersion'],
+              'architecture': policy['architecture'], 'runtimeExecution': verification.report['runtimeExecution'], 'notarization': None}
     if profile:
         result['notarization'] = notarize(output, profile)
     result['sha256'] = hashlib.sha256(output.read_bytes()).hexdigest()
@@ -118,5 +125,7 @@ if __name__ == '__main__':
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--identity', default='-')
     parser.add_argument('--notary-profile')
+    parser.add_argument('--skip-runtime', action='store_true',
+                        help='Package a foreign-architecture app without running it; native validation remains required')
     args = parser.parse_args()
-    build(args.app, args.output, args.identity, args.notary_profile)
+    build(args.app, args.output, args.identity, args.notary_profile, args.skip_runtime)

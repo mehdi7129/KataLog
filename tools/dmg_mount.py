@@ -25,7 +25,14 @@ def _detach_owned_mount(mount):
                 time.sleep(.5)
     status = ('exit status %d' % failure.returncode if isinstance(failure, subprocess.CalledProcessError)
               else 'timeout')
-    raise TemporaryMountError('Temporary DMG detach failed (%s); mount preserved at %s' % (status, mount)) from failure
+    # Keep the system diagnostic: an exit code alone cannot distinguish a busy
+    # volume from an already detached image or a runner's disk-image failure.
+    detail = getattr(failure, 'stderr', None) or getattr(failure, 'stdout', None) or ''
+    if isinstance(detail, bytes):
+        detail = detail.decode('utf-8', errors='replace')
+    detail = str(detail).strip()[:2000]
+    raise TemporaryMountError('Temporary DMG detach failed (%s); mount preserved at %s%s' %
+                              (status, mount, ': ' + detail if detail else '')) from failure
 
 
 @contextmanager

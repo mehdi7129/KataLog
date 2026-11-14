@@ -2,6 +2,8 @@
 import hashlib
 import importlib.util
 import io
+import json
+import platform
 from pathlib import Path
 import tarfile
 import tempfile
@@ -13,10 +15,11 @@ cache = importlib.util.module_from_spec(spec); spec.loader.exec_module(cache)
 
 
 class PythonRuntimeCacheTests(unittest.TestCase):
-    def archive(self, root, name, version):
+    def archive(self, root, name, version, architecture=None):
         target = root / name
+        result = json.dumps({'version': list(map(int, version.split('.'))), 'architecture': architecture or platform.machine()})
         with tarfile.open(target, 'w:gz') as archive:
-            for path, content, mode in [('python/bin/python3', '#!/bin/sh\nprintf \'%s\\n\' \'[' + version.replace('.', ',') + ']\'\n', 0o755),
+            for path, content, mode in [('python/bin/python3', '#!/bin/sh\nprintf \'%s\\n\' \'' + result + '\'\n', 0o755),
                                         ('python/lib/public-fixture.txt', 'invented runtime fixture', 0o644)]:
                 data = content.encode(); member = tarfile.TarInfo(path); member.size = len(data); member.mode = mode
                 archive.addfile(member, io.BytesIO(data))
@@ -42,6 +45,19 @@ class PythonRuntimeCacheTests(unittest.TestCase):
                 cache.prepare(root, invalid, invalid_digest, '3.13.15')
             self.assertEqual(before, ((root / 'python/bin/python3').read_bytes(), (root / 'python/bin/python3').stat().st_ino))
             self.assertFalse(list(root.glob('python-stage-*')))
+
+    def test_wrong_architecture_in_archive_cannot_replace_valid_runtime(self):
+        with tempfile.TemporaryDirectory(prefix='katalog-runtime-architecture-') as name:
+            work = Path(name); valid, digest = self.archive(work, 'valid.tar.gz', '3.13.15')
+            root = work / 'cache'; cache.prepare(root, valid, digest, '3.13.15')
+            previous = (root / 'python/bin/python3').read_bytes()
+            foreign = 'x86_64' if platform.machine() == 'arm64' else 'arm64'
+            invalid, digest = self.archive(work, 'invalid.tar.gz', '3.13.15', foreign)
+            with self.assertRaisesRegex(ValueError, 'wrong version or architecture'):
+                cache.prepare(root, invalid, digest, '3.13.15')
+            self.assertEqual((root / 'python/bin/python3').read_bytes(), previous)
+            with self.assertRaisesRegex(ValueError, 'native target architecture'):
+                cache.prepare(root, invalid, digest, '3.13.15', foreign)
 
 
 if __name__ == '__main__': unittest.main()

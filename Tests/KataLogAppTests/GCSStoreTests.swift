@@ -191,6 +191,10 @@ u=arg('--uuid')
 paths=['/fs/microsd/log/2026-09-01/a.ulg','/fs/microsd/log/2026-09-01/b.ulg']
 if mode=='pipeline-benchmark': paths=['/fs/microsd/log/2026-09-01/'+str(i)+'.ulg' for i in range(8)]
 if cmd=='inventory':
+    if mode in ('manual','delayed-start','slow-inventory'):
+        with (root/'inventory-trace.jsonl').open('a') as trace:
+            trace.write(json.dumps(dict(uuid=u,time=time.time()))+'\n')
+    if mode=='slow-inventory': time.sleep(2)
     if mode=='inventory-error' and u==ids[1]:
         emit('error',message='simulated missing inventory',retryable=False);sys.exit(1)
     files=[]
@@ -215,7 +219,13 @@ else:
     count=root/(key+'.attempt');attempt=int(count.read_text())+1 if count.exists() else 1;count.write_text(str(attempt))
     fd=os.open(root/'trace.jsonl',os.O_WRONLY|os.O_CREAT|os.O_APPEND,0o600)
     os.write(fd,(json.dumps(dict(uuid=u,path=p,attempt=attempt,time=time.time(),host=arg('--host'),destination=arg('--destination'),reservedBytes=int(arg('--reserved-bytes'))))+'\n').encode());os.close(fd)
+    if mode=='delayed-start':
+        deadline=time.monotonic()+8
+        while not (root/'release-downloads').exists() and time.monotonic()<deadline: time.sleep(.02)
     emit('transfer_started',uuid=u,path=p,timeoutSeconds=300)
+    if mode=='manual':
+        deadline=time.monotonic()+8
+        while not (root/'release-downloads').exists() and time.monotonic()<deadline: time.sleep(.02)
     wait_phase('drone',u)
     emit('progress',uuid=u,path=p,bytes=64 if mode in ('phases','phases-gated') else 16,total=64,phase='drone')
     if mode=='phases-gated': wait_phase('http',u)
@@ -499,6 +509,116 @@ else:
         let saved = try JSONDecoder().decode(GCSCollectionState.self, from: Data(contentsOf: root.appendingPathComponent("gcs-settings.json")))
         XCTAssertTrue(saved.allowedUUIDs.isEmpty)
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("trace.jsonl").path))
+    }
+
+    func testCanAddAnotherDroneWhileDownloadingWithoutDuplicateSources() async throws {
+        let (store, root) = try fixture(mode: "manual")
+        addTeardownBlock { @MainActor in
+            try await store.finishTermination()
+            try? FileManager.default.removeItem(at: root)
+        }
+        try await waitUntil { store.canCollectAll }
+        await store.selectDrone(first)
+        try await waitUntil { !store.isInventoryBusy && store.files.count == 2 }
+        let path = try XCTUnwrap(store.files.first?.id)
+        store.selectedFileIDs = [path]; store.enqueueSelected()
+        try await waitUntil { store.activeTransferCount == 1 }
+        let firstID = try XCTUnwrap(store.queue.first?.id)
+        let batch = try XCTUnwrap(store.queue.first?.batchID)
+        do { try await store.setDownloadDirectory(root); XCTFail("Destination change must remain blocked during a transfer.") }
+        catch {}
+
+        await store.selectDrone(second)
+        XCTAssertEqual(store.selectedUUID, second)
+        try await waitUntil { !store.isInventoryBusy && store.files.count == 2 }
+        XCTAssertEqual(store.activeTransferCount, 1, "Reading B must not interrupt A.")
+        store.selectedFileIDs = [path]; store.enqueueSelected()
+        try await waitUntil { store.activeTransferCount == 2 }
+        store.selectedFileIDs = [path]; store.enqueueSelected()
+        try await waitUntil { !store.isInventoryBusy }
+        XCTAssertEqual(store.queue.count, 2)
+        XCTAssertEqual(Set(store.queue.map(\.droneUUID)), [first, second])
+        XCTAssertEqual(Set(store.queue.map(\.remotePath)), [path])
+        XCTAssertEqual(Set(store.queue.compactMap(\.batchID)), [batch])
+        XCTAssertEqual(store.queue.first?.id, firstID)
+        try Data().write(to: root.appendingPathComponent("release-downloads"))
+        try await waitUntil { !store.isBusy && store.queue.allSatisfy(\.isSuccessful) }
+        try await store.waitForPersistence()
+        let restored = GCSStore(storageDirectory: root)
+        XCTAssertEqual(Set(restored.queue.map(\.droneUUID)), [first, second])
+        XCTAssertTrue(restored.queue.allSatisfy { $0.destination == store.downloadDirectory.path })
+    }
+
+    func testRefreshWaitsForSameDroneWorkerBeforeTransferStartedArrives() async throws {
+        let (store, root) = try fixture(mode: "delayed-start")
+        addTeardownBlock { @MainActor in
+            try await store.finishTermination()
+            try? FileManager.default.removeItem(at: root)
+        }
+        try await waitUntil { store.canCollectAll }
+        await store.selectDrone(first)
+        try await waitUntil { !store.isInventoryBusy && store.files.count == 2 }
+        store.selectedFileIDs = [try XCTUnwrap(store.files.first?.id)]; store.enqueueSelected()
+        try await waitUntil { store.activeTransferCount == 1 }
+        XCTAssertNil(store.queue.first?.remoteBusyUntil)
+        let inventoryTrace = root.appendingPathComponent("inventory-trace.jsonl")
+        let before = try Data(contentsOf: inventoryTrace)
+        store.refreshInventory()
+        XCTAssertFalse(store.canRefreshInventory)
+        XCTAssertFalse(store.isInventoryBusy)
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(try Data(contentsOf: inventoryTrace), before,
+                       "A worker reservation excludes inventory even before its remote-busy event.")
+        try Data().write(to: root.appendingPathComponent("release-downloads"))
+        try await waitUntil { !store.isBusy && store.files.contains(where: \.isDownloaded) }
+        store.refreshInventory()
+        try await waitUntil { !store.isInventoryBusy }
+        XCTAssertEqual(try String(contentsOf: inventoryTrace, encoding: .utf8).split(separator: "\n").count, 2)
+    }
+
+    func testAddingAnotherDronePreservesExplicitPauseUntilResume() async throws {
+        let (store, root) = try fixture(mode: "normal")
+        addTeardownBlock { @MainActor in
+            try await store.finishTermination()
+            try? FileManager.default.removeItem(at: root)
+        }
+        try await waitUntil { store.canCollectAll }
+        store.pauseQueue()
+        for uuid in [first, second] {
+            await store.selectDrone(uuid)
+            try await waitUntil { !store.isInventoryBusy && store.files.count == 2 }
+            store.selectedFileIDs = [try XCTUnwrap(store.files.first?.id)]
+            store.enqueueSelected()
+            try await waitUntil { !store.isInventoryBusy }
+            XCTAssertTrue(store.isQueuePaused)
+            XCTAssertEqual(store.activeTransferCount, 0)
+        }
+        XCTAssertEqual(store.queue.count, 2)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("trace.jsonl").path))
+        store.resumeQueue()
+        try await waitUntil { !store.isBusy && store.queue.allSatisfy(\.isSuccessful) }
+    }
+
+    func testInventorySelectionIsStableAndStopCannotPublishLateFiles() async throws {
+        let (store, root) = try fixture(mode: "slow-inventory")
+        addTeardownBlock { @MainActor in
+            try await store.finishTermination()
+            try? FileManager.default.removeItem(at: root)
+        }
+        try await waitUntil { store.canCollectAll }
+        await store.selectDrone(first)
+        try await waitUntil { FileManager.default.fileExists(atPath: root.appendingPathComponent("inventory-trace.jsonl").path) }
+        await store.selectDrone(second)
+        XCTAssertEqual(store.selectedUUID, first, "An in-flight inventory keeps its selection until it finishes or stops.")
+        store.stopCollection()
+        try await waitUntil { !store.isInventoryBusy }
+        XCTAssertTrue(store.files.isEmpty)
+        XCTAssertTrue(store.queue.isEmpty)
+        XCTAssertTrue(store.isQueuePaused)
+        try "normal".write(to: root.appendingPathComponent("mode"), atomically: true, encoding: .utf8)
+        await store.selectDrone(second)
+        try await waitUntil { !store.isInventoryBusy && store.files.count == 2 }
+        XCTAssertEqual(store.selectedUUID, second)
     }
 
     func testCollectAllRunsTwoDronesRetriesAndSkipsVerifiedCache() async throws {

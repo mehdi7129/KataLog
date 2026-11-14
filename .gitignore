@@ -36,6 +36,7 @@ library.json
 annotations.json
 gcs-collection.json
 gcs-settings.json
+usb-collection.json
 views.json
 import-options.json
 progress.json

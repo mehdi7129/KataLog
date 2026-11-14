@@ -51,6 +51,28 @@ class RepositoryTests(unittest.TestCase):
     def query(self, **args):
         return repository.query(self.db, {'queryVersion': 1, **args})
 
+    def assert_registry_matches_client_oracle(self, annotations):
+        # Registry requests deliberately ignore dashboard status/date filters.
+        # A client containing every log really selects the independent scoped
+        # aggregation path; annotation-only drones remain global-only entries.
+        client = '11111111-1111-4111-8111-111111111111'
+        self.db.execute('INSERT OR IGNORE INTO clients VALUES(?,?)', (client, 'Synthetic oracle client'))
+        self.db.execute('INSERT OR REPLACE INTO log_clients SELECT id,? FROM logs', (client,))
+        self.db.commit()
+        fast = self.query(kind='drones', annotations=annotations)
+        reference = self.query(kind='drones', annotations=annotations, scope={'clientID': client})
+        logged = [row for row in fast['drones'] if row['logCount']]
+        self.assertEqual(len(logged), reference['total'])
+        for actual, expected in zip(logged, reference['drones']):
+            actual, expected = dict(actual), dict(expected)
+            actual_seconds, expected_seconds = actual.pop('recordedSeconds'), expected.pop('recordedSeconds')
+            # Regrouping REAL sums may change their last few binary digits;
+            # identities, counts, timestamps and annotations must stay exact.
+            self.assertAlmostEqual(actual_seconds, expected_seconds,
+                                   delta=max(1e-9, abs(expected_seconds) * 1e-12))
+            self.assertEqual(actual, expected)
+        return fast
+
     def test_note_only_identity_remains_visible_and_invalid_notes_are_rejected(self):
         note = {'text': 'Synthetic offline context', 'createdAt': '2026-10-14T10:00:00Z',
                 'updatedAt': '2026-10-14T11:00:00Z'}
@@ -134,7 +156,7 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(row['name'], max(named)[1])
         self.assertTrue(any('SELECT n.drone_name FROM kl_logs n INDEXED BY kl_logs_names' in sql and 'LIMIT 1' in sql for sql in statements))
         self.assertFalse(any('ROW_NUMBER() OVER' in sql for sql in statements))
-        self.assertTrue(any('FROM kl_logs l INDEXED BY kl_logs_scope_meta' in sql for sql in statements))
+        self.assertTrue(any('FROM kl_logs INDEXED BY kl_logs_registry' in sql for sql in statements))
         statements.clear()
         selected = self.query(scope={'droneKeys': ['ulog:named-controller']})
         self.assertEqual(selected['totals']['logs'], 3)
@@ -147,10 +169,118 @@ class RepositoryTests(unittest.TestCase):
         self.add('ambiguous-controller', 'controller-1', '2026-01-06', [], metadata={'gcsUUID': '234567890ABCDEF123456789', 'gcsIdentityStatus': 'observed'})
         annotations = {'stockNumbers': {'ulog:controller-1': 'LEGACY-1', 'ulog:controller-2': 'LEGACY-2',
                                        'gcs:' + uuid: 'CANONICAL', 'gcs:34567890ABCDEF1234567890': 'NO-LOG'}}
-        fast = self.query(kind='drones', annotations=annotations)
-        reference = self.query(kind='drones', annotations=annotations, scope={'statuses': ['ok', 'partial', 'error']})
-        self.assertEqual(fast['drones'], reference['drones'])
-        self.assertEqual(fast['total'], reference['total'])
+        fast = self.assert_registry_matches_client_oracle(annotations)
+        self.assertEqual(next(row for row in fast['drones'] if row['stockNumber'] == 'NO-LOG')['logCount'], 0)
+
+    def test_registry_raw_groups_preserve_fractional_totals_rejected_and_missing_identities(self):
+        uuid, other = '112233445566778899AABBCC', '2233445566778899AABBCCDD'
+        fixtures = [
+            ('direct', 'controller-1', uuid, 'observed', 'ok', .1),
+            ('shared', 'controller-2', uuid, 'observed', 'partial', .2),
+            ('ambiguous', 'controller-1', other, 'observed', 'ok', 1 / 3),
+            ('rejected', 'controller-2', uuid, 'rejected', 'ok', .4),
+            ('missing', 'controller-2', None, 'unavailable', 'partial', .5),
+            ('excluded-error', 'controller-2', uuid, 'observed', 'error', 999.9),
+            ('unknown-a', 'unknown-name-controller', None, 'unavailable', 'ok', .6),
+            ('unknown-b', 'unknown-name-controller', None, 'rejected', 'partial', .7),
+        ]
+        for name, controller, identity, identity_status, status, duration in fixtures:
+            value = self.add(name, controller, '' if name == 'missing' else '2026-02-01',
+                             [message()], duration=duration, status=status,
+                             metadata={'gcsUUID': identity, 'gcsIdentityStatus': identity_status})
+            if name.startswith('unknown-'):
+                value['droneName'] = 'Drone non identifié'
+                analyzer.remember_log(self.db, value)
+        annotations = {'stockNumbers': {'ulog:controller-1': 'LEGACY-1', 'ulog:controller-2': 'LEGACY-2',
+                                       'gcs:' + uuid: 'CANONICAL', 'ulog:annotation-only': 'NO-LOG'}}
+        fast = self.assert_registry_matches_client_oracle(annotations)
+        self.assertEqual(sum(row['logCount'] for row in fast['drones']), len(self.logs))
+        self.assertAlmostEqual(sum(row['recordedSeconds'] for row in fast['drones']),
+                               sum(log['durationSeconds'] for log in self.logs if log['status'] != 'error'))
+        by_id = {row['id']: row for row in fast['drones']}
+        self.assertEqual(by_id['gcs:' + uuid]['stockNumber'], 'CANONICAL')
+        self.assertEqual(by_id['ulog:controller-2']['stockNumber'], 'LEGACY-2')
+        self.assertEqual(by_id['ulog:unknown-name-controller']['name'], 'Drone non identifié')
+        self.assertEqual(by_id['ulog:annotation-only']['logCount'], 0)
+        # Existing dirty projection updates must maintain the additive index.
+        self.logs[0]['durationSeconds'] = .125
+        analyzer.remember_log(self.db, self.logs[0])
+        self.db.execute('DELETE FROM logs WHERE id=?', (self.logs[1]['id'],))
+        self.db.commit()
+        changed = self.assert_registry_matches_client_oracle(annotations)
+        self.assertEqual(sum(row['logCount'] for row in changed['drones']), len(self.logs) - 1)
+
+    def test_registry_old_read_only_projection_without_additive_index_keeps_results_and_bytes(self):
+        annotations = {'stockNumbers': {'ulog:controller-1': 'TEST-1', 'ulog:no-log': 'NO-LOG'}}
+        expected = self.query(kind='drones', annotations=annotations)
+        self.db.execute('DROP INDEX kl_logs_registry')
+        self.db.commit()
+        self.db.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+        canonical = list(self.db.execute('SELECT id,summary FROM logs ORDER BY id'))
+        before = self.database.read_bytes()
+        reader = analyzer.open_database(self.database, read_only=True)
+        self.addCleanup(reader.close)
+        actual = repository.query(reader, {'kind': 'drones', 'annotations': annotations}, read_only=True)
+        self.assertEqual(actual['drones'], expected['drones'])
+        self.assertEqual(actual['total'], expected['total'])
+        self.assertEqual(self.database.read_bytes(), before)
+        self.assertIsNone(reader.execute("SELECT 1 FROM sqlite_master WHERE name='kl_logs_registry'").fetchone())
+        self.assertEqual(reader.execute("SELECT value FROM kl_meta WHERE key='projectionVersion'").fetchone()[0], '8')
+        with patch.object(repository, 'project_log', side_effect=AssertionError('An index addition must not reproject canonical JSON')):
+            repository.initialize(self.db)
+        self.assertIsNotNone(self.db.execute("SELECT 1 FROM sqlite_master WHERE name='kl_logs_registry'").fetchone())
+        self.assertEqual(list(self.db.execute('SELECT id,summary FROM logs ORDER BY id')), canonical)
+
+    def test_page_enrichment_uses_identity_and_latest_name_outside_page(self):
+        uuid, other = '112233445566778899AABBCC', '2233445566778899AABBCCDD'
+        target = self.add('page-target', 'page-controller', '2029-01-01', [message('Inside page')])
+        target['droneName'] = 'Drone non identifié'
+        analyzer.remember_log(self.db, target)
+        proof = self.add('older-identity', 'page-controller', '2020-01-01', [message('Outside page')],
+                         metadata={'gcsUUID': uuid, 'gcsIdentityStatus': 'observed'})
+        proof['droneName'] = 'Name from outside the page'
+        analyzer.remember_log(self.db, proof)
+        annotations = {'stockNumbers': {'ulog:page-controller': 'LEGACY', 'gcs:' + uuid: 'CANONICAL'}}
+        first = self.query(limit=1, annotations=annotations, includeMessages=True)['snapshot']['logs'][0]
+        self.assertEqual(first['id'], target['id'])
+        self.assertEqual(first['droneName'], proof['droneName'])
+        self.assertEqual(first['annotationGCSUUID'], uuid)
+        self.assertEqual(first['stockNumber'], 'CANONICAL')
+        self.assertEqual([item['text'] for item in first['messages']], ['Inside page'])
+        self.add('outside-conflicting-identity', 'page-controller', '2019-01-01', [],
+                 metadata={'gcsUUID': other, 'gcsIdentityStatus': 'observed'})
+        ambiguous = self.query(limit=1, annotations=annotations)['snapshot']['logs'][0]
+        self.assertEqual(ambiguous['id'], target['id'])
+        self.assertNotIn('annotationGCSUUID', ambiguous)
+        self.assertEqual(ambiguous['stockNumber'], 'LEGACY')
+        self.assertIn('Plusieurs identités GCS', ambiguous['annotationWarning'])
+        target['metadata'].update(gcsUUID=uuid, gcsIdentityStatus='rejected')
+        analyzer.remember_log(self.db, target)
+        rejected = self.query(limit=1, annotations=annotations)['snapshot']['logs'][0]
+        self.assertEqual(rejected['stockNumber'], 'LEGACY')
+        self.assertNotIn('annotationGCSUUID', rejected)
+        self.assertIn('Identité GCS rejetée', rejected['annotationWarning'])
+
+    def test_unfiltered_log_and_map_pages_keep_date_id_ties_unknown_dates_and_names(self):
+        for name, date in [('tie-a', '2028-01-01'), ('tie-b', '2028-01-01'), ('unknown-date', '')]:
+            value = self.add(name, 'tie-controller', date, [])
+            value['droneName'] = name
+            analyzer.remember_log(self.db, value)
+        for kind in ('logs', 'map'):
+            for order in ('recent', 'oldest'):
+                with self.subTest(kind=kind, order=order):
+                    seen, cursor = [], None
+                    while True:
+                        page = self.query(kind=kind, sortOrder=order, limit=2, cursor=cursor)
+                        seen.extend(page['snapshot']['logs'])
+                        cursor = page['nextCursor']
+                        if cursor is None:
+                            break
+                    expected = sorted(self.logs, key=lambda item: (item['date'], item['id']), reverse=order == 'recent')
+                    self.assertEqual([item['id'] for item in seen], [item['id'] for item in expected])
+                    names = [item for item in self.logs if item['droneID'] == 'tie-controller']
+                    canonical_name = max(names, key=lambda item: (item['date'], item['id']))['droneName']
+                    self.assertTrue(all(item['droneName'] == canonical_name for item in seen if item['droneID'] == 'tie-controller'))
 
     def test_registry_includes_authorized_no_log_and_only_real_dated_gcs_observations(self):
         uuid = '112233445566778899AABBCC'
