@@ -1,0 +1,169 @@
+name: Native graphics and isolated XCTest diagnostics
+
+on:
+  workflow_call:
+    inputs:
+      source_commit:
+        description: Exact 40-character source commit to qualify independently of the harness
+        type: string
+        required: true
+      platform:
+        description: Native Intel diagnostic hosts (both, intel15 or intel26)
+        type: string
+        default: both
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact 40-character source commit to qualify independently of the harness
+        type: string
+        required: true
+        default: 8287ceee00a502fbd4ba9412df1f0bdb8f70c15c
+      platform:
+        description: Native Intel diagnostic hosts
+        type: choice
+        options: [both, intel15, intel26]
+        default: both
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: ${{ github.event.repository.visibility == 'public' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.platform == 'intel15' && '[{"os":"macos-15-intel","major":"15"}]' || inputs.platform == 'intel26' && '[{"os":"macos-26-intel","major":"26"}]' || '[{"os":"macos-15-intel","major":"15"},{"os":"macos-26-intel","major":"26"}]') }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      QUALIFIED_COMMIT: ${{ inputs.source_commit }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Checkout diagnostic tools
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: qualification-tools
+          persist-credentials: false
+      - name: Validate immutable source input
+        run: |
+          python3 - <<'PY'
+          import os, re
+          if not re.fullmatch(r'[0-9a-f]{40}', os.environ['QUALIFIED_COMMIT']):
+              raise SystemExit('source_commit must be a full lower-case commit SHA')
+          if os.environ['QUALIFIED_PLATFORM'] not in ('both', 'intel15', 'intel26'):
+              raise SystemExit('platform must be both, intel15 or intel26')
+          PY
+        env:
+          QUALIFIED_PLATFORM: ${{ inputs.platform }}
+      - name: Checkout qualified source separately
+        id: source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: qualified-source
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.13'
+      - name: Native host and immutable source
+        id: host
+        run: |
+          python3 qualified-source/tools/check-native-host.py --architecture x86_64 --major '${{ matrix.major }}' --output reports/native-diagnostics/host.json
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          root = pathlib.Path('qualified-source')
+          actual = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
+          if actual != os.environ['QUALIFIED_COMMIT']:
+              raise SystemExit('Qualified source differs from requested commit')
+          tools = pathlib.Path('qualification-tools')
+          provenance = dict(sourceCommit=actual, harnessCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=tools, text=True).strip(),
+              imageVersion=os.environ.get('ImageVersion'), imageOS=os.environ.get('ImageOS'),
+              runID=os.environ['GITHUB_RUN_ID'], runAttempt=os.environ['GITHUB_RUN_ATTEMPT'],
+              toolSHA256={str(p.relative_to(tools)):hashlib.sha256(p.read_bytes()).hexdigest() for p in
+                  [tools/'tools/qualify-isolated-swift-tests.py', tools/'tools/native-graphics-probe.swift']})
+          pathlib.Path('reports/native-diagnostics/provenance.json').write_text(json.dumps(provenance, indent=2)+'\n')
+          PY
+      - name: Pinned source runtime dependencies
+        id: dependencies
+        run: >-
+          python3 -m pip install --only-binary=:all: --require-hashes
+          -r qualified-source/requirements-runtime.txt
+      - name: Record native validation conditions
+        working-directory: qualified-source
+        run: python3 tools/write-ci-context.py --output ../reports/native-diagnostics/context.json --fixture isolated-native-diagnostics
+      - name: Compile independent graphics probes
+        id: probe_build
+        run: xcrun swiftc -parse-as-library qualification-tools/tools/native-graphics-probe.swift -o '${{ runner.temp }}/native-graphics-probe'
+      - name: Exercise Text, Canvas and Chart without renderer overrides
+        id: probes
+        if: ${{ !cancelled() && steps.probe_build.outcome == 'success' }}
+        env:
+          PROBE_EXECUTABLE: ${{ runner.temp }}/native-graphics-probe
+        run: |
+          python3 - <<'PY'
+          import importlib.util, json, os, pathlib, shutil
+          spec = importlib.util.spec_from_file_location('qualification', 'qualification-tools/tools/qualify-isolated-swift-tests.py')
+          module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+          root = pathlib.Path('reports/native-diagnostics/graphics').resolve(); root.mkdir(parents=True, exist_ok=True)
+          crashes = pathlib.Path.home() / 'Library/Logs/DiagnosticReports'
+          before = module.crash_files(crashes)
+          results = []
+          try:
+              for mode in ('gpu', 'text', 'canvas', 'chart'):
+                  result = module.run_streamed([os.environ['PROBE_EXECUTABLE'], mode, str(root)], pathlib.Path.cwd(), dict(os.environ, NSUnbufferedIO='YES'), root/(mode+'.log'), 45)
+                  result.pop('output')
+                  result['mode'] = mode; results.append(result)
+                  module.write_json(root/'summary.json', {'probes':results, 'passed':all(x['exitCode']==0 and not x['timedOut'] for x in results), 'complete':len(results)==4})
+          finally:
+              for path, fingerprint in module.crash_files(crashes).items():
+                  if before.get(path) != fingerprint:
+                      (root/'crashes').mkdir(exist_ok=True); shutil.copy2(path, root/'crashes'/path.name)
+          raise SystemExit(0 if len(results)==4 and all(x['exitCode']==0 and not x['timedOut'] for x in results) else 1)
+          PY
+      - name: Exhaustive isolated XCTest execution preserving crashes
+        id: tests
+        # A failed platform probe must not prevent collection of application evidence.
+        # This step still returns failure for any test crash, timeout, skip or omission.
+        if: ${{ !cancelled() && steps.host.outcome == 'success' && steps.dependencies.outcome == 'success' }}
+        run: >-
+          python3 qualification-tools/tools/qualify-isolated-swift-tests.py
+          --source-root qualified-source --source-commit "$QUALIFIED_COMMIT"
+          --scratch-path '${{ runner.temp }}/katalog-isolated-swift'
+          --output reports/native-diagnostics/xctest --budget-seconds 2100
+      - name: Summarize preserved evidence
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, shutil
+          # macOS can write .ips files after the crashed process has exited.
+          # This final pass preserves delayed reports on the ephemeral runner.
+          crash_root = pathlib.Path.home() / 'Library/Logs/DiagnosticReports'
+          destination = pathlib.Path('reports/native-diagnostics/delayed-crashes')
+          if crash_root.is_dir():
+              for path in crash_root.rglob('*'):
+                  if path.is_file() and path.name.startswith(('KataLog', 'xctest', 'native-graphics-probe')):
+                      destination.mkdir(parents=True, exist_ok=True)
+                      shutil.copy2(path, destination/path.name)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
+              output.write('## Native diagnostic evidence\n\n')
+              output.write('Qualified source: `' + os.environ['QUALIFIED_COMMIT'] + '`\n\n')
+              for name in ('graphics/summary.json', 'xctest/summary.json'):
+                  path = pathlib.Path('reports/native-diagnostics')/name
+                  output.write('### ' + name + '\n\n')
+                  if path.exists():
+                      data=json.loads(path.read_text())
+                      for key in ('status','scope','counts','discoveredCount','partitionComplete','rawFullSuitePassed','errors','complete','passed','probes'):
+                          if key in data: output.write('- ' + key + ': `' + json.dumps(data[key]) + '`\n')
+                  else: output.write('No report produced; inspect the failed step.\n')
+                  output.write('\n')
+              output.write('Platform failures remain failures. No release or update feed is changed.\n')
+          PY
+      - name: Keep partial manifests, logs and crash diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-diagnostics-${{ matrix.os }}-${{ inputs.source_commit }}-${{ github.run_attempt }}
+          path: reports/native-diagnostics/
+          retention-days: 14
+          if-no-files-found: error
