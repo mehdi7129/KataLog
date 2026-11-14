@@ -69,20 +69,33 @@ class DMGBuildIsolationTests(unittest.TestCase):
             manifest.write_text(json.dumps({'architecture': platform.machine()}))
             output = Path(temporary) / "candidate.dmg"
             mountpoints, detaches, helper_calls = [], [], []
+            attached = False
+
+            def entities():
+                return [{'dev-entry': '/dev/disk99'},
+                        {'dev-entry': '/dev/disk99s1', 'mount-point': str(mountpoints[0])}]
 
             def command(arguments, **options):
+                nonlocal attached
                 if arguments[:2] == ["/usr/bin/hdiutil", "attach"]:
                     mount = Path(arguments[arguments.index("-mountpoint") + 1])
                     mountpoints.append(mount)
                     shutil.copytree(app, mount / app.name)
                     (mount / "Applications").symlink_to("/Applications")
+                    attached = True
+                    return subprocess.CompletedProcess(arguments, 0, stdout=plistlib.dumps({'system-entities': entities()}))
+                elif arguments[:2] == ["/usr/bin/hdiutil", "info"]:
+                    images = [{'image-path': str(output.resolve()), 'system-entities': entities()}] if attached else []
+                    return subprocess.CompletedProcess(arguments, 0, stdout=plistlib.dumps({'images': images}))
                 elif arguments[:2] == ["/usr/bin/hdiutil", "detach"]:
+                    self.assertEqual(arguments[2], '/dev/disk99')
                     detaches.append(arguments)
                     self.assertEqual(len(helper_calls), 1)
                     if len(detaches) == 1:
                         raise subprocess.CalledProcessError(16, arguments, stderr=b"Resource busy")
                     shutil.rmtree(mountpoints[0] / app.name)
                     (mountpoints[0] / "Applications").unlink()
+                    attached = False
                 elif arguments[-1] == "--katalog-runtime-info":
                     helper_calls.append(arguments)
                     self.assertEqual(Path(arguments[0]), mountpoints[0] / app.name / "Contents/Helpers/KataLogEngine.app/Contents/MacOS/KataLogEngine")
