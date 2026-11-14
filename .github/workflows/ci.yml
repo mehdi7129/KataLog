@@ -6,20 +6,25 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Test/build candidates, or validate locally signed draft assets
+        description: Build candidates, validate signed draft assets, or diagnose native tests
         type: choice
-        options: [build-candidate, verify-signed]
+        options: [build-candidate, verify-signed, native-diagnostics]
         default: build-candidate
       validation_architecture:
         description: Architecture for tests and ad hoc packages only; signed verification always covers all four hosts
         type: choice
         options: [all, arm64, x86_64]
         default: all
+      diagnostic_platform:
+        description: Intel hosts for isolated native diagnostics only
+        type: choice
+        options: [both, intel15, intel26]
+        default: both
       release_tag:
         description: Draft release tag for signed validation
         type: string
       expected_commit:
-        description: Exact 40-character source commit for signed validation
+        description: Exact 40-character source commit for signed validation or native diagnostics
         type: string
       arm64_zip_sha256:
         description: Expected SHA-256 of the signed arm64_zip asset
@@ -36,13 +41,13 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ inputs.mode || 'build-candidate' }}
   cancel-in-progress: true
 jobs:
   tests:
     # Standard hosted runners are free on public repositories. Skip every
     # trigger, including manual dispatch, while the repository is private.
-    if: ${{ github.event.repository.visibility == 'public' && inputs.mode != 'verify-signed' }}
+    if: ${{ github.event.repository.visibility == 'public' && (github.event_name != 'workflow_dispatch' || inputs.mode == 'build-candidate') }}
     strategy:
       fail-fast: false
       matrix:
@@ -96,7 +101,7 @@ jobs:
           if-no-files-found: warn
   package-smoke:
     name: Package ${{ matrix.arch }} / ${{ matrix.os }}
-    if: ${{ github.event.repository.visibility == 'public' && inputs.mode != 'verify-signed' }}
+    if: ${{ github.event.repository.visibility == 'public' && (github.event_name != 'workflow_dispatch' || inputs.mode == 'build-candidate') }}
     strategy:
       fail-fast: false
       matrix:
@@ -159,6 +164,14 @@ jobs:
           path: reports/candidate/
           retention-days: 14
           if-no-files-found: error
+  native-diagnostics:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.repository.visibility == 'public' && inputs.mode == 'native-diagnostics' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/native-diagnostics.yml
+    with:
+      source_commit: ${{ inputs.expected_commit }}
+      platform: ${{ inputs.diagnostic_platform }}
   verify-signed:
     name: Signed candidate ${{ matrix.arch }} / ${{ matrix.os }}
     # GitHub only exposes draft releases to identities with push access.
