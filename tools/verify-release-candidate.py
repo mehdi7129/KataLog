@@ -40,6 +40,18 @@ def bundle_files(root):
             for path in root.rglob('*') if path.is_symlink() or path.is_file()}
 
 
+def checked_source_commit(source_root, expected):
+    top = subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], cwd=source_root, text=True).strip()
+    if Path(top).resolve() != Path(source_root).resolve():
+        raise ValueError('The candidate source must be a Git checkout root.')
+    commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=source_root, text=True).strip()
+    if commit != expected:
+        raise ValueError('The checked-out source differs from the candidate commit.')
+    if subprocess.check_output(['git', 'status', '--porcelain'], cwd=source_root, text=True).strip():
+        raise ValueError('The candidate source checkout has local modifications or untracked files.')
+    return commit
+
+
 
 def validate_candidate_bundle(app, architecture, release_tag, root=ROOT):
     """Bind the final bundle to the reviewed source, release and update route."""
@@ -146,6 +158,8 @@ def main():
     parser.add_argument('--architecture', choices=('arm64', 'x86_64'), required=True)
     parser.add_argument('--release-tag', required=True)
     parser.add_argument('--commit', required=True)
+    parser.add_argument('--source-root', type=Path, default=ROOT,
+                        help='Clean checkout of the exact product commit; the qualification harness may be newer.')
     parser.add_argument('--zip-sha256', required=True)
     parser.add_argument('--dmg-sha256', required=True)
     parser.add_argument('--output', type=Path, required=True)
@@ -154,9 +168,9 @@ def main():
         parser.error('An exact source commit and both SHA-256 values are required.')
     if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', args.release_tag):
         parser.error('A versioned draft release tag is required.')
-    commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
-    if commit != args.commit:
-        raise SystemExit('The checked-out source differs from the candidate commit.')
+    source_root = args.source_root.resolve()
+    commit = checked_source_commit(source_root, args.commit)
+    harness_commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     run([sys.executable, ROOT / 'tools/check-native-host.py', '--architecture', args.architecture])
     metadata = json.loads(subprocess.check_output(['gh', 'release', 'view', args.release_tag, '--repo', 'mehdi7129/KataLog',
                                                   '--json', 'isDraft,targetCommitish,tagName'], text=True))
@@ -185,13 +199,14 @@ def main():
         app = installed / 'KataLog.app'
         if bundle_files(app) != bundle_files(extracted / 'KataLog.app'):
             raise SystemExit('ZIP and DMG contain different app bundle bytes or symlinks.')
-        source_proof = validate_candidate_bundle(app, args.architecture, args.release_tag)
+        source_proof = validate_candidate_bundle(app, args.architecture, args.release_tag, source_root)
         run([sys.executable, ROOT / 'tools/verify-distribution.py', '--app', app, '--dmg', dmg,
              '--require-notarized', '--report', output / 'distribution.json'])
         run([sys.executable, ROOT / 'tools/verify-usb-runtime.py', '--app', app, '--report', output / 'usb-runtime.json',
              '--bench-python', sys.executable])
         app_proof = app_launch_smoke(app, output)
-        receipt = dict(passed=True, commit=commit, architecture=args.architecture, releaseTag=args.release_tag,
+        receipt = dict(passed=True, commit=commit, harnessCommit=harness_commit,
+                       architecture=args.architecture, releaseTag=args.release_tag,
                        zipSHA256=args.zip_sha256, dmgSHA256=args.dmg_sha256, nativeExecution=True,
                        copiedFromDMGAndEjected=True, bundleSource=source_proof, appLaunch=app_proof,
                        swiftProvenanceAssumption='Operator selected the CI ZIP by commit and SHA-256 and preserved its executables through local signing', published=False)

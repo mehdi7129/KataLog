@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import plistlib
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -14,6 +15,33 @@ sys.path.insert(0, str(ROOT / 'tools'))
 SPEC = importlib.util.spec_from_file_location('katalog_release_candidate', ROOT / 'tools/verify-release-candidate.py')
 release = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(release)
+
+
+class SeparateSourceCheckoutTests(unittest.TestCase):
+    def test_source_identity_and_cleanliness_are_checked_in_product_checkout(self):
+        with tempfile.TemporaryDirectory(prefix='katalog-source-identity-') as temporary:
+            root = Path(temporary)
+            def git(*args):
+                return subprocess.check_output(['git', *args], cwd=root, text=True).strip()
+            git('init', '-q')
+            (root / 'product.txt').write_text('frozen')
+            git('add', 'product.txt')
+            git('-c', 'user.name=KataLog test', '-c', 'user.email=test@example.invalid',
+                'commit', '-qm', 'synthetic product')
+            commit = git('rev-parse', 'HEAD')
+            self.assertEqual(release.checked_source_commit(root, commit), commit)
+            subdirectory = root / 'nested'; subdirectory.mkdir()
+            with self.assertRaisesRegex(ValueError, 'checkout root'):
+                release.checked_source_commit(subdirectory, commit)
+            with self.assertRaisesRegex(ValueError, 'differs'):
+                release.checked_source_commit(root, '0' * 40)
+            (root / 'product.txt').write_text('changed after checkout')
+            with self.assertRaisesRegex(ValueError, 'local modifications'):
+                release.checked_source_commit(root, commit)
+            git('checkout', '--', 'product.txt')
+            (root / 'untracked-input.py').write_text('unreviewed')
+            with self.assertRaisesRegex(ValueError, 'untracked files'):
+                release.checked_source_commit(root, commit)
 
 
 class ReleaseCandidateTests(unittest.TestCase):
