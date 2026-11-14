@@ -154,7 +154,11 @@ jobs:
           if-no-files-found: error
   verify-signed:
     name: Signed candidate ${{ matrix.arch }} / ${{ matrix.os }}
-    if: ${{ github.event.repository.visibility == 'public' && inputs.mode == 'verify-signed' }}
+    # GitHub only exposes draft releases to identities with push access.
+    # This manual qualification job reads assets; it never publishes them.
+    permissions:
+      contents: write
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.repository.visibility == 'public' && inputs.mode == 'verify-signed' }}
     strategy:
       fail-fast: false
       matrix:
