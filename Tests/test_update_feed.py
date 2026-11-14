@@ -20,6 +20,48 @@ SIGNATURE = base64.b64encode(bytes(range(64))).decode()
 
 
 class UpdateFeedTests(unittest.TestCase):
+    def test_intel_uses_distinct_feed_and_never_invents_sparkle_hardware_filter(self):
+        info = self.metadata(channel="stable", architecture="x86_64")
+        self.assertTrue(info["SUFeedURL"].endswith("/updates/stable-intel/appcast.xml"))
+        self.assertEqual(info["SUPublicEDKey"], self.metadata(channel="stable")["SUPublicEDKey"])
+        xml = ET.fromstring(feed.feed_xml(info, "https://example.org/KataLog-0.6.0-macOS-x86_64.zip", 100, "Intel", "stable"))
+        self.assertIsNone(xml.find("channel/item/{" + feed.SPARKLE + "}hardwareRequirements"))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = self.archive(root, info)
+            manifest = feed.prepare(archive, "https://example.org/" + archive.name, root / "feed", "Intel", "stable", draft=True, architecture="x86_64")
+            self.assertEqual(manifest["architecture"], "x86_64")
+            self.assertEqual(manifest["feedURL"], info["SUFeedURL"])
+
+    def test_architecture_feed_manifest_and_filename_must_agree(self):
+        for architecture, incorrect in (("arm64", "x86_64"), ("x86_64", "arm64")):
+            with self.subTest(architecture=architecture):
+                correct = self.metadata(channel="stable", architecture=architecture)
+                other_feed = self.metadata(channel="stable", architecture=incorrect)["SUFeedURL"]
+                with self.assertRaisesRegex(ValueError, "chemin du flux"):
+                    feed.configured_info({}, "stable", other_feed, KEY, architecture)
+                with self.assertRaisesRegex(ValueError, "architecture"):
+                    feed.configured_info(correct, architecture=incorrect)
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    archive = self.archive(root, correct)
+                    with self.assertRaisesRegex(ValueError, "Architecture incohérente"):
+                        feed.archive_info(archive, incorrect)
+                    moved = archive.with_name(archive.name.replace(architecture, incorrect))
+                    archive.rename(moved)
+                    with self.assertRaisesRegex(ValueError, "nom de l’archive"):
+                        feed.archive_info(moved, architecture)
+                    moved.rename(archive)
+                    with zipfile.ZipFile(archive) as source:
+                        entries = {name: source.read(name) for name in source.namelist()}
+                    name = "KataLog.app/Contents/Helpers/KataLogEngine.app/Contents/Resources/runtime-manifest.json"
+                    entries[name] = json.dumps({"architecture": incorrect}).encode()
+                    with zipfile.ZipFile(archive, "w") as target:
+                        for name, value in entries.items():
+                            target.writestr(name, value)
+                    with self.assertRaisesRegex(ValueError, "Architecture incohérente"):
+                        feed.archive_info(archive, architecture)
+
     def test_ui_review_preview_cannot_activate_feed_or_become_update_archive(self):
         info = dict(CFBundleIdentifier="com.mehdiguiard.katalog.preview06", CFBundleShortVersionString="0.6.0",
                     CFBundleVersion="8", KataLogUIReviewPreview=True)
@@ -34,18 +76,20 @@ class UpdateFeedTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "preview UI"):
                 feed.archive_info(archive)
 
-    def metadata(self, *, channel="disabled", build="9"):
+    def metadata(self, *, channel="disabled", build="9", architecture="arm64"):
         info = dict(CFBundleIdentifier="com.mehdiguiard.katalog", CFBundleShortVersionString="0.6.0",
                     CFBundleVersion=build, LSMinimumSystemVersion="15.0")
         return feed.configured_info(info, channel,
-                                    "https://updates.example.org/" + channel + "/appcast.xml" if channel != "disabled" else None,
-                                    KEY if channel != "disabled" else None)
+                                    "https://updates.example.org/updates/" + channel + ("-intel" if architecture == "x86_64" else "") + "/appcast.xml" if channel != "disabled" else None,
+                                    KEY if channel != "disabled" else None, architecture)
 
     def archive(self, directory, info):
-        archive = directory / "KataLog-0.6.0-macOS-arm64.zip"
+        archive = directory / ("KataLog-0.6.0-macOS-" + info["KatalogArchitecture"] + ".zip")
         with zipfile.ZipFile(archive, "w") as output:
             output.writestr("KataLog.app/Contents/Info.plist", plistlib.dumps(info))
             output.writestr("KataLog.app/Contents/Resources/synthetic.txt", "fabricated update fixture")
+            output.writestr("KataLog.app/Contents/Helpers/KataLogEngine.app/Contents/Resources/runtime-manifest.json",
+                            json.dumps({"architecture": info["KatalogArchitecture"]}))
         return archive
 
     def test_disabled_configuration_has_no_feed_key_or_automatic_activity(self):

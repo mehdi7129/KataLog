@@ -39,10 +39,17 @@ class BuildInvocationIsolationTests(unittest.TestCase):
         self.assertFalse((fixture.shared / 'swift').exists())
         self.assertFalse((fixture.shared / 'engine').exists())
 
-    def test_package_smoke_keeps_its_unique_root_and_disabled_updates(self):
+    def package_smoke(self, explicit_channel=None):
         fixture = BuildFixture(self)
         project = fixture.project('B')
         shutil.copyfile(ROOT / 'tools/package-smoke.sh', project / 'tools/package-smoke.sh')
+        (project / 'updates/stable').mkdir(parents=True)
+        shutil.copyfile(ROOT / 'updates/stable/public-key.txt', project / 'updates/stable/public-key.txt')
+        # A real temporary commit lets the provenance check exercise Git, too.
+        (fixture.bin / 'git').unlink(missing_ok=True)
+        subprocess.run(['git', 'init', '-q', str(project)], check=True)
+        subprocess.run(['git', '-C', str(project), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                        'commit', '-q', '--allow-empty', '-m', 'Synthetic packaging source'], check=True)
         verifier = project / 'tools/verify-distribution.py'
         source = verifier.read_text().split('if __name__ == "__main__":', 1)[0]
         verifier.write_text(source + '''if __name__ == "__main__":
@@ -50,7 +57,13 @@ class BuildInvocationIsolationTests(unittest.TestCase):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({'checks': [{'synthetic': True}]}))
 ''')
-        process = fixture.start_command(['/bin/bash', str(project / 'tools/package-smoke.sh')], KATALOG_UPDATE_CHANNEL='stable')
+        (project / 'tools/verify-usb-runtime.py').write_text(
+            "import json, pathlib, sys\n"
+            "pathlib.Path(sys.argv[sys.argv.index('--report') + 1]).write_text(json.dumps({'synthetic': True}))\n")
+        env = dict(KATALOG_UPDATE_CHANNEL='stable')
+        if explicit_channel is not None:
+            env['KATALOG_SMOKE_UPDATE_CHANNEL'] = explicit_channel
+        process = fixture.start_command(['/bin/bash', str(project / 'tools/package-smoke.sh')], **env)
         stdout, stderr = process.communicate(timeout=30)
         self.assertEqual(process.returncode, 0, stdout + stderr)
         root = Path(next(line.split(' sous ', 1)[1] for line in stdout.splitlines()
@@ -64,11 +77,29 @@ class BuildInvocationIsolationTests(unittest.TestCase):
         self.assertTrue((root / 'swift/release/KataLog').is_file())
         report = json.loads((project / 'reports/package-smoke-verification.json').read_text())
         self.assertFalse(report['packageSmoke']['productionRelease'])
-        self.assertFalse(report['packageSmoke']['updateFeedActive'])
+        candidate = project / 'reports/candidate'
+        provenance = json.loads((candidate / 'candidate.json').read_text())
+        import hashlib
+        self.assertEqual(provenance['commit'], subprocess.check_output(['git', '-C', str(project), 'rev-parse', 'HEAD'], text=True).strip())
+        self.assertEqual(provenance['sha256'], hashlib.sha256((candidate / provenance['archive']).read_bytes()).hexdigest())
+        self.assertTrue((candidate / 'usb-bundle.json').is_file())
         import plistlib
-        info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
+        return report, plistlib.loads((app / 'Contents/Info.plist').read_bytes())
+
+    def test_package_smoke_keeps_its_unique_root_and_disabled_updates(self):
+        report, info = self.package_smoke()
+        self.assertFalse(report['packageSmoke']['updatesEnabledInBundle'])
         self.assertEqual(info['KatalogUpdateChannel'], 'disabled')
         self.assertFalse(info['KatalogUpdatesEnabled'])
+
+    def test_package_candidate_explicitly_selects_stable_feed_for_native_architecture(self):
+        report, info = self.package_smoke('stable')
+        self.assertTrue(report['packageSmoke']['updatesEnabledInBundle'])
+        self.assertEqual(info['KatalogUpdateChannel'], 'stable')
+        self.assertTrue(info['KatalogUpdatesEnabled'])
+        folder = 'stable-intel' if info['KatalogArchitecture'] == 'x86_64' else 'stable'
+        self.assertEqual(info['SUFeedURL'], 'https://raw.githubusercontent.com/mehdi7129/KataLog/main/updates/' + folder + '/appcast.xml')
+        self.assertEqual(info['SUPublicEDKey'], (ROOT / 'updates/stable/public-key.txt').read_text().strip())
 
     def test_termination_releases_lock_and_existing_lock_file_can_be_reused(self):
         temporary = tempfile.TemporaryDirectory(prefix='katalog-build-lock-test-', dir='/private/tmp')

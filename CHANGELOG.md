@@ -1,12 +1,23 @@
 # Changelog
 
-Version stable : **0.8.8**, build **27**.
+Version préparée : **0.9.0**, build **28**.
 [Télécharger KataLog](https://github.com/mehdi7129/KataLog/releases/latest) ·
 [Instructions de mise à jour](docs/UPDATING.md).
 Les sections antérieures conservent l’état de leur version au moment de sa livraison.
-Le flux signé build **27** est préparé depuis le build **26**. L’activation
-suit la vérification des archives publiques, la fusion du flux et son contrôle
-canonique. Les tags et archives déjà publiés restent immuables.
+Les tags et archives déjà publiés restent immuables.
+
+## 0.9.0 — 2026-11-14
+
+- Collecte USB direct depuis un contrôleur PX4 : sélection des logs, téléchargement MAVLink, vérification d’identité et d’intégrité, import automatique optionnel.
+- File USB persistante par appareil, pause, arrêt et reprise explicite après reconnexion. Les demandes gardent leur dossier et leur client destinataire.
+- Consultation et ajout de logs d’autres drones pendant les transferts GCS ; exclusion conservée pour les opérations concurrentes sur le même appareil.
+- Apps natives Apple Silicon et Intel, moteur Python embarqué et flux de mises à jour distincts par architecture.
+- Banc serial sans matériel avec trames MAVLink 1/2, pertes, déconnexions, changement d’identité et annulation.
+- README entièrement revu, guide USB et setup automatique des workspaces Paradev.
+
+Parseur **1.4.1** et projection SQLite **8** conservés ; aucun réimport global requis.
+Les essais simulés ne constituent pas une validation du firmware Aqua installé ni
+une mesure de débit sur matériel réel.
 
 ## 0.8.8 — 2026-10-15
 

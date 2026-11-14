@@ -1,183 +1,170 @@
 # Distribution macOS hors App Store
 
-La version **0.8.8 (build 27)** du **15 octobre 2026** enrichit le catalogue
-et simplifie la présentation des explications. La [recette 0.8.8](RELEASE-0.8.8.md)
-consigne les contrôles du candidat, du package final et de la publication.
-Le flux build **27** succède au build **26** : l’activation suit la vérification
-des quatre archives publiques, puis la fusion et le contrôle du flux canonique.
+La génération 0.9.0 distribue deux apps natives : **arm64** pour Apple Silicon et
+**x86_64** pour Intel, avec macOS **15 minimum**. Chaque app contient son moteur
+Python et utilise un flux Sparkle stable propre à son architecture. Aucun Python,
+Homebrew ni Rosetta n’est nécessaire chez l’utilisateur.
 
-La distribution conserve le DMG autonome et le flux Sparkle stable signé.
-Toute publication exige la validation de l’historique, des métadonnées GitHub
-et des assets ; une CI ad hoc ne qualifie pas à elle seule une distribution
-signée et notarisée. Les releases antérieures et leurs assets restent immuables.
+La version préparée est **0.9.0, build 28**, après **0.8.8, build 27**. Revérifier
+le dernier build public avant de publier. Les tags et assets antérieurs restent
+immuables. La [recette 0.8.8](RELEASE-0.8.8.md) conserve ses résultats historiques ;
+ils ne remplacent pas ceux du nouveau candidat.
 
-## Parcours utilisateur
+## Préparer le candidat
 
-Télécharger le **DMG signé et notarisé**, l’ouvrir, glisser **KataLog.app** dans
-**Applications**, éjecter puis lancer. Aucun Python, Homebrew, Terminal ni App Store
-n’est requis pour utiliser le package. Mac Apple Silicon, macOS 15 minimum.
-La recette native doit utiliser une copie du DMG après éjection. Ses résultats
-sont propres à la version et à l’OS testés ; une recette locale sur macOS 27
-ne vaut pas recette physique sur toutes les versions de macOS.
+1. Fixer version/build dans `tools/build-app.sh`, `tools/package-smoke.sh` et
+   `project.yml`, puis exécuter `xcodegen generate`.
+2. Exécuter les suites Swift, Python et Node décrites dans [CONTRIBUTING](../CONTRIBUTING.md).
+   Le corpus privé est facultatif et reste hors dépôt ; son absence est signalée.
+3. Contrôler `tools/check-publication.py --include-untracked`, le diff, l’historique,
+   les auteurs et les assets. Aucun log réel, identifiant de flotte, secret ou chemin
+   personnel ne doit être ajouté aux sources ou aux rapports publics.
+4. Qualifier le commit exact sur des runners natifs ARM64 et Intel. Conserver les
+   rapports, l’architecture effective, la version de macOS et les SHA des archives.
+   Une compilation croisée ou une inspection des en-têtes ne qualifie pas le runtime.
 
-## Préparer et tester
+Le [plan et sa double vérification](PLAN-USB-INTEL-RELEASE.md) décrivent les décisions
+USB/Intel. Le [banc USB](USB-COLLECTION.md#banc-sans-matériel) ne contacte aucun matériel.
 
-1. Fixer version et build dans `tools/build-app.sh`, `tools/package-smoke.sh` et
-   `project.yml`, puis `xcodegen generate`. Le build **27** de 0.8.8 succède au
-   build **26** de 0.8.7. Revérifier le dernier build effectivement servi avant
-   de préparer le nouveau flux.
-   Conserver l’identité stable de l’app ; la Preview utilise son identité séparée.
-2. Exécuter les suites Swift, Python et Node du README. `KATALOG_PRIVATE_FIXTURES`
-   désigne uniquement le corpus local ; les ULog et résultats privés restent hors Git.
-3. Exécuter `python3 tools/check-publication.py --include-untracked` et un scanner
-   de secrets ; vérifier historique, auteurs et tous les assets séparément.
-4. Vérifier certificat Developer ID et profil de notarisation disponibles dans le
-   Trousseau. Les noms et secrets du poste ne doivent pas entrer dans les sources.
+## Construire nativement
 
-## Construire le moteur et l’app
+Sur chaque architecture :
 
 ```sh
+KATALOG_ARCH="$(uname -m)" bash tools/build-app.sh
+```
+
+Le script refuse une architecture différente de celle du processus natif et une
+exécution sous Rosetta. Il compile Swift et le moteur Python pour cette architecture.
+CPython portable, wheels et outils PyInstaller sont épinglés avec SHA-256 ; les
+caches et builds s’effectuent hors du Bureau, dans `/private/tmp` par défaut.
+Aucun Python global n’est modifié. `KATALOG_ENGINE_BUILD_DIR`, `KATALOG_BUILD_DIR`
+et `KATALOG_DIST_DIR` permettent de choisir des dossiers séparés.
+
+Le helper est dans `Contents/Helpers/KataLogEngine.app`, ses composants natifs dans
+Frameworks et ses données dans Resources. Les versions, architecture, licences et
+hashes des sources sont embarqués. Un `KATALOG_ENGINE_PATH` préconstruit doit
+correspondre exactement aux sources, dépendances et architecture attendues.
+
+Les sorties sont `KataLog-VERSION-macOS-ARCH.zip` et `LOCAL-APP-PATH.txt` dans le
+dossier de distribution. Les exécutables propres à KataLog et le helper sont natifs
+à l’architecture ; le framework Sparkle peut être universel. Le vérificateur inspecte
+chaque Mach-O, ses dépendances, son minimum macOS et sa cohérence avec le manifeste.
+Les anciennes sorties locales sont conservées dans des dossiers `previous-build.*`.
+
+Par défaut, l’app est signée ad hoc avec les updates désactivées. Une candidate
+stable exige avant signature :
+
+```sh
+KATALOG_UPDATE_CHANNEL=stable \
+KATALOG_UPDATE_FEED_URL=URL_DU_FLUX_DE_L_ARCHITECTURE \
+KATALOG_UPDATE_PUBLIC_KEY="$(cat updates/stable/public-key.txt)" \
 KATALOG_SIGN_IDENTITY='Developer ID Application: NOM (TEAMID)' \
   bash tools/build-app.sh
 ```
 
-Le script construit par défaut le helper via `tools/build-engine.sh`. CPython
-portable, wheels et outils PyInstaller sont épinglés avec SHA-256 ; téléchargement
-et build s’effectuent dans `/private/tmp`. Aucun Python global n’est modifié.
-Les licences et le manifest sont embarqués dans le bundle du helper.
-
-Le package utilise `Contents/Helpers/KataLogEngine.app`, avec les composants natifs
-dans Frameworks et les données dans Resources. Ce format évite de placer des
-metadata Python dans un emplacement macOS réservé au code. Le résolveur commun
-vérifie protocole/parseur et n’utilise aucun Python externe dans une app distribuée.
-
-La compilation neutralise les chemins source. Avant signature, les chemins de
-recherche propres à Xcode sont retirés des binaires. Les composants natifs sont
-signés avec hardened runtime et timestamp, puis les bundles imbriqués, puis l’app.
-Un moteur préconstruit peut être désigné par `KATALOG_ENGINE_PATH` ; ses hashes
-source doivent correspondre exactement aux scripts actuels.
-
-Sorties : `dist/KataLog-VERSION-macOS-arm64.zip`, alias local `dist/KataLog.zip`,
-et `dist/LOCAL-APP-PATH.txt` indiquant une copie vérifiée hors Bureau. Les anciennes
-sorties sont conservées en `previous-build.*`. La signature ad hoc par défaut
-sert au développement ; une distribution requiert Developer ID.
-
-## Notariser l’app, puis le DMG
-
-### Créer un profil si le Trousseau n’en possède pas
-
-Le profil est un nom choisi localement, par exemple `KataLog-notary`. Il ne
-correspond pas à un certificat Developer ID et n’existe pas automatiquement.
-Depuis Terminal, le titulaire exécute :
+La clé privée reste dans le Trousseau local. Une CI de build n’en a pas besoin.
+Les workflows peuvent produire une archive ad hoc avec les métadonnées stables ;
+cette archive est récupérée et signée localement après contrôle de son SHA et de
+son commit. La signature de l’archive Intel peut être réalisée sur un Mac ARM :
 
 ```sh
-xcrun notarytool store-credentials KataLog-notary
+python3 tools/sign-bundle.py --app /chemin/KataLog.app \
+  --identity 'Developer ID Application: NOM (TEAMID)'
 ```
 
-Les questions interactives demandent l’Apple ID du compte Developer, son Team ID
-(page Membership du compte) et un mot de passe spécifique à l’app créé dans le
-compte Apple. Le titulaire saisit ces informations directement dans Terminal ;
-elles ne sont ni demandées dans une conversation ni ajoutées aux sources.
-`notarytool` les valide et les conserve dans le Trousseau. Ce choix n’installe
-pas l’app via l’App Store. Le pipeline peut ensuite utiliser ce seul nom de
-profil. Ne pas soumettre une release tant que le profil n’a pas été validé.
+Cela ne remplace pas l’exécution de ce bundle final sur un runner Intel.
 
-### Soumettre les fichiers qualifiés
+## Notariser l’app et le DMG
 
-```sh
-xcrun notarytool submit dist/KataLog-VERSION-macOS-arm64.zip \
-  --keychain-profile MON_PROFIL --wait
-```
+Vérifier le certificat Developer ID et un profil `notarytool` déjà validé dans le
+Trousseau. S’il manque, son titulaire crée le profil localement avec
+`xcrun notarytool store-credentials NOM_DU_PROFIL`, sans saisir les secrets dans une
+conversation, un script ou un workflow. Ne pas soumettre tant que le profil échoue.
 
-Continuer uniquement lorsque le statut est **Accepted**. Agrafer le ticket au
-helper imbriqué puis à l’app indiquée dans `LOCAL-APP-PATH.txt`, valider les deux
-tickets avec `xcrun stapler validate`, puis vérifier `codesign --verify --deep --strict`
-et `spctl --assess --type execute --verbose=2` sur l’app. Recréer le ZIP final
-avec `ditto -c -k --norsrc --keepParent` depuis cette app après stapling.
-
-Les outils de création du DMG sont testés avec Python 3.13. Si `python3`
-désigne le Python 3.9 fourni avec certains Command Line Tools, préparer le
-venv avec l'interpréteur 3.13 puis le désigner explicitement :
+1. Archiver l’app signée avec `ditto -c -k --norsrc --keepParent`, puis soumettre le
+   ZIP avec `xcrun notarytool submit ARCHIVE --keychain-profile PROFIL --wait`.
+2. Exiger **Accepted**. Agrafer les tickets au helper puis à l’app avec `xcrun stapler staple`.
+   Vérifier les tickets, `codesign --verify --deep --strict` et Gatekeeper.
+3. Recréer le ZIP final après stapling. Aucune signature Sparkle ni checksum final
+   ne doit précéder cette opération.
+4. Créer le DMG à partir de cette même app :
 
 ```sh
-python3.13 -m venv /private/tmp/katalog-dmg-tools-313
-```
-
-```sh
-KATALOG_DMG_BUILD_DIR=/private/tmp/katalog-dmg-tools-313 \
+KATALOG_APP_PATH=/chemin/KataLog.app \
+KATALOG_DMG_PYTHON=python3.13 \
 KATALOG_SIGN_IDENTITY='Developer ID Application: NOM (TEAMID)' \
-KATALOG_NOTARY_PROFILE=MON_PROFIL \
+KATALOG_NOTARY_PROFILE=NOM_DU_PROFIL \
   bash tools/build-dmg.sh
 ```
 
-`KATALOG_DMG_PYTHON=python3.13` permet aussi de choisir l’interpréteur lors de la
-création d’un nouveau venv. Le script vérifie Python 3.10 minimum, y compris
-pour un venv existant, avant de lancer l’installation des dépendances.
+Le DMG porte automatiquement le suffixe de l’architecture de l’app. Ses outils
+Python sont installés avec hashes dans un venv temporaire. Le script construit
+sur un volume local, vérifie la copie montée, signe, notarise, agrafe et valide
+l’image avant de copier ses octets vers la destination. Un DMG existant n’est
+jamais remplacé. `KATALOG_DMG_PATH` permet un autre chemin.
 
-Le script installe uniquement ses outils de build dans un venv temporaire, avec
-requirements et hashes épinglés. Il génère la fenêtre monochrome et le lien
-Applications, vérifie l’image ainsi que la copie du bundle sur le volume monté,
-signe le DMG, attend **Accepted**, puis agrafe et valide son ticket. Un DMG existant
-n’est jamais écrasé ; `KATALOG_DMG_PATH` permet de choisir un nouveau chemin.
-La création et la vérification utilisent un volume local temporaire ; seuls les
-octets vérifiés sont ensuite copiés vers la destination choisie. Cela permet
-de livrer aussi dans un dossier géré par FileProvider.
+Pour fabriquer le DMG Intel sur ARM, `KATALOG_DMG_SKIP_RUNTIME=1` autorise uniquement
+l’inspection croisée. Son rapport est incomplet par définition : la recette native
+Intel du bundle final reste obligatoire. Aucun attribut FinderInfo n’est ajouté
+au bundle signé ; cela casserait sa vérification stricte.
 
-Aucun attribut FinderInfo n’est ajouté au bundle signé : masquer son extension
-avec SetFile casserait la vérification stricte. Les réglages de fenêtre restent
-dans le .DS_Store généré du volume, sans coordonnées ni état de flotte.
+## Qualifier les fichiers finaux
 
-## Recette finale
+Sur un Mac de l’architecture de l’app :
 
 ```sh
-python3 tools/verify-distribution.py \
-  --app /chemin/vers/KataLog.app \
-  --dmg dist/KataLog-VERSION-macOS-arm64.dmg \
-  --report reports/verification-distribution.json \
-  --require-notarized
+python3 tools/verify-distribution.py --app /chemin/KataLog.app \
+  --dmg dist/KataLog-VERSION-macOS-ARCH.dmg \
+  --report reports/verification-distribution-ARCH.json --require-notarized
+
+python3 tools/verify-usb-runtime.py --app /chemin/KataLog.app \
+  --bench-python /chemin/venv/bin/python3 \
+  --report reports/verification-usb-ARCH.json
 ```
 
-La recette inspecte signatures, ticket/Gatekeeper, metadata et symlinks, tous les
-Mach-O/minima/dépendances, et le contenu décompressé des archives Python. Elle
-exécute le moteur sans Python dans le PATH, avec HOME isolé et variables Python
-invalides : import synthétique, réimport/cache/détails conservés hors source et
-simulateur GCS localhost avec réutilisation d’un téléchargement vérifié.
+Le premier contrôle vérifie signatures, tickets, symlinks, metadata, licences,
+Mach-O et contenu des archives Python, puis exécute le moteur avec HOME isolé et
+sans Python externe : import, cache et collecte GCS localhost. Le second teste le
+helper réellement embarqué sur un pseudo-terminal : MAVLink 1/2, blocs perdus,
+SHA exact, cache, mauvais UID, appareil armé, SIGTERM et libération du port.
 
-Vérifier aussi le lancement après copie puis éjection du DMG, l’import et l’export
-natifs, et la conservation du numéro/dossier après redémarrage avec une bibliothèque
-isolée. Pour 0.8.8, vérifier les nouvelles fiches courtes, leur confiance, les volets de
-vérification et de références, puis les exports HTML/JSON. Qualifier la conservation
-depuis 0.8.7 des analyses,
-clients, notes, favoris et révisions ; distinguer un transfert GCS simulé d’un essai Aqua réel.
-Une recette locale sur macOS 27 ne remplace pas un Mac vierge/macOS 15 ou un essai
-radio GCS réel. Calculer SHA256SUMS après toutes les opérations de stapling.
+`--skip-runtime` du vérificateur est réservé à une inspection depuis l’autre
+architecture. Le résultat `inspection-passed` n’est pas une qualification native.
+Les workflows conservent la preuve de l’exécution native finale séparément.
 
-## Publication séparée
+Copier également l’app depuis le DMG, éjecter celui-ci et tester l’interface avec
+une bibliothèque synthétique isolée. Vérifier collecte, ajout de plusieurs appareils,
+import et conservation après redémarrage. Ne jamais prendre la bibliothèque réelle
+comme fixture. Une recette CI Intel ne constitue pas un essai physique USB Aqua.
 
-Committer les sources et docs validées. Lorsqu’une publication est demandée,
-fixer un tag annoté correspondant au commit, puis créer la release avec le DMG,
-le ZIP de mise à jour, les sources correspondantes et leurs checksums.
-L’arbre du tag doit correspondre exactement à celui du commit qualifié, y compris
-si le commit de merge porte un autre identifiant. Les mises à jour documentaires
-et du flux effectuées ensuite ne déplacent pas ce tag. Vérifier le téléchargement et la quarantaine
-des assets depuis GitHub. Ne pas exposer les anciens assets 0.5.1 : ils restent
-dans l’archive privée distincte. Les clés privées et rapports de flotte restent locaux.
+## Publier puis activer les mises à jour
 
-## Flux stable 0.8
+Committer les sources et docs qualifiées. Créer un tag annoté correspondant à cet
+arbre exact ; une fusion peut changer le SHA du commit, mais pas son arbre qualifié.
+Publier les deux DMG, les deux ZIP, les sources correspondantes et `SHA256SUMS`.
+Calculer les hashes après tous les staplings. Vérifier les téléchargements publics,
+leurs signatures et la concordance des sources avec le tag. Ne remplacer aucun asset.
 
-Construire avec `KATALOG_UPDATE_CHANNEL=stable`, l’URL HTTPS publique et la clé
-publique vérifiée sous `updates/stable/public-key.txt`. Garder la clé privée dans
-le Trousseau, compte `katalog-sparkle-stable`. Notariser et agrafer le bundle,
-puis recréer le ZIP final avant toute signature Sparkle ou calcul de checksum.
-Pour 0.8.8, préparer le build **27** avec `--previous-build 26` seulement
-après vérification du build effectivement servi par le flux stable. Revérifier
-ce build au moment de publier : il ne doit pas avoir changé entre préparation
-et publication. La transition historique 0.8.3 → 0.8.5 était **22 → 24** ;
-la release 0.8.4 (build 23) n’a jamais été activée dans le flux stable.
-Publier d’abord le ZIP et le DMG vérifiés, puis le flux signé sous
-`updates/stable/appcast.xml`. La signature du fichier préparé localement et celle
-du ZIP ne prouvent pas la mise en ligne du feed : après fusion, télécharger le
-flux effectivement servi sans authentification et vérifier ses octets et signatures.
+| Architecture | Flux stable |
+| --- | --- |
+| Apple Silicon | `updates/stable/appcast.xml` — emplacement historique conservé |
+| Intel | `updates/stable-intel/appcast.xml` |
 
-Ne pas remplacer les assets d’une release déjà publiée : une nouvelle archive
-exige un nouveau numéro de build. Conserver les ZIP encore référencés par le flux.
+Les URLs embarquées pointent vers ces fichiers de la branche `main` sur
+`raw.githubusercontent.com/mehdi7129/KataLog/`. Les deux flux utilisent la clé
+publique stable vérifiée. Sparkle 2.10 reconnaît la contrainte `arm64` ; il ne
+fournit pas de filtre équivalent `x86_64`. La séparation des URLs empêche de proposer
+le mauvais package. Le générateur vérifie architecture, URL, nom d’archive et build.
+
+Préparer et signer chaque ZIP et chaque feed avec `tools/update-feed.py prepare`,
+en indiquant `--architecture arm64` ou `x86_64`, l’URL de l’asset immuable et le
+build effectivement servi auparavant. Le premier flux Intel utilise `--previous-build 0`, après vérification de l’absence
+d’un flux antérieur.
+Utiliser l’outil officiel `sign_update` et la clé du Trousseau ; ne pas exporter de clé
+privée dans le dépôt. Publier les feeds uniquement après vérification des assets.
+
+Après fusion, télécharger chaque flux canonique sans authentification et vérifier
+ses octets, sa signature, son build, sa clé publique et son enclosure. La signature
+d’un fichier local ne prouve pas que GitHub sert ce fichier. Conserver les archives
+encore référencées et consigner les résultats dans la recette de release.

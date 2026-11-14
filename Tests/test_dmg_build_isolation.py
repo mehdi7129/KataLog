@@ -1,8 +1,11 @@
 """DMG publication stays local until verified; no app, volume or identity needed."""
 import hashlib
+from contextlib import contextmanager
 import importlib.util
+import json
 from pathlib import Path
 import plistlib
+import platform
 import shutil
 import subprocess
 import sys
@@ -19,12 +22,51 @@ with patch.dict(sys.modules, {"dmgbuild": types.ModuleType("dmgbuild")}):
 
 
 class DMGBuildIsolationTests(unittest.TestCase):
+    def test_foreign_dmg_requires_explicit_skip_and_never_executes_its_helper(self):
+        with tempfile.TemporaryDirectory(prefix="katalog-foreign-dmg-") as temporary:
+            root = Path(temporary)
+            app = root / "KataLog.app"
+            (app / "Contents").mkdir(parents=True)
+            (app / "Contents/Info.plist").write_bytes(plistlib.dumps(dict(
+                KatalogBundledEngineRequired=True, KatalogArchitecture="x86_64",
+                CFBundleShortVersionString="0.9.0", CFBundleVersion="28")))
+            manifest = app / builder.distribution.HELPER_MANIFEST
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({'architecture': 'x86_64'}))
+            output = root / "intel.dmg"
+
+            @contextmanager
+            def mounted(*args, **kwargs):
+                mount = root / "mounted"
+                mount.mkdir()
+                shutil.copytree(app, mount / app.name)
+                (mount / "Applications").symlink_to('/Applications')
+                yield mount
+
+            def image(destination, name, settings):
+                Path(destination).write_bytes(b'Synthetic Intel image')
+
+            with patch.object(builder.distribution.platform, 'machine', return_value='arm64'), \
+                 patch.object(builder.subprocess, 'run') as command, \
+                 patch.object(builder.dmgbuild, 'build_dmg', create=True, side_effect=image), \
+                 patch.object(builder.dmg_mount, 'readonly_mount', side_effect=mounted):
+                with self.assertRaisesRegex(builder.distribution.CheckError, 'native matching Mac'):
+                    builder._build_local(app, output, '-')
+                command.assert_not_called()
+                result = builder._build_local(app, output, '-', skip_runtime=True)
+            self.assertEqual(result['architecture'], 'x86_64')
+            self.assertEqual(result['runtimeExecution'], 'skipped-cross-architecture')
+            self.assertFalse(any('--katalog-runtime-info' in call.args[0] for call in command.call_args_list))
+
     def test_local_build_retries_busy_mount_after_running_its_copied_helper(self):
         with tempfile.TemporaryDirectory(prefix="katalog-build-mount-fixture-") as temporary:
             app = Path(temporary) / "KataLog.app"
             (app / "Contents").mkdir(parents=True)
             (app / "Contents/Info.plist").write_bytes(plistlib.dumps(dict(
-                KatalogBundledEngineRequired=True, CFBundleShortVersionString="0.6.0", CFBundleVersion="8")))
+                KatalogBundledEngineRequired=True, KatalogArchitecture=platform.machine(), CFBundleShortVersionString="0.6.0", CFBundleVersion="8")))
+            manifest = app / builder.distribution.HELPER_MANIFEST
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({'architecture': platform.machine()}))
             output = Path(temporary) / "candidate.dmg"
             mountpoints, detaches, helper_calls = [], [], []
 

@@ -3,8 +3,10 @@ import hashlib
 import importlib.util
 import json
 import os
+import platform
 from pathlib import Path
 import plistlib
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -38,7 +40,7 @@ class UpdatePackagingTests(unittest.TestCase):
             hashes = {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
                       for path in (ROOT / "Sources/KataLog/Resources").glob("*.py")}
             hashes["obsolete_invented_module.py"] = "0" * 64
-            (helper / "Resources/runtime-manifest.json").write_text(json.dumps(dict(sourceHashes=hashes)))
+            (helper / "Resources/runtime-manifest.json").write_text(json.dumps(dict(architecture=platform.machine(), sourceHashes=hashes)))
             env = dict(os.environ, KATALOG_ENGINE_PATH=str(helper.parent),
                        KATALOG_BUILD_DIR=str(work / "build"), KATALOG_DIST_DIR=str(work / "dist"))
             result = subprocess.run(["/bin/bash", str(ROOT / "tools/build-app.sh")], env=env, capture_output=True, timeout=90)
@@ -56,6 +58,7 @@ class UpdatePackagingTests(unittest.TestCase):
                 executable = helper / "MacOS/KataLogEngine"
                 executable.write_text('#!/bin/sh\nprintf \'{"protocol":1}\\n\'\n'); executable.chmod(0o755)
                 manifest = {
+                    "architecture": platform.machine(),
                     "sourceHashes": {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
                                      for path in (ROOT / "Sources/KataLog/Resources").glob("*.py")},
                     "requirementsHashes": {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
@@ -111,7 +114,7 @@ class UpdatePackagingTests(unittest.TestCase):
                             for name in ("requirements-runtime.txt", "requirements-runtime-build.txt")}
             build_inputs = {name: hashlib.sha256((ROOT / "tools" / name).read_bytes()).hexdigest()
                             for name in ("engine-entry.py", "KataLogEngine.spec")}
-            (helper / "Resources/runtime-manifest.json").write_text(json.dumps(dict(sourceHashes=hashes,
+            (helper / "Resources/runtime-manifest.json").write_text(json.dumps(dict(architecture=platform.machine(), sourceHashes=hashes,
                 requirementsHashes=requirements, buildInputHashes=build_inputs)))
             binary = work / "bin"; binary.mkdir()
             swift = binary / "swift"
@@ -119,11 +122,27 @@ class UpdatePackagingTests(unittest.TestCase):
                              'if [ -e .git ] || [ -e dist ] || [ -e reports ] || [ -e "CARTE SD DRONE" ]; then exit 74; fi\n'
                              'if [ ! -f Package.swift ] || [ ! -f Sources/KataLog/UpdateStore.swift ]; then exit 75; fi\nexit 73\n')
             swift.chmod(0o755)
+            # This test only exercises snapshot ownership and compiler failure.
+            # Architecture matching has independent real-guard and Mach-O tests.
+            project = work / 'project'
+            project.mkdir()
+            for name in ('Package.swift', 'Package.resolved', 'LICENSE', 'Sources', 'Tests', 'tools',
+                         'requirements-runtime-build.txt', 'requirements-runtime.txt', 'assets'):
+                source = ROOT / name
+                if source.is_dir():
+                    shutil.copytree(source, project / name, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+                elif source.exists():
+                    shutil.copyfile(source, project / name)
+            lipo = binary / 'lipo'
+            lipo.write_text('#!/bin/sh\nprintf \'%s\\n\' \'' + platform.machine() + '\'\n')
+            lipo.chmod(0o755)
+            script = project / 'tools/build-app.sh'
+            script.write_text(script.read_text().replace('/usr/bin/lipo', str(lipo)))
             trace = work / "trace.txt"
             env = dict(os.environ, PATH=str(binary) + os.pathsep + os.environ.get("PATH", "/usr/bin:/bin"),
                        KATALOG_ENGINE_PATH=str(helper.parent), KATALOG_TEST_TRACE=str(trace),
                        KATALOG_BUILD_DIR=str(work / "build"), KATALOG_DIST_DIR=str(work / "dist"))
-            result = subprocess.run(["/bin/bash", str(ROOT / "tools/build-app.sh")], env=env, capture_output=True, timeout=90)
+            result = subprocess.run(["/bin/bash", str(script)], env=env, capture_output=True, timeout=90)
             self.assertEqual(result.returncode, 73, "Build should stop only at the synthetic compiler")
             source = Path(trace.read_text().strip())
             self.assertTrue(str(source).startswith("/private/tmp/katalog-source."))

@@ -18,6 +18,7 @@ import importlib.util
 import json
 import marshal
 import os
+import platform
 from pathlib import Path
 import plistlib
 import re
@@ -291,6 +292,12 @@ def validate_update_info(info):
                 url.password is not None or url.query or url.fragment or url.port not in (None, 443) or
                 not url.path.lower().endswith(".xml") or any(ord(c) < 32 for c in value)):
             raise CheckError("Active update feed URL is invalid")
+        architecture = info.get("KatalogArchitecture")
+        if architecture not in ("arm64", "x86_64"):
+            raise CheckError("Active update architecture is absent or invalid")
+        route = "/updates/" + channel + ("-intel" if architecture == "x86_64" else "") + "/appcast.xml"
+        if not url.path.endswith(route):
+            raise CheckError("Active update feed does not match the app architecture and channel")
         key = info.get("SUPublicEDKey")
         try:
             data = base64.b64decode(key, validate=True)
@@ -344,9 +351,11 @@ def inventory_files(output: bytes):
 
 
 class Verification:
-    def __init__(self, app: Path, require_notarized=False):
+    def __init__(self, app: Path, require_notarized=False, skip_runtime=False):
         self.app = app
         self.require_notarized = require_notarized
+        self.skip_runtime = skip_runtime
+        self.allow_runtime = False
         self.report = {"schemaVersion": 1, "checks": [], "syntheticDataOnly": True, "externalNetworkUsed": False}
 
     def check(self, category, function):
@@ -371,6 +380,35 @@ class Verification:
         if result.returncode:
             raise CheckError("Command failed with exit status %d" % result.returncode)
         return result.stdout
+
+    def architecture(self):
+        try:
+            info = plistlib.loads((self.app / "Contents/Info.plist").read_bytes())
+            manifest = json.loads((self.app / HELPER_MANIFEST).read_text())
+        except (OSError, ValueError) as error:
+            raise CheckError("App or runtime architecture metadata is absent or invalid") from error
+        architecture = info.get("KatalogArchitecture")
+        if architecture not in ("arm64", "x86_64") or manifest.get("architecture") != architecture:
+            raise CheckError("App and embedded runtime architectures do not match")
+        return architecture
+
+    def runtime_policy(self):
+        architecture = self.architecture()
+        host = platform.machine()
+        if self.skip_runtime:
+            if architecture == host:
+                raise CheckError("--skip-runtime is reserved for a foreign architecture; native runtime checks are required")
+            self.report["runtimeExecution"] = "skipped-cross-architecture"
+            return {"architecture": architecture, "hostArchitecture": host, "runtimeExecuted": False,
+                    "nativeVerificationStillRequired": True}
+        if architecture != host:
+            raise CheckError("Runtime verification requires a native matching Mac; use --skip-runtime only for static cross-architecture inspection")
+        translated = subprocess.run(["/usr/sbin/sysctl", "-in", "sysctl.proc_translated"], capture_output=True)
+        if translated.returncode == 0 and translated.stdout.strip() == b"1":
+            raise CheckError("Native runtime verification cannot run under Rosetta")
+        self.allow_runtime = True
+        self.report["runtimeExecution"] = "native"
+        return {"architecture": architecture, "hostArchitecture": host, "runtimeExecuted": True}
 
     def inspect_bundle(self):
         if not self.app.is_dir() or self.app.suffix != ".app":
@@ -411,7 +449,8 @@ class Verification:
             raise CheckError("Embedded helper bundle version is inconsistent")
         if helper_info.get("LSBackgroundOnly") is not True or helper_info.get("LSMinimumSystemVersion") != info["LSMinimumSystemVersion"]:
             raise CheckError("Embedded helper launch behavior or macOS minimum is inconsistent")
-        if manifest.get("protocol") != 1 or manifest.get("parserVersion") != PARSER_VERSION or manifest.get("architecture") != "arm64":
+        architecture = self.architecture()
+        if manifest.get("protocol") != 1 or manifest.get("parserVersion") != PARSER_VERSION:
             raise CheckError("Embedded helper runtime manifest is inconsistent")
         resource_sources = {path.name: sha256(path) for path in (self.app / "Contents/Resources").glob("*.py") if path.is_file()}
         if not resource_sources or manifest.get("sourceHashes") != resource_sources:
@@ -428,7 +467,8 @@ class Verification:
         if not icon.is_file() or icon.read_bytes()[:4] != b"icns":
             raise CheckError("The app icon is absent or invalid")
         self.report.update(appVersion=info["CFBundleShortVersionString"], buildNumber=info["CFBundleVersion"],
-                           minimumMacOS=info["LSMinimumSystemVersion"], appExecutableSHA256=sha256(executable), uiReviewPreview=preview)
+                           minimumMacOS=info["LSMinimumSystemVersion"], architecture=architecture,
+                           appExecutableSHA256=sha256(executable), uiReviewPreview=preview)
         return {"bundleIdentifier": info["CFBundleIdentifier"], "bundledRuntimeRequired": True,
                 "helperBundleIdentifier": helper_info["CFBundleIdentifier"], "properHelperAppBundle": True,
                 "runtimeManifestProtocol": manifest["protocol"], "sourceModulesVerified": len(resource_sources),
@@ -440,7 +480,7 @@ class Verification:
         denied_extensions = {".ulg", ".ulog", ".tlog", ".csv", ".db", ".sqlite", ".sqlite3", ".sqlite-wal", ".sqlite-shm",
                              ".db-wal", ".db-shm", ".p12", ".pfx", ".key", ".mobileprovision"}
         denied_names = {".ds_store", "library.json", "snapshot.json", "settings.json", "preferences.json", "annotations.json",
-                        "views.json", "progress.json", "gcs-settings.json", "gcs-collection.json", "collection-queue.json", "queue.json", "credentials.json"}
+                        "views.json", "progress.json", "gcs-settings.json", "gcs-collection.json", "usb-collection.json", "collection-queue.json", "queue.json", "credentials.json"}
         denied_components = {".git", ".ssh", ".aws", "private-notes", "private_notes", "datasets", "local-data", "reports"}
         for path in self.app.rglob("*"):
             relative = str(path.relative_to(self.app))
@@ -507,6 +547,7 @@ class Verification:
 
     def portable_macho(self):
         binaries, bad = 0, []
+        required_architecture = self.architecture()
         for path in self.app.rglob("*"):
             if not path.is_file() or path.is_symlink():
                 continue
@@ -537,14 +578,18 @@ class Verification:
                 if minimum is None or tuple(map(int, minimum.groups())) > minimum_supported:
                     bad.append((str(path.relative_to(self.app)), "inconsistent-macos-minimum"))
             architecture = self.command(["/usr/bin/lipo", "-archs", path]).decode("ascii", errors="replace").split()
-            if "arm64" not in architecture:
-                bad.append((str(path.relative_to(self.app)), "missing-arm64"))
+            relative = path.relative_to(self.app)
+            # Sparkle's reviewed upstream framework is universal. Every app,
+            # CLI and Python native component must be a matching thin binary.
+            sparkle = relative.is_relative_to(Path("Contents/Frameworks/Sparkle.framework"))
+            if required_architecture not in architecture or (not sparkle and architecture != [required_architecture]):
+                bad.append((str(relative), "inconsistent-architecture"))
         self.report["nativeFindings"] = [{"path": path, "category": category} for path, category in sorted(set(bad))]
         if not binaries:
             raise CheckError("No native executable found")
         if bad:
             raise CheckError("%d native portability findings" % len(set(bad)))
-        return {"nativeFilesInspected": binaries, "requiredArchitecture": "arm64", "externalDependencies": 0}
+        return {"nativeFilesInspected": binaries, "requiredArchitecture": required_architecture, "externalDependencies": 0}
 
     def signature(self):
         self.command(["/usr/bin/codesign", "--verify", "--deep", "--strict", "--verbose=2", self.app])
@@ -559,6 +604,9 @@ class Verification:
         return {"ticketAttached": True, "gatekeeperAccepted": True}
 
     def runtime(self):
+        self.runtime_policy()
+        if not self.allow_runtime:
+            raise CheckError("Runtime execution was explicitly disabled for cross-architecture inspection")
         helper = self.app / HELPER_EXECUTABLE
         before = bundle_manifest(self.app)
         with tempfile.TemporaryDirectory(prefix="katalog-runtime-recipe-", dir="/private/tmp") as temporary:
@@ -578,7 +626,7 @@ class Verification:
             manifest = json.loads((self.app / HELPER_MANIFEST).read_text())
             if runtime_info.get("python") != manifest.get("python"):
                 raise CheckError("Bundled Python version differs from its runtime manifest")
-            for dependency in ("python", "numpy", "pyulog"):
+            for dependency in ("python", "numpy", "pyulog", "pymavlink", "pyserial"):
                 if not runtime_info.get(dependency):
                     raise CheckError("Missing bundled dependency: " + dependency)
                 if dependency != "python" and runtime_info[dependency] != manifest.get("packages", {}).get(dependency):
@@ -590,6 +638,7 @@ class Verification:
                 raise CheckError("Inherited Python configuration changes the runtime")
             run("analyzer", "--help")
             run("gcs", "--help")
+            run("usb", "--help")
             source = work / "source"
             source.mkdir()
             payload = synthetic_ulog()
@@ -1080,14 +1129,18 @@ def main(argv=None):
     parser.add_argument("--dmg", type=Path)
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--require-notarized", action="store_true")
+    parser.add_argument("--skip-runtime", action="store_true",
+                        help="Static inspection of a foreign-architecture bundle only; native qualification remains required")
     args = parser.parse_args(argv)
-    verifier = Verification(args.app.resolve(), args.require_notarized)
+    verifier = Verification(args.app.resolve(), args.require_notarized, args.skip_runtime)
     verifier.check("bundle-metadata", verifier.inspect_bundle)
     verifier.check("bundle-privacy", verifier.privacy)
     verifier.check("portable-native-runtime", verifier.portable_macho)
     verifier.check("signed-update-infrastructure", verifier.updates)
     verifier.check("strict-code-signature", verifier.signature)
-    verifier.check("autonomous-runtime-and-synthetic-import", verifier.runtime)
+    verifier.check("native-runtime-policy", verifier.runtime_policy)
+    if verifier.allow_runtime:
+        verifier.check("autonomous-runtime-and-synthetic-import", verifier.runtime)
     if args.require_notarized:
         verifier.check("app-notarization-and-gatekeeper", lambda: verifier.notarization(verifier.app, "app"))
     if args.dmg:
@@ -1095,7 +1148,7 @@ def main(argv=None):
         if args.require_notarized:
             verifier.check("dmg-notarization-and-gatekeeper", lambda: verifier.notarization(args.dmg.resolve(), "dmg"))
     success = all(item["status"] == "passed" for item in verifier.report["checks"])
-    verifier.report["status"] = "passed" if success else "failed"
+    verifier.report["status"] = ("inspection-passed" if args.skip_runtime else "passed") if success else "failed"
     verifier.report["finishedAtUTC"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(verifier.report, indent=2, ensure_ascii=False) + "\n")

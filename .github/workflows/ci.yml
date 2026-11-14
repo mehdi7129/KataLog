@@ -4,6 +4,30 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Test/build candidates, or validate locally signed draft assets
+        type: choice
+        options: [build-candidate, verify-signed]
+        default: build-candidate
+      release_tag:
+        description: Draft release tag for signed validation
+        type: string
+      expected_commit:
+        description: Exact 40-character source commit for signed validation
+        type: string
+      arm64_zip_sha256:
+        description: Expected SHA-256 of the signed arm64_zip asset
+        type: string
+      arm64_dmg_sha256:
+        description: Expected SHA-256 of the signed arm64_dmg asset
+        type: string
+      x86_64_zip_sha256:
+        description: Expected SHA-256 of the signed x86_64_zip asset
+        type: string
+      x86_64_dmg_sha256:
+        description: Expected SHA-256 of the signed x86_64_dmg asset
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -13,16 +37,21 @@ jobs:
   tests:
     # Standard hosted runners are free on public repositories. Skip every
     # trigger, including manual dispatch, while the repository is private.
-    if: ${{ github.event.repository.visibility == 'public' }}
+    if: ${{ github.event.repository.visibility == 'public' && inputs.mode != 'verify-signed' }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, macos-26]
+        include:
+          - {os: macos-15, major: '15', arch: arm64}
+          - {os: macos-26, major: '26', arch: arm64}
+          - {os: macos-15-intel, major: '15', arch: x86_64}
+          - {os: macos-26-intel, major: '26', arch: x86_64}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
@@ -30,6 +59,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
+      - name: Verify native runner
+        run: python3 tools/check-native-host.py --architecture '${{ matrix.arch }}' --major '${{ matrix.major }}' --output reports/ci/native-host.json
       - name: Runtime dependencies
         run: |
           python3 -m pip install --only-binary=:all: --require-hashes -r requirements-runtime.txt
@@ -58,24 +89,26 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
   package-smoke:
-    name: Package ARM64 / ${{ matrix.os }}
-    if: ${{ github.event.repository.visibility == 'public' }}
+    name: Package ${{ matrix.arch }} / ${{ matrix.os }}
+    if: ${{ github.event.repository.visibility == 'public' && inputs.mode != 'verify-signed' }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15
-            major: '15'
-          # Official macOS 27 image, currently a public preview.
-          - os: xcode-27
-            major: '27'
+          - {os: macos-15, major: '15', arch: arm64}
+          - {os: macos-26, major: '26', arch: arm64}
+          - {os: macos-15-intel, major: '15', arch: x86_64}
+          - {os: macos-26-intel, major: '26', arch: x86_64}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:
       KATALOG_SMOKE_EXPECT_MAJOR: ${{ matrix.major }}
+      KATALOG_ARCH: ${{ matrix.arch }}
+      KATALOG_SMOKE_UPDATE_CHANNEL: stable
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
@@ -92,7 +125,7 @@ jobs:
           import json, os, pathlib
           report = pathlib.Path('reports/package-smoke-verification.json')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
-              summary.write('## ARM64 packaging smoke\n\n')
+              summary.write('## Native packaging smoke\n\n')
               if report.is_file():
                   data = json.loads(report.read_text())
                   for item in data.get('checks', []):
@@ -111,3 +144,57 @@ jobs:
             reports/package-smoke-verification.json
           retention-days: 14
           if-no-files-found: warn
+
+      - name: Keep exact ad hoc candidate ZIP for local signing
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: candidate-${{ matrix.arch }}-${{ matrix.os }}-${{ github.sha }}
+          path: reports/candidate/
+          retention-days: 14
+          if-no-files-found: error
+  verify-signed:
+    name: Signed candidate ${{ matrix.arch }} / ${{ matrix.os }}
+    if: ${{ github.event.repository.visibility == 'public' && inputs.mode == 'verify-signed' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: macos-15, major: '15', arch: arm64}
+          - {os: macos-26, major: '26', arch: arm64}
+          - {os: macos-15-intel, major: '15', arch: x86_64}
+          - {os: macos-26-intel, major: '26', arch: x86_64}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      ZIP_SHA256: ${{ matrix.arch == 'arm64' && inputs.arm64_zip_sha256 || inputs.x86_64_zip_sha256 }}
+      DMG_SHA256: ${{ matrix.arch == 'arm64' && inputs.arm64_dmg_sha256 || inputs.x86_64_dmg_sha256 }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.expected_commit }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.13'
+      - name: Verify native runner
+        run: python3 tools/check-native-host.py --architecture '${{ matrix.arch }}' --major '${{ matrix.major }}' --output reports/signed/native-host.json
+      - name: Install pinned bench dependencies
+        run: |
+          python3 -m pip install --only-binary=:all: --require-hashes -r requirements-runtime.txt
+      - name: Verify the final signed ZIP and copied DMG app
+        run: >-
+          python3 tools/verify-release-candidate.py --architecture '${{ matrix.arch }}'
+          --release-tag "$RELEASE_TAG" --commit "$EXPECTED_COMMIT"
+          --zip-sha256 "$ZIP_SHA256" --dmg-sha256 "$DMG_SHA256"
+          --output reports/signed
+      - name: Preserve native signed qualification
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed-${{ matrix.arch }}-${{ matrix.os }}-${{ inputs.expected_commit }}-${{ github.run_attempt }}
+          path: reports/signed/
+          if-no-files-found: warn
+          retention-days: 14

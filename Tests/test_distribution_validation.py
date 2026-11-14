@@ -255,8 +255,8 @@ class DistributionRecipeTests(unittest.TestCase):
                     SUEnableAutomaticChecks=False, SUAutomaticallyUpdate=False, SUAllowsAutomaticUpdates=False,
                     SUEnableSystemProfiling=False, SUEnableJavaScript=False, SUSignedFeedFailureExpirationInterval=0)
         self.assertFalse(recipe.validate_update_info(info)["updatesEnabled"])
-        active = dict(info, KatalogUpdatesEnabled=True, KatalogUpdateChannel="staging",
-                      SUFeedURL="https://updates.example.org/staging/appcast.xml",
+        active = dict(info, KatalogUpdatesEnabled=True, KatalogUpdateChannel="staging", KatalogArchitecture="arm64",
+                      SUFeedURL="https://updates.example.org/updates/staging/appcast.xml",
                       SUPublicEDKey=base64.b64encode(bytes(range(1, 33))).decode())
         self.assertTrue(recipe.validate_update_info(active)["updatesEnabled"])
         for change in (dict(SURequireSignedFeed=False), dict(SUVerifyUpdateBeforeExtraction=False),
@@ -267,6 +267,26 @@ class DistributionRecipeTests(unittest.TestCase):
                 recipe.validate_update_info(dict(active, **change))
         with self.assertRaises(recipe.CheckError):
             recipe.validate_update_info(dict(info, SUFeedURL="https://example.org/appcast.xml"))
+
+    def test_active_update_feed_must_match_architecture_and_channel_on_final_bundle(self):
+        secure = dict(KatalogSparkleVersion="2.10.0", KatalogUpdatesEnabled=True,
+                      SUVerifyUpdateBeforeExtraction=True, SURequireSignedFeed=True,
+                      SUEnableAutomaticChecks=False, SUAutomaticallyUpdate=False, SUAllowsAutomaticUpdates=False,
+                      SUEnableSystemProfiling=False, SUEnableJavaScript=False, SUSignedFeedFailureExpirationInterval=0,
+                      SUPublicEDKey=base64.b64encode(bytes(range(1, 33))).decode())
+        for architecture, suffix in (("arm64", ""), ("x86_64", "-intel")):
+            for channel in ("stable", "staging"):
+                active = dict(secure, KatalogArchitecture=architecture, KatalogUpdateChannel=channel,
+                              SUFeedURL="https://example.org/repository/updates/" + channel + suffix + "/appcast.xml")
+                with self.subTest(architecture=architecture, channel=channel):
+                    self.assertTrue(recipe.validate_update_info(active)["updatesEnabled"])
+                    wrong_architecture = "arm64" if architecture == "x86_64" else "x86_64"
+                    wrong_channel = "stable" if channel == "staging" else "staging"
+                    for change in (dict(KatalogArchitecture=wrong_architecture), dict(KatalogArchitecture=None),
+                                   dict(KatalogArchitecture="universal2"), dict(KatalogUpdateChannel=wrong_channel),
+                                   dict(SUFeedURL="https://example.org/appcast.xml")):
+                        with self.subTest(change=change), self.assertRaises(recipe.CheckError):
+                            recipe.validate_update_info(dict(active, **change))
 
     def test_private_collection_settings_and_database_sidecars_are_rejected_even_inside_zip(self):
         with tempfile.TemporaryDirectory(prefix="katalog-private-artifact-fixture-") as directory:

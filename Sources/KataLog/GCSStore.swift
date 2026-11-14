@@ -49,6 +49,10 @@ final class GCSStore: ObservableObject {
     private var isApplyingRestoredState = false
     private var configurationDirty = false
     private var knownAnalysisHashes: Set<String> = []
+    lazy var usb = USBCollectionStore(stateDirectory: stateURL.deletingLastPathComponent())
+    private var usbObservation: AnyCancellable?
+    var isCollectionBusy: Bool { isBusy || usb.isBusy }
+    var isInventoryBusy: Bool { inventoryTask != nil }
     private let stateURL: URL
     private let legacyStateURL: URL
     private let queueDatabaseURL: URL
@@ -172,7 +176,7 @@ final class GCSStore: ObservableObject {
     var preventsIdleSystemSleep: Bool { collectionActivity.isActive }
     private func updateCollectionActivity() {
         collectionActivity.update(needed: !terminationRequested && !isReadOnly
-            && (isBusy || (!isQueuePaused && (!inventoryRetries.isEmpty || queue.contains(where: \.isPending)))))
+            && (isCollectionBusy || (!isQueuePaused && (!inventoryRetries.isEmpty || queue.contains(where: \.isPending)))))
     }
     var transferRateText: String? {
         let now = ProcessInfo.processInfo.systemUptime
@@ -460,7 +464,7 @@ final class GCSStore: ObservableObject {
 
     /// Called while the library owns its maintenance gate. No original is touched.
     func resetForApplication() async throws {
-        guard !isBusy else { throw AnalysisError.engine("Arrêtez la collecte avant la réinitialisation.") }
+        guard !isCollectionBusy else { throw AnalysisError.engine("Arrêtez la collecte avant la réinitialisation.") }
         await stopDiscoveryForStorageTransition()
         inventoryTask?.cancel(); inventoryTask = nil
         inventoryRetries.removeAll()
@@ -477,15 +481,16 @@ final class GCSStore: ObservableObject {
             try LibraryStore.removeConfigurationFiles(in: directory, names: names)
         }
         try await loadRestoredCollectionState()
+        try usb.reloadAfterRestore()
         collectionClientID = nil; isQueuePaused = false
         errorMessage = nil; statusMessage = nil; configurationDirty = true
     }
 
     private static let resetConfigurationNames = ["gcs-settings.json", "gcs-collection.json",
-        "gcs-queue.sqlite", "gcs-queue.sqlite-wal", "gcs-queue.sqlite-shm", "fleet.json"]
+        "gcs-queue.sqlite", "gcs-queue.sqlite-wal", "gcs-queue.sqlite-shm", "fleet.json", "usb-collection.json"]
 
     private func validateResetForApplication() async throws {
-        guard !isBusy else { throw AnalysisError.engine("Arrêtez la collecte avant la réinitialisation.") }
+        guard !isCollectionBusy else { throw AnalysisError.engine("Arrêtez la collecte avant la réinitialisation.") }
         let directory = stateURL.deletingLastPathComponent(), names = Self.resetConfigurationNames
         try await storageIO.perform { try LibraryStore.validateConfigurationFiles(in: directory, names: names) }
     }
@@ -493,8 +498,16 @@ final class GCSStore: ObservableObject {
     func attach(library: LibraryStore) {
         guard self.library == nil else { return }
         self.library = library
+        usb.attach(library: library, destination: { [weak self] in self?.downloadDirectory },
+                   autoImport: { [weak self] in self?.autoImport ?? true },
+                   clientID: { [weak self] in self?.collectionClientID ?? "" },
+                   admissionBlocked: { [weak self] in self?.terminationRequested == true || self?.isStorageTransitioning == true })
+        usbObservation = usb.objectWillChange.sink { [weak self] in
+            self?.objectWillChange.send()
+            Task { @MainActor [weak self] in self?.updateCollectionActivity() }
+        }
         updateCollectionActivity()
-        library.hasExternalActivity = { [weak self] in self?.isBusy == true || (self?.pendingInventoryRetryCount ?? 0) > 0 || self?.isReconcilingClients == true || self?.isStorageTransitioning == true }
+        library.hasExternalActivity = { [weak self] in self?.isCollectionBusy == true || (self?.pendingInventoryRetryCount ?? 0) > 0 || self?.isReconcilingClients == true || self?.isStorageTransitioning == true }
         library.willMaintainLibrary = { [weak self] in try await self?.flushPersistedStateForMaintenance() }
         library.willRestoreLibrary = { [weak self] in try await self?.preparePersistedStorageForRestore() }
         library.didRestoreLibrary = { [weak self] in try await self?.reloadPersistedStateAfterRestore() }
@@ -555,7 +568,8 @@ final class GCSStore: ObservableObject {
     }
 
     private func removeClientAttribution(_ id: String) async throws {
-        guard !isBusy else { throw AnalysisError.engine("Arrêtez la collecte avant de supprimer ce client.") }
+        guard !isCollectionBusy else { throw AnalysisError.engine("Arrêtez la collecte avant de supprimer ce client.") }
+        try usb.removeClientAttribution(id)
         isReconcilingClients = true
         defer { isReconcilingClients = false }
         await persistenceTask?.value
@@ -574,10 +588,11 @@ final class GCSStore: ObservableObject {
 
     private func reconcileClientAttributions(validIDs: Set<String>) async throws {
         guard reconciledClientIDs != validIDs else { return }
-        guard !isReadOnly, !isBusy, !isMaintenanceBlocked else {
+        guard !isReadOnly, !isCollectionBusy, !isMaintenanceBlocked else {
             throw AnalysisError.engine("Arrêtez la collecte et attendez la fin de la maintenance avant de recharger les clients.")
         }
         if let queueStorageIssue { throw AnalysisError.engine(queueStorageIssue) }
+        try usb.reconcileClientAttributions(validIDs: validIDs)
         isReconcilingClients = true
         defer { isReconcilingClients = false }
         await persistenceTask?.value
@@ -605,7 +620,8 @@ final class GCSStore: ObservableObject {
 
     /// The library raises its maintenance gate before awaiting this durable drain.
     func flushPersistedStateForMaintenance() async throws {
-        guard !isBusy else { throw AnalysisError.unavailable("Arrêtez la collecte avant l’opération de stockage.") }
+        guard !isCollectionBusy else { throw AnalysisError.unavailable("Arrêtez la collecte avant l’opération de stockage.") }
+        try usb.flushForMaintenance()
         let previousTransition = isStorageTransitioning
         isStorageTransitioning = true
         defer { if !previousTransition { finishStorageTransition() } }
@@ -616,7 +632,12 @@ final class GCSStore: ObservableObject {
 
     /// Restore changes files beneath this store. Reopen handles without reconnecting or starting work.
     func preparePersistedStorageForRestore() async throws {
-        guard !isBusy else { throw AnalysisError.unavailable("Arrêtez la collecte avant de restaurer la bibliothèque.") }
+        guard !isCollectionBusy else { throw AnalysisError.unavailable("Arrêtez la collecte avant de restaurer la bibliothèque.") }
+        usb.stop()
+        try await disconnectForRestore()
+    }
+
+    private func disconnectForRestore() async throws {
         await stopDiscoveryForStorageTransition()
         isConnected = false; isConnecting = false; connectedHost = nil; reconnect = false
         await persistenceTask?.value
@@ -631,8 +652,8 @@ final class GCSStore: ObservableObject {
 
     /// Restore changes files beneath this store. Reopen handles without reconnecting or starting work.
     func reloadPersistedStateAfterRestore() async throws {
-        guard !isReadOnly, !isBusy else { throw AnalysisError.unavailable("Arrêtez la collecte avant de restaurer la bibliothèque.") }
-        try await preparePersistedStorageForRestore()
+        guard !isReadOnly, !isCollectionBusy else { throw AnalysisError.unavailable("Arrêtez la collecte avant de restaurer la bibliothèque.") }
+        try await disconnectForRestore()
         queueStorageIssue = "La file de collecte restaurée n’a pas encore été vérifiée."
         inventoryRetries.removeAll()
         queue = []; rebuildQueueIndexes(); legacyTransfers = []; dirtyTransferIDs = []; configurationDirty = false
@@ -644,8 +665,10 @@ final class GCSStore: ObservableObject {
             queue = []; rebuildQueueIndexes(); legacyTransfers = []; dirtyTransferIDs = []; configurationDirty = false
             queueStorageIssue = "La file de collecte restaurée ne peut pas être lue : \(error.localizedDescription) Reconnectez après avoir restauré une sauvegarde valide ou corrigé les fichiers."
             errorMessage = queueStorageIssue
+            try? usb.reloadAfterRestore()
             throw error
         }
+        try usb.reloadAfterRestore()
     }
 
     private func loadRestoredCollectionState() async throws {
@@ -917,12 +940,13 @@ final class GCSStore: ObservableObject {
         guard !isReadOnly, !isMaintenanceBlocked, !terminationRequested, !isStopping, isConnected,
               collectableDrones.contains(where: { $0.uuid == uuid }) else { return false }
         // Browsing an existing inventory never competes with a drone's FTP worker.
-        return inventorySnapshots[inventoryContext(for: uuid)] != nil || (!isBusy && inventoryTask == nil)
+        return inventorySnapshots[inventoryContext(for: uuid)] != nil || (inventoryTask == nil)
     }
 
     var canRefreshInventory: Bool {
         guard let uuid = selectedUUID else { return false }
-        return canSelectDrone(uuid: uuid) && !isBusy && inventoryTask == nil
+        return canSelectDrone(uuid: uuid) && inventoryTask == nil
+            && !queue.contains(where: { $0.droneUUID == uuid && transferTasks[$0.id] != nil })
     }
 
     func transfer(for file: GCSLogFile) -> GCSTransfer? {
@@ -978,7 +1002,7 @@ final class GCSStore: ObservableObject {
 
     func refreshInventory(updateDestinationProgress: Bool = false) {
         guard permitMutation() else { return }
-        guard let uuid = selectedUUID, canRead(uuid), !isBusy, inventoryTask == nil else { return }
+        guard let uuid = selectedUUID, canRead(uuid), canRefreshInventory else { return }
         isBusy = true; readingInventoryUUID = uuid; errorMessage = nil; statusMessage = "Lecture de la carte SD…"
         let currentHost = connectedHost ?? host, destination = downloadDirectory.path
         inventoryTask = Task { [weak self] in
@@ -1017,7 +1041,7 @@ final class GCSStore: ObservableObject {
         for attempt in 1...max(1, attemptLimit) {
             try Task.checkCancellation()
             // A cancelled download may still be finishing on the GCS. Never overlap FTP for that drone.
-            while isRemoteBusy(uuid) {
+            while isRemoteBusy(uuid) || queue.contains(where: { $0.droneUUID == uuid && transferTasks[$0.id] != nil }) {
                 statusMessage = "Attente de la fin du transfert déjà lancé sur la GCS…"
                 try await Task.sleep(for: .seconds(1))
             }
@@ -1327,7 +1351,7 @@ final class GCSStore: ObservableObject {
                 let added = try await enqueue(candidates, uuid: uuid, host: currentHost, destination: destination,
                                               clientID: clientID, manualPriority: true)
                 if selectedUUID == uuid { selectedFileIDs.subtract(selection) }
-                isQueuePaused = false
+                // Adding a selection preserves an explicit queue pause.
                 statusMessage = added == 1 ? "Log prioritaire · démarrage dès qu’un créneau est disponible."
                     : added > 1 ? "\(added) logs prioritaires · les transferts en cours se terminent d’abord."
                     : "Les logs sélectionnés sont déjà en cours de collecte."
@@ -1680,7 +1704,7 @@ final class GCSStore: ObservableObject {
 
     func chooseDownloadDirectory() {
         guard permitMutation() else { return }
-        guard !isBusy else { return }
+        guard !isCollectionBusy else { return }
         let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true
         panel.canCreateDirectories = true; panel.prompt = "Choisir"; panel.title = "Dossier de collecte"
         if panel.runModal() == .OK, let url = panel.url {
@@ -1692,12 +1716,12 @@ final class GCSStore: ObservableObject {
     }
     func setDownloadDirectory(_ url: URL) async throws {
         guard permitMutation() else { throw AnalysisError.unavailable(errorMessage ?? "La bibliothèque est en lecture seule.") }
-        guard !isBusy, inventoryRetries.isEmpty, !queue.contains(where: \.isPending) else {
+        guard !isCollectionBusy, inventoryRetries.isEmpty, !queue.contains(where: \.isPending) else {
             throw AnalysisError.unavailable("Arrêtez la collecte et les transferts en attente avant de changer de dossier.")
         }
         let destination = url.standardizedFileURL
         try await requireDestination(destination)
-        guard permitMutation(), !isBusy, inventoryRetries.isEmpty, !queue.contains(where: \.isPending) else {
+        guard permitMutation(), !isCollectionBusy, inventoryRetries.isEmpty, !queue.contains(where: \.isPending) else {
             throw AnalysisError.unavailable("La collecte ne permet plus de changer de dossier.")
         }
         guard destination.path != downloadDirectory.standardizedFileURL.path else { return }
@@ -1890,11 +1914,16 @@ final class GCSStore: ObservableObject {
     }
     func finishTermination() async throws {
         stopForTermination()
+        await usb.waitUntilIdle()
         await waitForDiscoveryTermination()
         await attachmentTask?.value
         while isStorageTransitioning { try await Task.sleep(for: .milliseconds(10)) }
         // An unavailable/read-only library owns no writable collection state.
-        guard !isReadOnly, !startupStorageDeferred, library?.isStartupBlocked != true, queueStorageIssue == nil else { return }
+        guard !isReadOnly, !startupStorageDeferred, library?.isStartupBlocked != true else { return }
+        // stopForTermination closes admission before the USB process exits.
+        // Persist its final interrupted/completed state after it releases serial.
+        try usb.flushForMaintenance()
+        guard queueStorageIssue == nil else { return }
         let transfers = Array(transferTasks.values), inventory = inventoryTask, analysis = analysisTask
         await inventory?.value
         for task in transfers { await task.value }
@@ -1905,6 +1934,7 @@ final class GCSStore: ObservableObject {
     func stopForTermination() {
         guard !terminationRequested else { return }
         terminationRequested = true; controlRevision &+= 1
+        usb.stop()
         cancelPendingDiscoveryReconnect()
         inventoryRetries.removeAll()
         pendingAttachmentReconnect = false

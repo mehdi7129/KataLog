@@ -6,7 +6,7 @@ les outils ci-dessous concernent le développement depuis les sources.
 
 ## Préparer le développement
 
-Prérequis : Mac Apple Silicon sous macOS 15 ou ultérieur, Xcode avec Swift 6,
+Prérequis : Mac Apple Silicon ou Intel sous macOS 15 ou ultérieur, Xcode avec Swift 6,
 Python 3.13 et Node.js pour les tests des rapports. XcodeGen sert uniquement à
 régénérer le projet Xcode à partir de `project.yml`.
 
@@ -27,6 +27,10 @@ Une distribution installée par DMG utilise son moteur embarqué et refuse un
 fallback Python externe. Ne modifiez pas le bundle distribué pour développer.
 L’override de bibliothèque ne qualifie pas l’isolation après un redémarrage
 effectué par Sparkle : les recettes d’update utilisent un environnement dédié.
+
+Dans Paradev, `.paradev/config.json` exécute automatiquement le setup Python
+et SwiftPM. Il est aussi disponible via `bash .paradev/setup.sh`. Aucun service
+ni dev server n’est requis ; le teardown ne démarre aucune opération.
 
 ## Vérifier une modification
 
@@ -52,8 +56,9 @@ macOS pour les tests natifs. Les fixtures synthétiques sont autonomes. Le test
 qui nécessite `KATALOG_PRIVATE_FIXTURES` est explicitement signalé comme non
 exécuté si ce corpus externe n’est pas fourni ; aucun ULog privé n’est livré.
 
-La [CI](.github/workflows/ci.yml) exécute les suites sur macOS 15 et 26, et la
-recette du package ARM64 sur macOS 15 et 27. Le
+La [CI](.github/workflows/ci.yml) exécute les suites et la recette des packages
+sur des runners natifs Apple Silicon et Intel. Les architectures, OS et SHA
+réellement exécutés figurent dans les artefacts de chaque run. Le
 [banc SDK Sparkle](.github/workflows/update-sdk-smoke.yml) est déclenché séparément.
 Les tests simulés ne qualifient pas une flotte radio réelle.
 
@@ -63,6 +68,8 @@ Les tests simulés ne qualifient pas une flotte radio réelle.
 bash tools/build-app.sh
 ```
 
+Le script construit nativement pour l’architecture du Mac (`arm64` ou `x86_64`).
+`KATALOG_ARCH` permet de l’exiger explicitement ; un cross-build est refusé.
 Le script construit hors du Bureau, vérifie les dépendances épinglées, embarque
 le moteur et écrit un ZIP dans `dist/`. `dist/LOCAL-APP-PATH.txt` indique la copie
 vérifiée. Par défaut, la signature est ad hoc et les updates sont désactivées :

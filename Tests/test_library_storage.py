@@ -71,6 +71,21 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(json.loads((restored / 'annotations.json').read_text()), annotations)
         self.assertEqual(self.source.read_bytes(), source_bytes)
 
+    def test_usb_queue_backup_preserves_hardware_identity_and_restores_interrupted(self):
+        job = {'id': 'usb-test', 'state': 'downloading',
+               'device': {'identity': 'uid:0123456789ABCDEF', 'systemID': 1, 'componentID': 1, 'label': 'Synthetic'},
+               'log': {'id': 7, 'timeUTC': 1700000000, 'size': 1024},
+               'destination': str(self.root / 'usb-logs'), 'bytes': 90}
+        (self.library / 'usb-collection.json').write_text(json.dumps({'schemaVersion': 1, 'queue': [job]}))
+        storage.backup(self.library, self.destination)
+        target = self.root / 'usb-restored'
+        storage.restore(self.destination, target)
+        restored = json.loads((target / 'usb-collection.json').read_text())['queue'][0]
+        self.assertEqual(restored['state'], 'interrupted')
+        self.assertEqual(restored['device'], job['device'])
+        self.assertEqual(restored['log'], job['log'])
+        self.assertEqual(restored['destination'], job['destination'])
+
     def test_backup_inspects_same_verified_capture_without_second_database_copy(self):
         original = storage.shutil.copyfileobj
         def refuse_archive_database_extraction(source, destination, *args, **kwargs):

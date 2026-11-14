@@ -2,10 +2,15 @@
 # Its pinned archive writers anonymize co_filename recursively for PYZ, scripts,
 # and base_library.zip. build-engine.sh independently checks those archives.
 import ast
+import os
+import platform
 from pathlib import Path
 from PyInstaller.utils.hooks import copy_metadata
 
 source = Path(SPECPATH)
+target_arch = os.environ.get("KATALOG_ARCH", platform.machine())
+if target_arch not in ("arm64", "x86_64") or target_arch != platform.machine():
+    raise ValueError("The embedded runtime must be built on its native target architecture")
 parser_tree = ast.parse((source / "modules" / "analyzer.py").read_text())
 parser_version = next(
     ast.literal_eval(node.value) for node in parser_tree.body
@@ -16,9 +21,11 @@ a = Analysis(
     [str(source / "engine-entry.py")],
     pathex=[str(source / "modules")],
     binaries=[],
-    datas=copy_metadata("pyulog"),
-    hiddenimports=[path.stem for path in (source / "modules").glob("*.py")] + ["sqlite3", "ssl", "http.client", "lzma", "pyulog.libevents_parse.parser"],
-    excludes=["pytest", "numpy.testing", "tkinter", "matplotlib", "pandas", "IPython", "setuptools"],
+    datas=copy_metadata("pyulog") + copy_metadata("pymavlink"),
+    hiddenimports=[path.stem for path in (source / "modules").glob("*.py")] + ["sqlite3", "ssl", "http.client", "lzma", "pyulog.libevents_parse.parser", "pymavlink.dialects.v20.common", "serial.tools.list_ports_osx"],
+    # The optional fastcrc wheel embeds the upstream builder's absolute paths.
+    # Use pymavlink's supported Python CRC fallback in the distributed helper.
+    excludes=["pytest", "numpy.testing", "tkinter", "matplotlib", "pandas", "IPython", "setuptools", "fastcrc"],
     noarchive=False,
     optimize=0,
 )
@@ -26,7 +33,7 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, [], exclude_binaries=True,
     name="KataLogEngine", console=True, debug=False, strip=False, upx=False,
-    target_arch="arm64", codesign_identity=None, entitlements_file=None,
+    target_arch=target_arch, codesign_identity=None, entitlements_file=None,
     contents_directory="_internal",
 )
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name="KataLogEngine")

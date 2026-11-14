@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # Real file copying, manifests, plist, update configuration and ZIP publication
 # remain active. Only compilation, binary inspection and signing are replaced.
-COMMAND = r'''import hashlib, json, os, pathlib, sys, time
+COMMAND = r'''import hashlib, json, os, pathlib, platform, sys, time
 mode, *args = sys.argv[1:]
 def marker(root):
     return (root / 'Sources/KataLog/Resources/analyzer.py').read_text().split('=')[1].strip().strip('"')
@@ -28,7 +28,7 @@ if mode == 'engine':
     (contents / 'Resources/fixture-marker').write_text(marker(project))
     def hashes(root, names):
         return {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in names}
-    manifest = dict(sourceHashes=hashes(project / 'Sources/KataLog/Resources', ['analyzer.py']),
+    manifest = dict(architecture=os.environ['KATALOG_ARCH'], sourceHashes=hashes(project / 'Sources/KataLog/Resources', ['analyzer.py']),
                     requirementsHashes=hashes(project, ['requirements-runtime.txt', 'requirements-runtime-build.txt']),
                     buildInputHashes=hashes(project / 'tools', ['engine-entry.py', 'KataLogEngine.spec']))
     (contents / 'Resources/runtime-manifest.json').write_text(json.dumps(manifest))
@@ -55,6 +55,13 @@ elif mode == 'swift':
                     time.sleep(.01)
 elif mode == 'otool':
     print('@executable_path/../Frameworks')
+elif mode == 'lipo':
+    print(os.environ.get('KATALOG_FIXTURE_MACHO_ARCH', os.environ['KATALOG_ARCH']))
+elif mode == 'uname':
+    print('Darwin' if args == ['-s'] else os.environ.get('KATALOG_FIXTURE_HOST_ARCH', platform.machine()))
+elif mode == 'git':
+    assert args == ['rev-parse', 'HEAD'], args
+    print('0' * 40)
 else:
     assert mode == 'codesign', mode
 '''
@@ -70,7 +77,7 @@ class BuildFixture:
         self.shared = self.root / 'shared'; self.shared.mkdir()
         self.bin = self.root / 'bin'; self.bin.mkdir()
         self.command = self.root / 'command.py'; self.command.write_text(COMMAND)
-        for name in ('swift', 'otool', 'codesign'):
+        for name in ('swift', 'otool', 'codesign', 'lipo', 'uname', 'git'):
             program = self.bin / name
             program.write_text('#!/bin/bash\nexec ' + self.quote(sys.executable) + ' ' + self.quote(self.command) + ' ' + name + ' "$@"\n')
             program.chmod(0o755)
@@ -91,23 +98,25 @@ class BuildFixture:
         for directory in ('tools', 'Sources/KataLog/Resources', 'assets/icon'):
             (project / directory).mkdir(parents=True, exist_ok=True)
         for name in ('LICENSE', 'requirements-runtime.txt', 'requirements-runtime-build.txt', 'assets/icon/KataLog.icns',
-                     'tools/engine-entry.py', 'tools/KataLogEngine.spec', 'tools/update-feed.py', 'tools/verify-distribution.py', 'tools/dmg_mount.py'):
+                     'tools/engine-entry.py', 'tools/KataLogEngine.spec', 'tools/update-feed.py', 'tools/verify-distribution.py', 'tools/dmg_mount.py',
+                     'tools/check-native-host.py'):
             shutil.copyfile(ROOT / name, project / name)
         (project / 'Package.swift').write_text('// Synthetic compiler input\n')
         (project / 'Sources/KataLog/Resources/analyzer.py').write_text('BUILD_MARKER = "' + project.name + '"\n')
         app = (ROOT / 'tools/build-app.sh').read_text()
         # Redirect the old shared defaults too: the regression must never touch
         # a developer's actual scratch directory, with or without the fix.
-        for old, new in (('/private/tmp/katalog-swift-build', self.shared / 'swift'),
-                         ('/private/tmp/katalog-engine-build', self.shared / 'engine'),
+        for old, new in (('/private/tmp/katalog-swift-build-$target_arch', self.shared / 'swift'),
+                         ('/private/tmp/katalog-engine-build-$target_arch', self.shared / 'engine'),
                          ('/private/tmp/katalog-clang-cache', self.shared / 'clang'),
                          ('/private/tmp/katalog-xdg-cache', self.shared / 'xdg')):
             app = app.replace(old, str(new))
-        for name in ('otool', 'codesign'):
+        for name in ('otool', 'codesign', 'lipo', 'uname'):
             app = app.replace('/usr/bin/' + name, self.quote(self.bin / name))
         (project / 'tools/build-app.sh').write_text(app)
         engine = (ROOT / 'tools/build-engine.sh').read_text().split('python_url=', 1)[0]
-        engine = engine.replace('/private/tmp/katalog-engine-build', str(self.shared / 'engine'))
+        engine = engine.replace('/private/tmp/katalog-engine-build-$target_arch', str(self.shared / 'engine'))
+        engine = engine.replace('/usr/bin/uname', self.quote(self.bin / 'uname'))
         engine += self.quote(sys.executable) + ' ' + self.quote(self.command) + ' engine "$build_dir" "$project_dir"\n'
         (project / 'tools/build-engine.sh').write_text(engine)
         lock = ROOT / 'tools/build-lock.py'

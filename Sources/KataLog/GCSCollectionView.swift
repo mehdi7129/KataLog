@@ -51,6 +51,7 @@ struct GCSCollectionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             header
+            USBCollectionView(store: store.usb)
             BentoColumns(firstMinimum: 330, secondMinimum: 330) {
                 networkCard
                 destinationCard
@@ -90,9 +91,9 @@ struct GCSCollectionView: View {
 
     private var heading: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Collecte GCS").font(.system(size: 28, weight: .semibold)).tracking(-1)
+            Text("Collecte des logs").font(.system(size: 28, weight: .semibold)).tracking(-1)
                 .foregroundStyle(palette.primary)
-            Text("Drones connectés à cette GCS.")
+            Text("Drones connectés à la GCS ou directement par USB.")
                 .font(.system(size: 12)).foregroundStyle(palette.secondary)
             Text("Nouveaux logs → " + store.collectionClientName)
                 .font(.system(size: 11, weight: .medium)).foregroundStyle(palette.secondary)
@@ -319,7 +320,7 @@ struct GCSCollectionView: View {
             action("Ouvrir", symbol: "arrow.up.forward.square") { store.revealDownloads() }
                 .accessibilityIdentifier("gcs.revealDownloads")
             action("Changer", symbol: "folder.badge.gearshape") { store.chooseDownloadDirectory() }
-                .disabled(store.isBusy || pendingCount > 0 || mutationsBlocked)
+                .disabled(store.isCollectionBusy || pendingCount > 0 || mutationsBlocked)
                 .accessibilityIdentifier("gcs.chooseDirectory")
         }
         .fixedSize(horizontal: true, vertical: false)
@@ -722,7 +723,7 @@ struct GCSCollectionView: View {
             action("Actualiser", symbol: "arrow.clockwise") { store.refreshInventory() }
                 .disabled(!store.canRefreshInventory)
                 .accessibilityIdentifier("gcs.refreshInventory")
-            action("Collecter la sélection", symbol: "arrow.down.to.line", primary: true) { store.enqueueSelected() }
+            action("Ajouter à la file", symbol: "text.badge.plus", primary: true) { store.enqueueSelected() }
                 .disabled(!store.canEnqueueSelected)
                 .help("Donner la priorité aux fichiers sélectionnés après les transferts en cours.")
                 .accessibilityIdentifier("gcs.enqueue")

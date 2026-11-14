@@ -9,15 +9,18 @@ project_dir="$(cd "$(dirname "$0")/.." && pwd)"
 if [[ "${KATALOG_BUILD_LOCK_SCRIPT:-}" != "$project_dir/tools/build-engine.sh" ]]; then
     exec python3 "$project_dir/tools/build-lock.py" "$project_dir/tools/build-engine.sh" "$@"
 fi
-build_dir="${KATALOG_ENGINE_BUILD_DIR:-/private/tmp/katalog-engine-build}"
+target_arch="${KATALOG_ARCH:-$(/usr/bin/uname -m)}"
+case "$target_arch" in arm64|x86_64) ;; *) printf 'KATALOG_ARCH doit valoir arm64 ou x86_64.\n' >&2; exit 1 ;; esac
+if [[ "$(/usr/bin/uname -s)" != Darwin || "$(/usr/bin/uname -m)" != "$target_arch" || "$(/usr/sbin/sysctl -in sysctl.proc_translated 2>/dev/null || true)" == 1 ]]; then
+    printf 'Le moteur doit être construit sur un Mac natif %s, sans Rosetta.\n' "$target_arch" >&2
+    exit 1
+fi
+export KATALOG_ARCH="$target_arch"
+build_dir="${KATALOG_ENGINE_BUILD_DIR:-/private/tmp/katalog-engine-build-$target_arch}"
 case "$build_dir" in
     /private/tmp/*) ;;
     *) printf 'KATALOG_ENGINE_BUILD_DIR doit être un sous-dossier de /private/tmp.\n' >&2; exit 1 ;;
 esac
-if [[ "$(/usr/bin/uname -s)" != Darwin || "$(/usr/bin/uname -m)" != arm64 ]]; then
-    printf 'Ce moteur cible macOS ARM64. Construisez-le sur un Mac Apple Silicon.\n' >&2
-    exit 1
-fi
 mkdir -p "$build_dir/downloads" "$build_dir/inputs" "$build_dir/licenses-source"
 # Reusing a build directory must not compile a removed or renamed module from
 # an earlier source tree. Preserve old generated inputs, then copy the exact
@@ -37,6 +40,12 @@ python_url='https://github.com/astral-sh/python-build-standalone/releases/downlo
 python_sha='d66c67f16148c7454b1509c32747175f7669c8b8e105b97b92a0000d66af6e6e'
 licenses_url='https://github.com/astral-sh/python-build-standalone/releases/download/20260929/cpython-3.13.15%2B20260929-aarch64-apple-darwin-pgo%2Blto-full.tar.zst'
 licenses_sha='f6d0b397d62a6041ef67ca5180fe989fc0acbd3058ffc31c8ab4b43cae1ba430'
+if [[ "$target_arch" == x86_64 ]]; then
+    python_url='https://github.com/astral-sh/python-build-standalone/releases/download/20260929/cpython-3.13.15%2B20260929-x86_64-apple-darwin-install_only_stripped.tar.gz'
+    python_sha='73b503a2d3f47f0601265d7936744b77dc4ee75d2a3e88a470594a014dcf6822'
+    licenses_url='https://github.com/astral-sh/python-build-standalone/releases/download/20260929/cpython-3.13.15%2B20260929-x86_64-apple-darwin-pgo%2Blto-full.tar.zst'
+    licenses_sha='702e3de8127ec80c873581afc870b3e4ad63d2eb78bab667c9ab4d5bce5a2390'
+fi
 
 fetch_verified() {
     local url="$1" expected="$2" target="$3" actual=''
@@ -53,13 +62,16 @@ fetch_verified() {
 }
 fetch_verified "$python_url" "$python_sha" "$build_dir/downloads/cpython.tar.gz"
 fetch_verified "$licenses_url" "$licenses_sha" "$build_dir/downloads/cpython-full.tar.zst"
+# pyserial's wheel omits its licence file; fetch the exact upstream release text.
+fetch_verified 'https://raw.githubusercontent.com/pyserial/pyserial/v3.5/LICENSE.txt' \
+    'f91cb9813de6a5b142b8f7f2dede630b5134160aedaeaf55f4d6a7e2593ca3f3' "$build_dir/downloads/pyserial-LICENSE.txt"
 python3 "$project_dir/tools/prepare-python-runtime.py" --root "$build_dir" \
-    --archive "$build_dir/downloads/cpython.tar.gz" --sha256 "$python_sha" --version 3.13.15
+    --archive "$build_dir/downloads/cpython.tar.gz" --sha256 "$python_sha" --version 3.13.15 --architecture "$target_arch"
 /usr/bin/tar -xf "$build_dir/downloads/cpython-full.tar.zst" -C "$build_dir/licenses-source" python/licenses python/PYTHON.json
 python_path="$build_dir/python/bin/python3"
-"$python_path" -c 'import platform, sys; assert sys.version_info[:3] == (3, 13, 15); assert platform.machine() == "arm64"'
+"$python_path" -c 'import platform, sys; assert sys.version_info[:3] == (3, 13, 15); assert platform.machine() == sys.argv[1]' "$target_arch"
 if [[ ! -x "$build_dir/venv/bin/python" ]] || ! "$build_dir/venv/bin/python" -c \
-    'import pathlib,sys; assert sys.version_info[:3] == (3,13,15); assert pathlib.Path(sys.base_prefix).resolve() == pathlib.Path(sys.argv[1]).resolve()' "$build_dir/python"; then
+    'import pathlib,platform,sys; assert sys.version_info[:3] == (3,13,15); assert pathlib.Path(sys.base_prefix).resolve() == pathlib.Path(sys.argv[1]).resolve(); assert platform.machine() == sys.argv[2]' "$build_dir/python" "$target_arch"; then
     if [[ -e "$build_dir/venv" ]]; then
         previous_venv="$(mktemp -d "$build_dir/previous-venv.XXXXXX")"
         mv "$build_dir/venv" "$previous_venv/"
@@ -93,6 +105,7 @@ engine_executable="$engine_dir/Contents/MacOS/KataLogEngine"
 import hashlib
 import importlib.metadata
 import json
+import platform
 from pathlib import Path
 import shutil
 import sys
@@ -103,7 +116,7 @@ licenses = output / 'Licenses'
 licenses.mkdir()
 shutil.copytree(root / 'licenses-source' / 'python' / 'licenses', licenses / 'CPython')
 packages = {}
-for name in ('numpy', 'pyulog', 'pyinstaller'):
+for name in ('numpy', 'pyulog', 'pymavlink', 'pyserial', 'lxml', 'fastcrc', 'pyinstaller'):
     distribution = importlib.metadata.distribution(name)
     packages[name] = distribution.version
     count = 0
@@ -117,7 +130,11 @@ for name in ('numpy', 'pyulog', 'pyinstaller'):
                 shutil.copyfile(source, target)
                 count += 1
     if not count:
-        raise RuntimeError(f'Missing upstream license: {name}')
+        if name == 'pyserial':
+            (licenses / name).mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(root / 'downloads/pyserial-LICENSE.txt', licenses / name / 'LICENSE.txt')
+        else:
+            raise RuntimeError(f'Missing upstream license: {name}')
 
 def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -131,9 +148,10 @@ manifest = {
     'protocol': 1,
     'parserVersion': parser_version,
     'python': '.'.join(map(str, sys.version_info[:3])),
-    'architecture': 'arm64',
+    'architecture': platform.machine(),
     'minimumMacOS': '15.0',
     'packages': packages,
+    'excludedRuntimePackages': ['fastcrc'],
     'pythonDistribution': {'url': sys.argv[2], 'sha256': sys.argv[3]},
     'pythonLicenses': {'url': sys.argv[4], 'sha256': sys.argv[5]},
     'sourceHashes': {path.name: sha256(path) for path in sorted((root / 'inputs' / 'modules').glob('*.py'))},
@@ -145,6 +163,8 @@ manifest = {
     'KataLog embedded engine\n'
     'CPython 3.13.15, built by Astral python-build-standalone, and its statically linked components.\n'
     'NumPy 2.5.3 and its bundled native components. pyulog 1.2.4.\n'
+    'USB collection: pymavlink 2.4.50, pyserial 3.5, lxml 6.1.3, fastcrc 0.5.0.\n'
+    'fastcrc is an installation dependency only; the helper uses pymavlink Python CRC.\n'
     'PyInstaller 6.22.3 bootloader: GPL with an exception for bundled applications.\n'
     'Complete upstream license texts are included in Licenses/.\n'
     'PyInstaller and its Python build dependencies are build tools; only its bootloader is distributed.\n'
@@ -157,6 +177,7 @@ PY
 "$venv_python" - "$engine_dir" <<'PY'
 import json
 import marshal
+import platform
 from pathlib import Path
 import re
 import subprocess
@@ -202,7 +223,7 @@ for path in sorted(root.rglob('*')):
     if data[:4] in (b'\xcf\xfa\xed\xfe', b'\xfe\xed\xfa\xcf', b'\xca\xfe\xba\xbe'):
         binary_count += 1
         architecture = subprocess.check_output(['/usr/bin/lipo', '-archs', str(path)], text=True).strip()
-        if architecture != 'arm64':
+        if architecture != platform.machine():
             raise RuntimeError('Unexpected embedded binary architecture.')
         loads = subprocess.check_output(['/usr/bin/otool', '-L', str(path)], text=True)
         for line in loads.splitlines()[1:]:
@@ -255,6 +276,8 @@ mkdir -p "$empty_test/empty" "$empty_test/home"
     --database "$empty_test/library.sqlite" --output "$empty_test/snapshot.json"
 /usr/bin/env -i HOME="$empty_test/home" PATH=/usr/bin:/bin \
     "$engine_executable" gcs --help >/dev/null
+/usr/bin/env -i HOME="$empty_test/home" PATH=/usr/bin:/bin \
+    "$engine_executable" usb ports > "$empty_test/usb-ports.json"
 "$venv_python" - "$empty_test/snapshot.json" <<'PY'
 import json, sys
 snapshot = json.load(open(sys.argv[1]))

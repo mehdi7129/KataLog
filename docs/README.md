@@ -1,9 +1,9 @@
 # Documentation de KataLog
 
 Télécharger la [dernière version stable](https://github.com/mehdi7129/KataLog/releases/latest).
-La version **0.8.8 (build 27)** du **15 octobre 2026** enrichit les explications
-des messages avec le catalogue v3 et une présentation plus courte.
-Pour installer l’app, commencer par le [README du projet](../README.md#installation).
+La version **0.9.0 (build 28)** ajoute la collecte USB direct, la préparation de
+logs de plusieurs appareils pendant une collecte et les distributions Mac Intel.
+Pour installer l’app, commencer par le [README du projet](../README.md#installer).
 
 ## Trouver le bon document
 
@@ -14,7 +14,7 @@ Pour installer l’app, commencer par le [README du projet](../README.md#install
 | Comprendre la version stable et ses contrôles | [Dernière release](https://github.com/mehdi7129/KataLog/releases/latest), [changelog](../CHANGELOG.md) |
 | Classer les logs par client et gérer le nettoyage | [Clients et interface](CLIENTS-BENTO.md) |
 | Identifier les drones | [Numérotation et identité](STOCK-IDENTITY.md) |
-| Comprendre la collecte et ses limites | [Collecte GCS](GCS-COLLECTION.md) |
+| Comprendre la collecte et ses limites | [Collecte GCS](GCS-COLLECTION.md), [USB direct](USB-COLLECTION.md) |
 | Utiliser les favoris, la comparaison, les notes et le suivi de sauvegarde | [Suivi des logs en 0.8.6](WORKFLOW-IMPROVEMENTS.md) |
 | Produire un diagnostic local | [Diagnostic](DIAGNOSTICS.md) |
 | Comprendre les données importées, les détails et les rapports | [Contrat d’import](IMPORT-CONTRACT.md) |
@@ -204,7 +204,7 @@ filtres du rapport HTML.
    préalable n’est nécessaire. Leur identité reste dans le registre, même sans log.
 3. Les appareils explicitement armés, hors ligne ou sans UUID valide sont exclus.
    Pour choisir les fichiers d’un drone, ouvrir directement **Voir les logs**,
-   puis **Collecter la sélection**. Les contrôles d’identité restent appliqués.
+   puis **Ajouter à la file**. Les contrôles d’identité restent appliqués.
 4. **Analyser après collecte**, activé par défaut, ajoute les fichiers vérifiés à
    la bibliothèque existante. Chaque travail garde le client destinataire choisi
    à sa création, même si la sélection change ensuite. Les doublons déjà analysés
@@ -260,6 +260,14 @@ existants et ne programme pas un doublon depuis le drone pour ce seul motif.
 Protocole validé : **GCS Drotek 3.7.2**, MQTT 1999 et HTTP 8080, deux IOSTAR3
 firmware 4.1.5. Voir le [contrat et la recette](GCS-COLLECTION.md).
 
+### Collecter en USB direct
+
+Dans **Collecte GCS → USB direct**, choisir le port du contrôleur désarmé,
+**Lire les logs**, puis **Ajouter à la file**. La connexion doit être libérée dans
+QGroundControl. La file USB conserve les demandes de plusieurs appareils ; chaque
+appareil doit être rebranché pour télécharger ses fichiers. Voir le
+[guide USB](USB-COLLECTION.md) pour la pause, la reprise et les limites du banc simulé.
+
 ### Stockage local et conservation
 
 Bibliothèque de l’app : `~/Library/Application Support/KataLog/` (`library.sqlite`
@@ -298,6 +306,7 @@ remplacent pas l’état de la
 
 | Étape | Documents |
 | --- | --- |
+| 0.9.0 | [Qualification](RELEASE-0.9.0.md), [plan et double vérification](PLAN-USB-INTEL-RELEASE.md), [USB](USB-COLLECTION.md) |
 | 0.8.8 | [Release](RELEASE-0.8.8.md), [clarté des explications](../research/alerts/CLARITY-20261015.md) |
 | 0.8.7 | [Release](RELEASE-0.8.7.md), [catalogue des alertes](../research/alerts/README.md) |
 | 0.8.6 | [Release](RELEASE-0.8.6.md), [suivi des logs](WORKFLOW-IMPROVEMENTS.md) |

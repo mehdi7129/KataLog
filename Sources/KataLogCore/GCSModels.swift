@@ -177,6 +177,9 @@ public struct GCSTransfer: Codable, Identifiable, Sendable {
 }
 
 public struct GCSCollectorEvent: Decodable, Sendable {
+    public let ports: [USBSerialPort]?
+    public let device: USBLogDevice?
+    public let logs: [USBLogEntry]?
     public let event: String
     public let connected: Bool?
     public let drones: [GCSDrone]?
