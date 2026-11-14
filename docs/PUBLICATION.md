@@ -2,14 +2,111 @@
 
 ## État
 
-Le dépôt est **public**. La version **0.8.7 (build 26)** du **15 octobre 2026** enrichit les explications
-des messages. Voir la [recette 0.8.7](RELEASE-0.8.7.md)
-et le [guide utilisateur](README.md). La publication des assets et la vérification
-du flux effectivement servi sont suivies séparément.
+Le dépôt est **public**. La [release **0.9.0 (build 28)**](https://github.com/mehdi7129/KataLog/releases/tag/v0.9.0)
+est publiée le **14 novembre 2026**, depuis
+**`f2a86e2649f39cde9972a4bbf3ebeb903056ddf5`**, avec collecte USB direct,
+files de téléchargement et distributions natives Apple Silicon/Intel, à partir
+de la base **0.8.8 (build 27)**.
+
+La [recette 0.9.0](RELEASE-0.9.0.md) distingue les suites de tests, les packages
+CI, les bundles finaux signés, les téléchargements publics et les feeds. Elle
+conserve les limites connues acceptées pour cette livraison : **527,74 ms** pour
+la première requête dashboard à 50 000 logs et **514,54 ms** pour le planificateur
+GCS sur Intel 15, contre des budgets de 500 ms. Les rapports restent en échec.
+Le crash Metal du runner Intel 15 est reproduit indépendamment ; le rendu sur
+cet hôte n’est pas entièrement qualifié. Aucun matériel USB réel n’a été testé.
+
+La [recette 0.8.8](RELEASE-0.8.8.md) conserve les preuves de la base historique.
+Les six assets de 0.9.0 ont été vérifiés après téléchargement public anonyme.
+L’activation des feeds signés et leur contrôle canonique après fusion sont suivis
+séparément dans les [notes de 0.9.0](https://github.com/mehdi7129/KataLog/releases/tag/v0.9.0).
 
 Les contrôles de confidentialité couvrent le contenu publié et son historique,
 pas seulement les fichiers de la branche principale. Les rapports détaillés,
 marqueurs privés et preuves opérationnelles restent hors du dépôt.
+
+### Clôture de 0.9.0 au 14 novembre 2026
+
+| Périmètre | Résultat documenté | Limite |
+| --- | --- | --- |
+| Sources courantes et suites natives | Sur `f2a86e2`, ARM macOS 15/26 et Intel 26 : 527 Swift, 629 Python et 18 JavaScript réussis par hôte | Un test Python dépend d’un corpus privé absent ; ces suites ne qualifient pas à elles seules les archives finales. |
+| Intel macOS 15 | Diagnostic exhaustif : 525 PASS, 1 crash Metal reproduit sans code KataLog, 1 assertion de latence à 514,54 ms | Le job et le résultat brut restent en échec ; le rendu de ce runner n’est pas entièrement qualifié. |
+| Capacité 50 000 logs / 5 millions de messages | Sept cas SQL sur huit sous 500 ms, identités et RSS 473,984 MiB conformes ; 7 Swift ciblés réussis | Dashboard à 527,74 ms : limite connue, résultat SQL FAIL conservé. |
+| Packages CI du candidat courant | Quatre jobs ARM/Intel, macOS 15/26, réussis | Packages CI distincts des distributions Developer ID finales et des téléchargements publics. |
+| Apps et DMG finaux issus de `f2a86e2` | Signatures/notarisation vérifiées ; quatre hôtes natifs, 40 contrôles de distribution et 8 cycles USB réussis | Trois fermetures gracieuses ; Intel 15 utilise SIGTERM, sans qualification d’arrêt gracieux. Aucun matériel USB réel testé. |
+| Sources et surfaces publiques | Tag annoté exact, 381 fichiers source comparés à Git ; revue bornée des commits, PR, documents et preuves listés ci-dessous | Aucun secret ou contenu opérationnel non classé observé dans ce périmètre ; ce n’est pas une garantie universelle. |
+| Publication des six assets | **34 contrôles publics réussis**, après 44 contrôles avant publication | Octets, digests API, manifeste, signatures et tickets contrôlés ; archives antérieures inchangées. |
+| Feeds ARM/Intel | XML et ZIP vérifiés avec Sparkle officiel, clé commune et routes propres à chaque architecture | Activation par cette mise à jour ; les observations des URLs canoniques après fusion sont consignées dans les notes de release. |
+
+Les mesures courantes proviennent de la [CI f2](https://github.com/mehdi7129/KataLog/actions/runs/43628563135),
+du [diagnostic Intel 15](https://github.com/mehdi7129/KataLog/actions/runs/43628542042)
+et du [benchmark complet](https://github.com/mehdi7129/KataLog/actions/runs/43628544742).
+Les limites de performance sont détaillées dans la [note de capacité](CAPACITY-2026-11-14.md)
+et la recette. Le succès des checks protégés ne remplace pas les autres résultats
+échoués : la campagne CI conserve sa conclusion globale `failure`.
+La [recette des binaires signés finaux](https://github.com/mehdi7129/KataLog/actions/runs/43636719034)
+utilise le harnais `4023555` contre les sources produit `f2a86e2`, sans reconstruire
+ni remplacer les quatre archives. Les limites de fermeture et de matériel sont
+conservées dans ses reçus.
+
+### Revue bornée des surfaces de `f2a86e2`
+
+La revue couvre les huit commits depuis la base 0.8.8, leurs auteurs et messages,
+81 blobs introduits, la PR #50 et les notes de release actualisées, les documents
+préparés, dix logs complets et dix archives de preuves des campagnes
+`43628563135`, `43628542042` et `43628544742`. Les sept images inspectées montrent
+des fixtures de démonstration ou le probe graphique. L’archive source publique
+contient uniquement les 381 fichiers attendus ; les auteurs utilisent leurs
+identités GitHub noreply.
+
+Aucun secret usuel ni donnée opérationnelle non classée n’a été observé dans ce
+périmètre. Les signalements de chemins ont été attribués aux runners hébergés.
+Les contrôles de confidentialité des deux apps finales couvrent chacun 200
+fichiers et 503 payloads embarqués, sans signalement. Aucun Gitleaks ni blocklist
+privée n’a été utilisé dans cette revue ; les dépendances et binaires réutilisent
+les reçus de distribution, sans nouveau scan indépendant de chaque octet.
+
+Les correctifs ultérieurs du harnais ont reçu une contre-relecture distincte,
+avec garde de publication et auteurs noreply contrôlés. Leurs nouvelles campagnes
+de runtime ne sont pas incluses rétroactivement dans la revue des journaux
+ci-dessus. Les reçus de notarisation, de runtime et de téléchargement public
+établissent leurs contrôles précis, pas une nouvelle revue de toute la surface GitHub.
+
+### Preuves historiques du précédent candidat 0.9.0
+
+Les signatures, notarisation et recettes natives du
+[run 43623188624](https://github.com/mehdi7129/KataLog/actions/runs/43623188624)
+concernent les quatre archives ZIP/DMG construites depuis **`8287cee`**. Le
+harnais était au commit `a209944` et la tête ultérieure d’outillage à `6adb3bd` ;
+leurs entrées produit étaient identiques. **Ces preuves ne qualifient pas les
+nouveaux binaires issus de `f2a86e2`.**
+
+Sur les quatre hôtes ARM/Intel macOS 15/26, ces anciens bundles avaient passé
+la copie depuis le DMG puis son éjection, le lancement natif sans Rosetta,
+l’initialisation d’une bibliothèque isolée et son contrôle SQLite, puis la
+fermeture gracieuse avec exit 0. Le helper embarqué avait passé les scénarios
+USB synthétiques MAVLink 1 et 2, dont pertes, mauvais UID, annulation et libération
+du port. Le parcours graphique ARM historique avait vérifié trois demandes
+sur deux identités synthétiques, reprise après redémarrage, analyse, déduplication
+et sauvegarde. Ces reçus ne revendiquent aucune connexion USB physique.
+
+La revue bornée des surfaces de `8287cee` à `6adb3bd` utilisait le garde existant
+et une lecture des changements, métadonnées et rapports disponibles. Elle ne
+constituait pas un nouveau scan Gitleaks : aucun binaire disponible ni blocklist
+privée n’a été utilisé pour cette revue. La revue courante de `f2a86e2` est
+décrite séparément ci-dessus ; aucune couverture historique n’est étendue implicitement.
+
+Les rapports sont conservés hors Git ; seuls leurs résultats bornés et les
+références publiques appropriées entrent dans la recette de release. Un succès
+de signature, de notarisation ou de tests ne clôt pas à lui seul la revue de
+confidentialité.
+
+Les contrôleurs, ULogs et positions utilisés dans les fixtures USB sont
+synthétiques. Ni un port simulé ni un runner Intel ne prouvent le fonctionnement
+avec le firmware Aqua installé, un câble physique ou un débit matériel.
+
+Les revues datées ci-dessous conservent leur périmètre historique. Leurs comptes,
+versions et états de publication ne décrivent pas automatiquement la release 0.9.0.
 
 ### Revue de la release du 15 octobre 2026
 
@@ -132,12 +229,19 @@ par cet audit avec les permissions API disponibles.
 
 ## Périmètre de la distribution actuelle
 
-Les preuves de **0.8.7** sont consignées dans
-[RELEASE-0.8.7.md](RELEASE-0.8.7.md). Elles portent sur le candidat, son package
-final et sa recette native. Les téléchargements publics sont à rapprocher
-des fichiers qualifiés avant fusion du flux signé build **26** ; le flux
-canonique doit ensuite être vérifié séparément. Les preuves de
-[0.8.6](RELEASE-0.8.6.md) et [0.8.5](RELEASE-0.8.5.md) restent historiques.
+Les preuves de **0.9.0** sont consignées dans
+[RELEASE-0.9.0.md](RELEASE-0.9.0.md). Elles identifient le commit et les
+fichiers exacts, distinguent ARM64 et Intel, et séparent exécution native,
+inspection statique croisée, distribution signée/notarisée et téléchargements
+publics. Le contrôle des feeds servis après leur activation reste distinct de
+leur signature locale et est consigné dans les notes de release.
+
+La vérification des ZIP et DMG publics précède l’activation des feeds signés.
+Le flux ARM conserve `updates/stable/appcast.xml` ; Intel utilise
+`updates/stable-intel/appcast.xml`. Après activation, contrôler séparément les
+hashes, signatures, build et enclosure réellement servis par chaque URL canonique.
+Les preuves de [0.8.8](RELEASE-0.8.8.md) et des versions antérieures restent
+historiques ; leurs tags et assets ne sont pas remplacés.
 
 Les fonctionnalités clients, favoris et notes n’introduisent aucun compte
 distant : noms, attributions et bibliothèques restent locaux. Les fixtures
@@ -226,4 +330,7 @@ glisser KataLog dans Applications, éjecter puis lancer. Le moteur est embarqué
 Un appcast public signé permet les updates Sparkle sans compte GitHub utilisateur
 à partir de la release 0.7.0. Les versions 0.6.x nécessitent une première installation
 par DMG ; leur flux était désactivé.
-Voir la [recette 0.8.7](RELEASE-0.8.7.md) et la [procédure de release](RELEASING.md).
+Choisir le DMG `arm64` pour Apple Silicon ou `x86_64` pour Intel.
+Le minimum de la génération 0.9.0 est macOS 15. Voir la
+[recette 0.9.0](RELEASE-0.9.0.md), la [base historique 0.8.8](RELEASE-0.8.8.md)
+et la [procédure de release](RELEASING.md).

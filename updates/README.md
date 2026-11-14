@@ -1,45 +1,76 @@
 # Mises à jour de KataLog
 
-KataLog **0.8.7 (build 26)** du **15 octobre 2026** cible
-**macOS 15+ sur Apple Silicon**. Le package est signé
-et notarisé. Le flux signé build **26** est préparé depuis le build **25** ;
-son activation suit la publication et la vérification des quatre assets,
-puis la fusion de la PR de publication et le contrôle du flux canonique servi.
+KataLog **0.9.0 (build 28)** est publié le **14 novembre 2026** pour
+**macOS 15+**, avec deux distributions natives signées et notarisées :
+**arm64** pour Apple Silicon et **x86_64** pour Intel. Le moteur Python est
+embarqué ; aucun Python, Homebrew ni Rosetta n’est nécessaire chez l’utilisateur.
 
-La release 0.8.4 (build 23) est publique et immuable. Ce build n’a jamais été
-activé dans le flux. Les transitions historiques restent consignées dans les
-recettes [0.8.6](../docs/RELEASE-0.8.6.md) et [0.8.5](../docs/RELEASE-0.8.5.md).
+Depuis KataLog **0.7.0 ou ultérieur** sur Apple Silicon, utiliser
+**Réglages → Mises à jour → Rechercher une mise à jour** après activation du flux.
+Une première installation Intel, ou une version antérieure à 0.7.0, passe par le
+DMG correspondant au Mac :
 
-Depuis KataLog **0.7.0 ou ultérieur**, utiliser
-**Réglages → Mises à jour → Rechercher une mise à jour**.
-Les versions antérieures s’installent directement depuis le
-[DMG 0.8.7](https://github.com/mehdi7129/KataLog/releases/download/v0.8.7/KataLog-0.8.7-macOS-arm64.dmg).
+- [DMG Apple Silicon](https://github.com/mehdi7129/KataLog/releases/download/v0.9.0/KataLog-0.9.0-macOS-arm64.dmg)
+- [DMG Intel](https://github.com/mehdi7129/KataLog/releases/download/v0.9.0/KataLog-0.9.0-macOS-x86_64.dmg)
+
 La Preview possède une bibliothèque indépendante et son updater est désactivé.
 Voir [installation et migrations](../docs/UPDATING.md).
 
-## Flux stable
+## Deux flux stables
 
-- [Appcast public signé](https://raw.githubusercontent.com/mehdi7129/KataLog/main/updates/stable/appcast.xml)
-- [Copie versionnée de l’appcast](stable/appcast.xml)
-- [Clé publique Ed25519](stable/public-key.txt)
-- [Release 0.8.7 et archives](https://github.com/mehdi7129/KataLog/releases/tag/v0.8.7)
-- [Qualification et publication 0.8.7](../docs/RELEASE-0.8.7.md)
-- [Qualification historique 0.8.6](../docs/RELEASE-0.8.6.md)
+| Architecture | Flux canonique | Copie versionnée |
+| --- | --- | --- |
+| Apple Silicon (`arm64`) | [Appcast ARM](https://raw.githubusercontent.com/mehdi7129/KataLog/main/updates/stable/appcast.xml) | [stable/appcast.xml](stable/appcast.xml) |
+| Intel (`x86_64`) | [Appcast Intel](https://raw.githubusercontent.com/mehdi7129/KataLog/main/updates/stable-intel/appcast.xml) | [stable-intel/appcast.xml](stable-intel/appcast.xml) |
 
-Le flux utilise l’archive ZIP de la release ; le DMG sert à l’installation
-manuelle. Aucune clé privée n’est stockée dans le dépôt.
+Les deux flux utilisent la même [clé publique Ed25519](stable/public-key.txt),
+embarquée dans les apps finales. Le flux ARM historique conserve son URL. Le
+flux Intel a sa propre URL ; chaque app interroge celui de son architecture.
+Le flux ARM comporte `hardwareRequirements=arm64`. Le flux Intel dédié ne
+comporte pas ce sélecteur : la séparation repose sur l’URL du flux et les
+métadonnées d’architecture de l’app et de l’archive.
 
-## Préparer une prochaine mise à jour
+Sparkle télécharge le **ZIP** de l’architecture concernée ; le **DMG** sert à
+l’installation manuelle. Les deux ZIP, les deux DMG, l’archive source et
+[SHA256SUMS.txt](https://github.com/mehdi7129/KataLog/releases/download/v0.9.0/SHA256SUMS.txt)
+sont les six assets de la [release 0.9.0](https://github.com/mehdi7129/KataLog/releases/tag/v0.9.0).
+Le tag et les sources de ces packages désignent le commit
+`f2a86e2649f39cde9972a4bbf3ebeb903056ddf5`. Les assets publiés restent immuables.
+
+La [recette 0.9.0](../docs/RELEASE-0.9.0.md) distingue les contrôles des packages,
+les recettes natives ARM/Intel sur macOS 15 et 26, les essais USB synthétiques
+et les limites connues. Un contrôle de signature ou un lancement natif ne
+constitue pas un cycle complet d’installation Sparkle ni un essai sur drone.
+
+## Préparer et activer un flux
 
 Suivre la [procédure de release](../docs/RELEASING.md) et les
 [contrôles de l’updater](../docs/UPDATING.md#vérifications-avant-publication).
-Publier les archives finales avant le nouveau flux. Les assets d’une release
-publiée restent immuables. Un feed signé ne doit jamais être reformaté ou modifié
-sans être signé à nouveau avec les outils Sparkle.
+Aucune clé privée n’est stockée dans le dépôt. La préparation signée utilise
+les outils officiels de **Sparkle 2.10.0** et le compte du Trousseau
+`katalog-sparkle-stable`, commun aux deux flux.
 
-Pour 0.8.7, préparer le build **26** avec `--previous-build 25` seulement après
-contrôle du dernier build effectivement servi. Vérifier avec les outils officiels
-Sparkle les signatures du feed local et du ZIP téléchargé publiquement.
-L’activation passe par la fusion de la publication du flux : après fusion,
-contrôler sans authentification les octets et signatures du flux effectivement
-servi. Cette vérification reste distincte des signatures locales et de celle du ZIP.
+Pour la transition **0.9.0 / build 28**, le dernier build servi sur ARM est
+**27** ; Intel n’avait pas de flux précédent et utilise donc la valeur initiale
+**0**. Les préparations utilisent respectivement `--architecture arm64 --previous-build 27`
+et `--architecture x86_64 --previous-build 0`. Pour une release suivante,
+relire chaque flux effectivement servi au lieu de réutiliser ces valeurs.
+
+1. Publier et télécharger sans authentification les six assets finaux. Comparer
+   leurs tailles et SHA-256 aux fichiers qualifiés et au manifeste public.
+2. Préparer chaque flux depuis le ZIP public exact de son architecture avec
+   `tools/update-feed.py prepare`. Contrôler version, build, minimum macOS,
+   URL du ZIP, taille, architecture, clé embarquée et route canonique.
+3. Vérifier avec `sign_update --account katalog-sparkle-stable --verify`
+   la signature de chaque XML, puis celle de son ZIP en fournissant
+   l’`edSignature` de son enclosure. Conserver les empreintes des deux XML vérifiés.
+4. Fusionner les XML signés dans leurs deux chemins canoniques sans les reformater.
+   Après fusion, télécharger chaque flux sans authentification, comparer ses
+   octets et vérifier à nouveau sa signature ainsi que celle du ZIP public désigné.
+
+La publication des archives et l’activation des flux sont deux étapes distinctes.
+Un XML régénéré, même depuis un ZIP inchangé, peut avoir une nouvelle `pubDate`
+et de nouveaux octets : il exige une nouvelle signature et une nouvelle preuve
+de vérification locale, puis du flux canonique servi. Les contrôles des anciens
+XML restent historiques et ne qualifient pas leurs remplaçants. La régénération
+d’un flux ne doit jamais reconstruire ou remplacer un asset déjà publié.

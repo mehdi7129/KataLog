@@ -146,11 +146,24 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(result["logs"], [])
         self.assertEqual(result["importStats"]["discovered"], 0)
         self.copy()
-        imported = self.scan()
-        db = analyzer.open_database(self.database)
-        self.addCleanup(db.close)
-        self.assertEqual(analyzer.snapshot(db)["logs"], imported["logs"])
+        first_check = "2030-01-01T00:00:00Z"
+        with patch.object(analyzer, "utc_now", return_value=first_check):
+            imported = self.scan()
+            db = analyzer.open_database(self.database)
+            self.addCleanup(db.close)
+            self.assertEqual(analyzer.snapshot(db)["logs"], imported["logs"])
         self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 1)
+        # Availability is live observation, not part of the persisted analysis.
+        # Crossing a second must refresh its timestamp without altering the log.
+        later_check = "2030-01-01T00:00:01Z"
+        expected = json.loads(json.dumps(imported["logs"]))
+        for log in expected:
+            self.assertTrue(log["sourceAvailability"])
+            for availability in log["sourceAvailability"]:
+                self.assertEqual(availability["checkedAt"], first_check)
+                availability["checkedAt"] = later_check
+        with patch.object(analyzer, "utc_now", return_value=later_check):
+            self.assertEqual(analyzer.snapshot(db)["logs"], expected)
 
     def test_invalid_and_truncated_do_not_abort_valid_file(self):
         self.copy("valid.ulg")
