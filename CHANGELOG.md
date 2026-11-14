@@ -1,6 +1,6 @@
 # Changelog
 
-Version préparée : **0.9.0**, build **28**.
+Version publiée : **0.9.0**, build **28**, le **14 novembre 2026**.
 [Télécharger KataLog](https://github.com/mehdi7129/KataLog/releases/latest) ·
 [Instructions de mise à jour](docs/UPDATING.md).
 Les sections antérieures conservent l’état de leur version au moment de sa livraison.
@@ -19,6 +19,14 @@ Les tags et archives déjà publiés restent immuables.
 Parseur **1.4.1** et projection SQLite **8** conservés ; aucun réimport global requis.
 Les essais simulés ne constituent pas une validation du firmware Aqua installé ni
 une mesure de débit sur matériel réel.
+
+Limites connues : à 50 000 éléments, le dashboard atteint **527,74 ms** et le
+planificateur GCS sur Intel 15 **514,54 ms**, au-dessus du budget de 500 ms.
+Ces résultats restent en échec. Le rendu Intel 15 est limité par un crash Metal
+du runner reproduit indépendamment ; l’arrêt gracieux de l’app n’est pas qualifié
+par son reçu final utilisant SIGTERM. Les quatre hôtes passent la recette des
+installateurs signés, avec ces limites explicites. Les six assets publics sont
+vérifiés. Voir la [recette 0.9.0](docs/RELEASE-0.9.0.md).
 
 ## 0.8.8 — 2026-10-15
 

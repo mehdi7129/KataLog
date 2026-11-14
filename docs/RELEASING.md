@@ -5,10 +5,15 @@ La génération 0.9.0 distribue deux apps natives : **arm64** pour Apple Silicon
 Python et utilise un flux Sparkle stable propre à son architecture. Aucun Python,
 Homebrew ni Rosetta n’est nécessaire chez l’utilisateur.
 
-La version préparée est **0.9.0, build 28**, après **0.8.8, build 27**. Revérifier
-le dernier build public avant de publier. Les tags et assets antérieurs restent
-immuables. La [recette 0.8.8](RELEASE-0.8.8.md) conserve ses résultats historiques ;
-ils ne remplacent pas ceux du nouveau candidat.
+La version **0.9.0, build 28** est publiée le **14 novembre 2026**, après
+**0.8.8, build 27**. Sa [recette](RELEASE-0.9.0.md) consigne les binaires natifs
+signés et notarisés, les six téléchargements publics vérifiés et les limites
+mesurées. Le contrôle des feeds canoniques après fusion de leur activation est
+consigné dans les [notes de release](https://github.com/mehdi7129/KataLog/releases/tag/v0.9.0).
+
+Pour une prochaine livraison, revérifier le dernier build public avant de choisir
+la version et les transitions de feed. Les tags et assets publiés restent immuables.
+La [recette 0.8.8](RELEASE-0.8.8.md) conserve uniquement ses résultats historiques.
 
 ## Préparer le candidat
 

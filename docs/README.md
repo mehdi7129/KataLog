@@ -3,6 +3,10 @@
 Télécharger la [dernière version stable](https://github.com/mehdi7129/KataLog/releases/latest).
 La version **0.9.0 (build 28)** ajoute la collecte USB direct, la préparation de
 logs de plusieurs appareils pendant une collecte et les distributions Mac Intel.
+Elle requiert **macOS 15+** : choisir **arm64** pour Apple Silicon ou **x86_64**
+pour Intel. Chaque app contient son moteur Python et utilise le flux de mise
+à jour de son architecture ; Rosetta n’est pas nécessaire. La [recette 0.9.0](RELEASE-0.9.0.md) conserve
+les résultats natifs et leurs limites.
 Pour installer l’app, commencer par le [README du projet](../README.md#installer).
 
 ## Trouver le bon document
@@ -10,11 +14,12 @@ Pour installer l’app, commencer par le [README du projet](../README.md#install
 | Besoin | Documentation |
 | --- | --- |
 | Importer, explorer, exporter ou collecter des logs | [Guide utilisateur](#guide-utilisateur) |
-| Installer une mise à jour et comprendre les migrations | [Mises à jour](UPDATING.md) |
-| Comprendre la version stable et ses contrôles | [Dernière release](https://github.com/mehdi7129/KataLog/releases/latest), [changelog](../CHANGELOG.md) |
+| Installer une mise à jour et comprendre les migrations | [Mises à jour](UPDATING.md), [flux stables ARM et Intel](../updates/README.md) |
+| Comprendre la version stable et ses contrôles | [Release 0.9.0](https://github.com/mehdi7129/KataLog/releases/tag/v0.9.0), [recette et limites](RELEASE-0.9.0.md), [changelog](../CHANGELOG.md) |
 | Classer les logs par client et gérer le nettoyage | [Clients et interface](CLIENTS-BENTO.md) |
 | Identifier les drones | [Numérotation et identité](STOCK-IDENTITY.md) |
 | Comprendre la collecte et ses limites | [Collecte GCS](GCS-COLLECTION.md), [USB direct](USB-COLLECTION.md) |
+| Lire les mesures de capacité et les budgets non atteints | [Capacité et limites mesurées le 14 novembre 2026](CAPACITY-2026-11-14.md) |
 | Utiliser les favoris, la comparaison, les notes et le suivi de sauvegarde | [Suivi des logs en 0.8.6](WORKFLOW-IMPROVEMENTS.md) |
 | Produire un diagnostic local | [Diagnostic](DIAGNOSTICS.md) |
 | Comprendre les données importées, les détails et les rapports | [Contrat d’import](IMPORT-CONTRACT.md) |
@@ -66,7 +71,7 @@ Pour installer l’app, commencer par le [README du projet](../README.md#install
    les mêmes détails disponibles ou absents. Les notes personnelles sont incluses
    dans les exports privés et retirées de toutes les pièces du partage.
 
-La collecte utilise une file SQLite durable et importe exactement les fichiers
+La collecte GCS utilise une file SQLite durable et importe exactement les fichiers
 reçus, sans créer automatiquement une seconde archive. Les drones ajoutés lors de la collecte
 restent dans le registre, même sans log ni numéro de stock. La comparaison des paramètres conserve
 les valeurs et types ; elle n’attribue pas une cause de panne.
@@ -288,8 +293,14 @@ reconnu comme le même drone physique.
 La [contribution](../CONTRIBUTING.md) décrit l’environnement, les tests et les
 builds locaux. La [direction visuelle](../DESIGN.md) décrit les conventions de l’interface.
 
+La [recette 0.9.0](RELEASE-0.9.0.md) consigne la qualification du candidat publié,
+les quatre hôtes natifs ARM/Intel et les limites de ces contrôles. Les
+[mesures de capacité du 14 novembre 2026](CAPACITY-2026-11-14.md) conservent
+les résultats bruts, y compris les budgets non atteints ; elles ne garantissent
+pas les mêmes temps sur un autre Mac ni sur une flotte physique.
+
 Les [mesures carte/navigation et collecte](PERFORMANCE-MAP-NAVIGATION.md)
-précisent le périmètre des benchmarks 0.8.1. Le [banc 500 identités](BENCHMARK-500.md)
+précisent le périmètre des benchmarks historiques 0.8.1. Le [banc 500 identités](BENCHMARK-500.md)
 utilise des données synthétiques et ne qualifie pas une flotte physique.
 
 Références du moteur : [pyulog](https://github.com/PX4/pyulog),
@@ -306,7 +317,7 @@ remplacent pas l’état de la
 
 | Étape | Documents |
 | --- | --- |
-| 0.9.0 | [Qualification](RELEASE-0.9.0.md), [plan et double vérification](PLAN-USB-INTEL-RELEASE.md), [USB](USB-COLLECTION.md) |
+| 0.9.0 | [Qualification](RELEASE-0.9.0.md), [capacité et limites](CAPACITY-2026-11-14.md), [plan et double vérification](PLAN-USB-INTEL-RELEASE.md), [USB](USB-COLLECTION.md) |
 | 0.8.8 | [Release](RELEASE-0.8.8.md), [clarté des explications](../research/alerts/CLARITY-20261015.md) |
 | 0.8.7 | [Release](RELEASE-0.8.7.md), [catalogue des alertes](../research/alerts/README.md) |
 | 0.8.6 | [Release](RELEASE-0.8.6.md), [suivi des logs](WORKFLOW-IMPROVEMENTS.md) |
