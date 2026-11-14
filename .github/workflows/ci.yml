@@ -10,6 +10,11 @@ on:
         type: choice
         options: [build-candidate, verify-signed]
         default: build-candidate
+      validation_architecture:
+        description: Architecture for tests and ad hoc packages only; signed verification always covers all four hosts
+        type: choice
+        options: [all, arm64, x86_64]
+        default: all
       release_tag:
         description: Draft release tag for signed validation
         type: string
@@ -41,11 +46,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - {os: macos-15, major: '15', arch: arm64}
-          - {os: macos-26, major: '26', arch: arm64}
-          - {os: macos-15-intel, major: '15', arch: x86_64}
-          - {os: macos-26-intel, major: '26', arch: x86_64}
+        include: >-
+          ${{ fromJSON(
+            inputs.validation_architecture == 'arm64' && '[{"os":"macos-15","major":"15","arch":"arm64"},{"os":"macos-26","major":"26","arch":"arm64"}]'
+            || inputs.validation_architecture == 'x86_64' && '[{"os":"macos-15-intel","major":"15","arch":"x86_64"},{"os":"macos-26-intel","major":"26","arch":"x86_64"}]'
+            || '[{"os":"macos-15","major":"15","arch":"arm64"},{"os":"macos-26","major":"26","arch":"arm64"},{"os":"macos-15-intel","major":"15","arch":"x86_64"},{"os":"macos-26-intel","major":"26","arch":"x86_64"}]'
+          ) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -94,11 +100,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - {os: macos-15, major: '15', arch: arm64}
-          - {os: macos-26, major: '26', arch: arm64}
-          - {os: macos-15-intel, major: '15', arch: x86_64}
-          - {os: macos-26-intel, major: '26', arch: x86_64}
+        include: >-
+          ${{ fromJSON(
+            inputs.validation_architecture == 'arm64' && '[{"os":"macos-15","major":"15","arch":"arm64"},{"os":"macos-26","major":"26","arch":"arm64"}]'
+            || inputs.validation_architecture == 'x86_64' && '[{"os":"macos-15-intel","major":"15","arch":"x86_64"},{"os":"macos-26-intel","major":"26","arch":"x86_64"}]'
+            || '[{"os":"macos-15","major":"15","arch":"arm64"},{"os":"macos-26","major":"26","arch":"arm64"},{"os":"macos-15-intel","major":"15","arch":"x86_64"},{"os":"macos-26-intel","major":"26","arch":"x86_64"}]'
+          ) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:
