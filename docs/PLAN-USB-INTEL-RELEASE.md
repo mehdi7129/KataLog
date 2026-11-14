@@ -54,3 +54,38 @@ Préparer 0.9.0, build 28 ; revérifier le build public avant publication.
 - [Runners GitHub natifs](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
 - [Contraintes matérielles Sparkle](https://sparkle-project.org/documentation/publishing/#minimum-system-version-requirements)
 - [Packaging multi-architecture PyInstaller](https://pyinstaller.org/en/stable/feature-notes.html#macos-multi-arch-support)
+
+## Complément après la qualification native
+
+Le diagnostic Intel macOS 15 du premier candidat atteint les 527 tests une seule
+fois : 524 réussites, un crash Metal également reproduit par un programme
+indépendant Canvas/Chart, et deux dépassements de réactivité avec 50 000 travaux
+en file. Les deux dépassements (676 et 887 ms pour un budget de 500 ms) restent
+des échecs distincts du problème graphique du runner. Aucun seuil n'est relevé.
+
+Le profilage identifie du travail répété sur le thread de l'interface : extraire
+et trier une file entièrement modifiée, puis parcourir les demandes même lorsque
+tous les créneaux réseau sont occupés. Le correctif doit conserver les commandes
+synchrones et les mécanismes de persistance existants :
+
+1. Capturer une seule fois la file avant d'extraire ses éléments modifiés. Pour
+   une modification dense, conserver directement l'ordre de la file sans tri.
+   Une ancienne file contenant des IDs dupliqués garde le chemin indexé existant,
+   qui sélectionne la dernière occurrence.
+2. Éviter la sélection réseau lorsque les créneaux sont pleins, tout en laissant
+   fonctionner l'analyse et les retries d'inventaire. Réduire les parcours des
+   drones indisponibles sans changer FIFO, priorité manuelle, délais de retry,
+   verrous distants, client ou destination. Le retarget intervient avant lancement.
+3. Revoir séparément les requêtes non filtrées du dashboard et du registre. Une
+   page peut limiter les contrôleurs à examiner ; leur identité et leur dernier
+   nom doivent toujours être résolus sur tous leurs logs, y compris hors page.
+   Une éventuelle indexation additive doit préserver les anciennes projections
+   ouvertes en lecture seule. Aucun cache de résultats ni nouveau rollup persistant.
+4. Valider les invariants et les cas adverses, puis relancer les recettes natives
+   et le benchmark complet inchangé. Les nouvelles sources imposent de reconstruire,
+   signer, notariser et qualifier de nouvelles archives avant publication.
+
+La seconde revue a écarté la réutilisation d'un compteur à travers une publication
+Combine synchrone : l'absence d'`await` ne garantit pas l'absence de réentrance.
+Les observations locales de profilage ne remplacent pas les résultats du futur
+candidat sur Intel ni le benchmark complet à 50 000 logs et 5 millions de messages.

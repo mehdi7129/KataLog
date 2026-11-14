@@ -1488,18 +1488,21 @@ final class GCSStore: ObservableObject {
         runAnalysisQueue()
         defer { runInventoryRetryIfNeeded() }
         guard !isReadOnly, !isMaintenanceBlocked, !terminationRequested, persistenceTask == nil, queueStorageIssue == nil, persistenceError == nil, inventoryTask == nil, !isQueuePaused, isConnected, let currentHost = connectedHost, let script else { return }
+        // Retarget pending jobs when a slot opens; no transfer can start while full.
+        guard transferTasks.count < maxConcurrentDownloads else { return }
         let available = Set(drones.filter { allowedUUIDs.contains($0.uuid) && $0.isOnline && $0.armed != true && (inventoryBusyUntil[$0.uuid] ?? .distantPast) <= Date() }.map(\.uuid))
         // One publication per scheduling pass avoids repeated array updates and
         // keeps intermediate changes to a job out of subscribers.
         var updated = queue, retargeted = false
-        for index in updated.indices where updated[index].isPending && available.contains(updated[index].droneUUID) {
+        for index in updated.indices where available.contains(updated[index].droneUUID) && updated[index].isPending {
             if updated[index].host != currentHost {
                 dirtyTransferIDs.insert(updated[index].id)
                 updated[index].retargetPending(to: currentHost)
                 retargeted = true
             }
         }
-        let importCapacity = max(0, maxBufferedImports - bufferedAnalysisCount - transferTasks.count)
+        let bufferedCount = bufferedAnalysisCount
+        let importCapacity = max(0, maxBufferedImports - bufferedCount - transferTasks.count)
         let jobs = GCSQueuePolicy.nextJobs(queue: updated, activeIDs: Set(transferTasks.keys), availableUUIDs: available, host: currentHost, limit: maxConcurrentDownloads).prefix(importCapacity)
         for id in jobs {
             guard let index = queueIDIndex[id] else { continue }
@@ -1869,7 +1872,15 @@ final class GCSStore: ObservableObject {
         await persistenceTask?.value
         if let persistenceError { throw persistenceError }
     }
-    private var dirtyTransfers: [GCSTransfer] { dirtyTransferIDs.compactMap { queueIDIndex[$0] }.sorted().map { queue[$0] } }
+    private var dirtyTransfers: [GCSTransfer] {
+        let snapshot = queue, dirty = dirtyTransferIDs, indexes = queueIDIndex
+        // Dense changes preserve queue order without sorting every row. A legacy
+        // duplicate ID must keep the indexed path's last-occurrence semantics.
+        if dirty.count > snapshot.count / 4, indexes.count == snapshot.count {
+            return snapshot.filter { dirty.contains($0.id) }
+        }
+        return dirty.compactMap { indexes[$0] }.sorted().map { snapshot[$0] }
+    }
     private func rebuildQueueIndexes() {
         let indexes = Self.makeQueueIndexes(queue)
         queueSourceIndex = indexes.sources; queueIDIndex = indexes.ids

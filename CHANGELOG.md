@@ -13,6 +13,7 @@ Les tags et archives déjà publiés restent immuables.
 - Consultation et ajout de logs d’autres drones pendant les transferts GCS ; exclusion conservée pour les opérations concurrentes sur le même appareil.
 - Apps natives Apple Silicon et Intel, moteur Python embarqué et flux de mises à jour distincts par architecture.
 - Banc serial sans matériel avec trames MAVLink 1/2, pertes, déconnexions, changement d’identité et annulation.
+- Réduction des parcours inutiles des grandes files et des calculs répétés du dashboard et du registre, en conservant les priorités, les identités globales et la lecture des anciennes bibliothèques.
 - README entièrement revu, guide USB et setup automatique des workspaces Paradev.
 
 Parseur **1.4.1** et projection SQLite **8** conservés ; aucun réimport global requis.

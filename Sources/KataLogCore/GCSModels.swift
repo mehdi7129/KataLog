@@ -291,14 +291,25 @@ public enum GCSQueuePolicy {
     }
     public static func nextJobs(queue: [GCSTransfer], activeIDs: Set<String>, availableUUIDs: Set<String>,
                                 host: String, limit: Int = maxConcurrentDownloads, now: Date = Date()) -> [String] {
-        var occupied = Set(queue.filter { activeIDs.contains($0.id) || ($0.remoteBusyUntil ?? .distantPast) > now }.map(\.droneUUID))
         var slots = max(0, min(concurrentDownloadRange.upperBound, max(concurrentDownloadRange.lowerBound, limit)) - activeIDs.count)
+        guard slots > 0, !availableUUIDs.isEmpty else { return [] }
+        var occupied = Set<String>(), manual: [Int] = [], normal: [Int] = []
+        // Inspect every available drone's locks before choosing a candidate:
+        // a later row may still own that drone's FTP worker.
+        for (index, job) in queue.enumerated() where availableUUIDs.contains(job.droneUUID) {
+            if activeIDs.contains(job.id) || (job.remoteBusyUntil ?? .distantPast) > now {
+                occupied.insert(job.droneUUID)
+            }
+            guard job.isPending, job.host == host, (job.nextRetryAt ?? .distantPast) <= now else { continue }
+            if job.manualPriority == true { manual.append(index) } else { normal.append(index) }
+        }
         var result: [String] = []
-        for priority in [true, false] {
-            for job in queue where (job.manualPriority == true) == priority && job.isPending && job.host == host && availableUUIDs.contains(job.droneUUID) {
-                guard slots > 0 else { return result }
-                guard !occupied.contains(job.droneUUID), (job.nextRetryAt ?? .distantPast) <= now else { continue }
-                occupied.insert(job.droneUUID); slots -= 1; result.append(job.id)
+        for candidates in [manual, normal] {
+            for index in candidates {
+                let job = queue[index]
+                guard occupied.insert(job.droneUUID).inserted else { continue }
+                slots -= 1; result.append(job.id)
+                if slots == 0 { return result }
             }
         }
         return result
